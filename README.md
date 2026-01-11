@@ -134,8 +134,8 @@ graph LR
 
 ### 1. 저장소 복제 (Clone)
 ```bash
-git clone https://github.com/jay365-code/strato-spem-detector.git
-cd strato-spem-detector
+git clone https://github.com/jay365-code/spam-detector.git
+cd spam-detector
 ```
 
 ### 2. 백엔드 설정 (Backend)
