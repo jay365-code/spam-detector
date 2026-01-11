@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Environment Variables
+.env
+.env.local
+
+# Editor directories
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project specific
+data/
+*.xlsx
+*.csv
+!sample_*.xlsx
+
+# Logs
+*.log
+
+# Secrets and Configs
+mcp_config.json
