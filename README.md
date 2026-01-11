@@ -25,19 +25,19 @@
 
 ```mermaid
 graph TD
-    Start([시작]) --> Content[내용 분석<br/>(Rule + RAG/LLM)]
+    Start([시작]) --> Content["내용 분석<br/>(Rule + RAG/LLM)"]
     Content --> Router{라우터 분기}
     
     %% 병렬 처리 분기
-    Router -- "URL 발견 시" --> URL[URL 정밀 분석<br/>(Playwright)]
-    Router -- "스팸 의심 시" --> IBSE[IBSE 시그니처<br/>자동 추출]
+    Router -- "URL 발견 시" --> URL["URL 정밀 분석<br/>(Playwright)"]
+    Router -- "스팸 의심 시" --> IBSE["IBSE 시그니처<br/>자동 추출"]
     Router -- "기타" --> Aggregator
     
     %% 결과 통합
-    URL --> Aggregator[결과 통합 (Aggregator)]
+    URL --> Aggregator["결과 통합 (Aggregator)"]
     IBSE --> Aggregator
     
-    Aggregator --> HITL{HITL 검토<br/>(확률 < 임계값)}
+    Aggregator --> HITL{"HITL 검토<br/>(확률 < 임계값)"}
     
     HITL -- "모호합(Ambiguous)" --> User([운영자 검토])
     HITL -- "확실함(Clear)" --> End([최종 판정])
@@ -56,15 +56,15 @@ graph TD
 
 ```mermaid
 graph LR
-    Start((Start)) --> Content[Content Agent]
+    Start((Start)) --> Content["Content Agent"]
 
     subgraph UnifiedBatchGraph
-        Content --> Check{Is Spam?}
+        Content --> Check{"Is Spam?"}
         
         %% 병렬 처리 (Parallel Execution)
         Check -- Yes --> Parallel{Parallel}
-        Parallel --> URL[URL Agent]
-        Parallel --> IBSE[IBSE Agent]
+        Parallel --> URL["URL Agent"]
+        Parallel --> IBSE["IBSE Agent"]
         
         %% 결과 통합 (Aggregator)
         URL --> Aggregator[Aggregator]
@@ -75,7 +75,7 @@ graph LR
     end
 
     Aggregator --> End((End))
-    End --> Excel[Excel Handler]
+    End --> Excel["Excel Handler"]
 
     %% 스타일링
     style Start fill:#2c3e50,stroke:#fff,color:#fff
