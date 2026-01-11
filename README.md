@@ -1,0 +1,178 @@
+# 🛡️ Strato Spam Detector
+
+**Strato Spam Detector**는 고정밀 스팸 문자 탐지 및 분석을 위한 AI Agent 시스템입니다. 규칙 기반 필터링(Rule-based), 다층적 내용 분석(RAG + LLM), 그리고 심층 URL 검사(Playwright)를 결합하여 지능형 스팸 공격을 식별합니다.
+
+## ✨ 주요 기능 (Key Features)
+
+- **🧠 다단계 분석 파이프라인 (Multi-Stage Analysis)**
+  - **1단계 (Rule-Based)**: 알려진 패턴 및 화이트리스트를 통한 즉각적인 필터링.
+  - **2단계 (Content AI)**: LLM(RAG)을 활용하여 문맥을 이해하고 교묘한 스팸 의도를 탐지.
+  - **3단계 (URL Deep Dive)**: Playwright를 사용해 URL을 실시간으로 방문하여 피싱 사이트나 리다이렉트 체인을 추적.
+
+- **🕵️ Auto-IBSE 시그니처 추출**
+  - 스팸으로 분류된 메시지에서 "스팸 지문(Signature)"을 자동으로 추출하여 차단 목록 생성을 지원합니다.
+
+- **🤝 전문가 검토 (HITL - Human-in-the-Loop)**
+  - AI의 판단이 모호한 경우(예: 확률 40~70%), 자동으로 분석을 일시 정지하고 운영자의 최종 판단을 요청합니다.
+
+- **⚡ 고성능 처리 (High-Performance)**
+  - **실시간 채팅**: WebSocket 스트리밍을 통해 분석 결과를 즉시 제공.
+  - **대량 일괄 처리 (Batch)**: Excel(`*.xlsx`) 및 텍스트(`*.txt`) 파일의 대용량 데이터를 고속으로 분석.
+
+## 🏗️ 아키텍처 및 파이프라인 (Architecture)
+
+이 시스템은 **LangGraph**를 사용하여 복잡한 분석 흐름을 제어합니다.
+
+```mermaid
+graph TD
+    Start([시작]) --> Content[내용 분석<br/>(Rule + RAG/LLM)]
+    Content --> Router{라우터 분기}
+    
+    %% 병렬 처리 분기
+    Router -- "URL 발견 시" --> URL[URL 정밀 분석<br/>(Playwright)]
+    Router -- "스팸 의심 시" --> IBSE[IBSE 시그니처<br/>자동 추출]
+    Router -- "기타" --> Aggregator
+    
+    %% 결과 통합
+    URL --> Aggregator[결과 통합 (Aggregator)]
+    IBSE --> Aggregator
+    
+    Aggregator --> HITL{HITL 검토<br/>(확률 < 임계값)}
+    
+    HITL -- "모호합(Ambiguous)" --> User([운영자 검토])
+    HITL -- "확실함(Clear)" --> End([최종 판정])
+    User --> End
+```
+
+### 분석 로직
+1.  **Content Node**: 규칙 및 LLM을 사용한 1차 내용 분석.
+2.  **Router**: 분석 결과에 따라 다음 단계 결정:
+    *   URL이 포함된 경우 ➡️ **URL Node** 병렬 실행.
+    *   스팸으로 식별된 경우 ➡️ **IBSE Node** 병렬 실행 (시그니처 추출).
+3.  **Aggregator**: 모든 노드의 결과를 취합. (예: 내용은 정상 같아도 URL이 피싱이면 '스팸'으로 최종 판정)
+4.  **HITL**: 최종 신뢰도가 설정된 임계값보다 낮으면 운영자에게 피드백을 요청.
+
+## 🔄 논리적 흐름 (Workflow)
+
+```mermaid
+graph LR
+    Start((Start)) --> Content[Content Agent]
+
+    subgraph UnifiedBatchGraph
+        Content --> Check{Is Spam?}
+        
+        %% 병렬 처리 (Parallel Execution)
+        Check -- Yes --> Parallel{Parallel}
+        Parallel --> URL[URL Agent]
+        Parallel --> IBSE[IBSE Agent]
+        
+        %% 결과 통합 (Aggregator)
+        URL --> Aggregator[Aggregator]
+        IBSE --> Aggregator
+        
+        %% 스팸이 아닌 경우 바로 통합
+        Check -- No ------------------> Aggregator
+    end
+
+    Aggregator --> End((End))
+    End --> Excel[Excel Handler]
+
+    %% 스타일링
+    style Start fill:#2c3e50,stroke:#fff,color:#fff
+    style End fill:#2c3e50,stroke:#fff,color:#fff
+    style Content fill:#34495e,stroke:#fff,color:#fff
+    style URL fill:#34495e,stroke:#fff,color:#fff
+    style IBSE fill:#34495e,stroke:#fff,color:#fff
+    style Aggregator fill:#34495e,stroke:#fff,color:#fff
+    style Excel fill:#2c3e50,stroke:#fff,color:#fff
+    style UnifiedBatchGraph fill:#ecf0f1,stroke:#bdc3c7,color:#000
+```
+
+스팸 원본 데이터(Raw Data)를 업로드하여 결과물을 산출하는 과정은 다음과 같습니다.
+
+### 1. 파일 업로드 (Upload)
+*   사용자는 **Excel(`*.xlsx`)** 또는 **KISA 포맷 텍스트(`*.txt`)** 파일을 업로드합니다.
+*   **텍스트 파일 포맷**: `[본문내용] <TAB> [URL]` 형식 지원 (자동으로 Excel 구조로 변환됨).
+
+### 2. 배치 분석 (Batch Analysis)
+*   시스템은 데이터를 지정된 배치 크기(기본 10개)로 나누어 처리합니다.
+*   **병렬 처리**: 각 배치는 LangGraph 파이프라인을 통해 고속으로 분석됩니다.
+*   **진행 상황 공유**: WebSocket을 통해 처리 현황이 실시간으로 사용자에게 표시됩니다.
+
+### 3. 결과 생성 (Result Generation)
+분석이 완료되면 원본 파일에 다음 정보가 포함된 컬럼이 추가됩니다:
+*   **분류 코드**: 스팸 유형 코드 (예: `1`=불법도박, `0`=정상).
+*   **스팸 확률**: 0~100% 사이의 신뢰도 점수.
+*   **판단 사유**: AI가 해당 판정을 내린 구체적인 이유.
+
+### 4. 추가 시트 생성 (Post-Processing)
+분석 완료 후, 활용성을 높이기 위해 두 개의 시트가 자동으로 생성됩니다:
+*   **`URL중복 제거` 시트**: 스팸 메시지에서 발견된 유니크한 URL 목록 (단축 URL 제외).
+*   **`문자문장차단등록` 시트**: 추출된 IBSE 시그니처(스팸 지문) 목록.
+
+### 5. 다운로드 (Download)
+*   모든 처리가 끝나면 결과가 포함된 최종 **Excel 파일**을 다운로드할 수 있습니다.
+
+## 🛠️ 기술 스택 (Tech Stack)
+
+- **Backend**
+  - **Framework**: Python, FastAPI
+  - **Orchestration**: LangGraph, LangChain
+  - **Browser Automation**: Playwright
+  - **Network**: WebSocket for streaming
+- **Frontend**
+  - **Framework**: React, Vite
+  - **Styling**: TailwindCSS
+  - **State**: React Query
+
+## 🚀 설치 및 실행 (Getting Started)
+
+### 사전 준비사항
+- Python 3.10 이상
+- Node.js 18 이상
+- Git
+
+### 1. 저장소 복제 (Clone)
+```bash
+git clone https://github.com/jay365-code/strato-spem-detector.git
+cd strato-spem-detector
+```
+
+### 2. 백엔드 설정 (Backend)
+```bash
+cd backend
+
+# 가상환경 생성 및 활성화
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# 의존성 설치
+pip install -r requirements.txt
+playwright install
+
+# 환경 변수 설정
+# .env.example 파일을 .env로 변경하고 API Key 설정 (OPENAI_API_KEY 등)
+```
+
+### 3. 프론트엔드 설정 (Frontend)
+```bash
+cd frontend
+
+# 의존성 설치
+npm install
+
+# 개발 서버 실행
+npm run dev
+```
+
+### 4. 애플리케이션 실행
+백엔드 서버 실행:
+```bash
+# backend 디렉토리에서
+python run.py
+```
+실행 후 브라우저에서 프론트엔드 주소로 접속하면 됩니다.
+
+## 🔒 보안 참고사항
+*   `mcp_config.json` 및 `.env` 파일(API Key 포함)은 `.gitignore`에 의해 Git 업로드가 차단되어 있습니다.
+*   배포 시 각 환경에 맞는 API Key를 별도로 설정해야 합니다.
