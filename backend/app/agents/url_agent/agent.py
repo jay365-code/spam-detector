@@ -56,9 +56,22 @@ workflow.add_conditional_edges(
     }
 )
 
-workflow.add_edge("select_link", "scrape") # 다시 스크래핑으로 순환 (필요시)
+# select_link 뒤에도 종료 조건 체크 (무한 루프 방지)
+def select_link_router(state: SpamState):
+    if state.get("is_final"):
+        return END
+    if not state.get("current_url"):
+        return END
+    return "scrape"
 
-# 컴파일
+workflow.add_conditional_edges(
+    "select_link",
+    select_link_router,
+    {
+        END: END,
+        "scrape": "scrape"
+    }
+)
 
 # 컴파일
 isaa_agent_app = workflow.compile()

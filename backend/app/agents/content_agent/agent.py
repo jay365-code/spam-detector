@@ -7,16 +7,7 @@ import json
 import logging
 
 logger = logging.getLogger(__name__)
-from dotenv import load_dotenv
-
-load_dotenv(override=True) # Load .env file (override system variables)
-
 from openai import OpenAI
-from openai import OpenAI
-import json
-import logging
-
-logger = logging.getLogger(__name__)
 
 class ContentAnalysisAgent: # Renamed from RagBasedFilter
     def __init__(self):
@@ -127,38 +118,37 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
 
     def _build_prompt(self, message: str, detected_pattern: str, context_text: str) -> str:
         return f"""
-            Analyze the following text message to determine if it is SPAM or HAM.
-            
-            Message: "{message}"
-            
-            Context from Stage 1 (Rule Filter):
-            - Detected Pattern: {detected_pattern}
-            
-            Context from Spam Guide (RAG):
-            {context_text}
-            
-            Task:
-            1. 각 메시지를 아래의 [판단 우선순위 계층]에 따라 엄격히 분석하십시오.
-            2. 결과 도출 전 'analysis_step' 필드에 다음 과정을 반드시 기록하십시오:
-               - [Step 1: Level 1 확인] 가이드의 [HAM분류] 혹은 [SPAM분류]에 즉각 해당하나?
-               - [Step 2: 사업자 식별] **(가장 중요)** 사업자명, 지점명, 연락처가 명확하여 Level 3 규칙("사업자 정보 명확 시 HAM")을 적용할 수 있는가?
-               - [Step 3: 정보의 구체성] 단순 유도(SPAM 우세)인가, 구체적 정보 제공(HAM 우세)인가?
-               - [Step 4: 최종 판정] 위 단계들을 종합하여 결론 도출.
-            3. 판단 원칙:
-               - 메시지 내용에 스팸 패턴(현금지원, 특가 등)이 있더라도, **사업자 정보(지점명 등)가 명확하다면 Level 3에 의거하여 HAM으로 판정합니다.**
-               - **반대로, 현금/경품 지급, 투자 유도, 무료 상담 등의 내용이 포함되어 있으나 사업자 정보(업체명, 사업자번호 등)가 명확하지 않다면 반드시 SPAM(확률 0.9 이상)으로 판정합니다.**
-               - '20자 이내' 관련 규정이 있다면 이를 HAM 판정의 근거로 활용하십시오.
-            
-            Output Format:
-            {{
-                "id": 1,
-                "analysis_step": "[Step 1]... [Step 2]... [Step 3]... [Step 4]...",
-                "is_spam": true,
-                "classification_code": "SPAM-1",
-                "spam_probability": 0.95,
-                "reason": "현금 지급을 미끼로 가입을 유도하며 사업자 정보가 불분명함"
-            }}
-            """
+너는 스팸 분류 전문가다. 판단 기준은 아래 Spam Guide에만 존재한다.
+
+--------------------------------------------------
+[Message]
+\"\"\"{message}\"\"\"
+
+[Spam Guide]
+{context_text}
+--------------------------------------------------
+
+[CRITICAL] 너는 텍스트만 분석한다. URL 존재는 SPAM 근거가 아니다 (URL은 별도 Agent가 분석).
+
+[PROCEDURE]
+Step 1. HARD GATE 확인 → harm_anchor = false 이면 무조건 HAM (label="HAM")
+Step 2. harm_anchor 판정 → Guide 2.2 기준 (URL 무시, 텍스트만, 도박/성인/사기/어뷰즈 의도가 명확해야 true)
+Step 3. 의도 명확도 판정 → spam_probability로 표현 (0.85 이상이면 의도가 매우 명확)
+Step 4. SPAM 확정 조건:
+   - 의도가 매우 명확 (spam_probability >= 0.85): harm_anchor=true면 SPAM (route_or_cta 무시)
+   - 의도가 애매 (spam_probability < 0.85): harm_anchor=true AND route_or_cta=true 일 때만 SPAM
+
+[OUTPUT — JSON ONLY]
+{{
+"label": "HAM|SPAM",
+"ham_code": "HAM-1|HAM-2|HAM-3|null",
+"spam_code": "0|1|2|3|null",
+"spam_probability": 0.0,
+"reason": "한국어로 판단 근거 작성",
+"signals": {{ "harm_anchor": false, "route_or_cta": false }}
+}}
+"""
+
 
     def _parse_response(self, content: str, provider: str) -> dict:
         # Simple JSON cleanup
@@ -177,31 +167,92 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
              logger.error("JSON Decode Error")
              return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": "Error (JSON Parse Fail)"}
         
+        # Reverted to 'spam_probability' as per user request for readability.
         spam_prob = float(result_json.get("spam_probability", 0.0))
+        
+        # Additional Safety: If label is SPAM but probability is low (e.g. 0.0 default), trust label?
+        label = result_json.get("label", "HAM").upper()
+        if label == "SPAM" and spam_prob < 0.6:
+             pass
         classification_code = str(result_json.get("classification_code", ""))
-        reason = result_json.get("reason", f"{provider} Analysis")
+        
+        # New Parsing Logic: Map spam_code/ham_code to classification_code if missing
+        if not classification_code:
+            spam_code = result_json.get("spam_code")
+            ham_code = result_json.get("ham_code")
+            
+            if spam_code and str(spam_code).lower() != "null":
+                classification_code = str(spam_code)
+            elif ham_code and str(ham_code).lower() != "null":
+                classification_code = str(ham_code)
+        
+        # New Schema Logic: Prefer singular 'reason', fallback to joining 'reasons' if list exists
+        reason = result_json.get("reason")
+        if not reason:
+            reasons = result_json.get("reasons", [])
+            if isinstance(reasons, list) and reasons:
+                reason = " | ".join(reasons)
+            else:
+                reason = f"{provider} Analysis"
         
         # Extract Token Usage (Simplified for brevity, similar to original)
         input_tokens = 0
         output_tokens = 0
-
-        if spam_prob < 0.4:
-            is_spam = False
-            classification_code = "0"
         
-        elif 0.4 <= spam_prob < 0.6:
-            is_spam = None # Undecided, will be handled by HITL
-            classification_code = "30" # HITL Required
-            reason = f"[HITL] Probability ({spam_prob:.2f}) is ambiguous. Requesting user feedback."
-            
-        else: # >= 0.6
+        # Extract signals for HARD GATE enforcement
+        signals = result_json.get("signals", {})
+        harm_anchor = signals.get("harm_anchor", False)
+        route_or_cta = signals.get("route_or_cta", False)
+
+        # ========== HARD GATE ENFORCEMENT ==========
+        # Rule 1: harm_anchor = false → 무조건 HAM
+        # Rule 2: 의도 명확(prob >= 0.85) + harm_anchor=true → SPAM (route_or_cta 무시)
+        # Rule 3: 의도 애매(prob < 0.85) + harm_anchor=true → route_or_cta 확인 필요
+        
+        if not harm_anchor:
+            # HARD GATE: harm_anchor가 false면 무조건 HAM
+            is_spam = False
+            if classification_code in ["0", "1", "2", "3", "10"]:
+                classification_code = None
+            label = result_json.get("label", "HAM").upper()
+            if label == "SPAM":
+                reason = f"[HARD GATE Override] harm_anchor=false → HAM 강제. 원래 reason: {reason}"
+        elif harm_anchor and spam_prob >= 0.85:
+            # 의도가 매우 명확 (prob >= 0.85): route_or_cta 확인 불필요 → SPAM 확정
             is_spam = True
+            # route_or_cta가 false여도 SPAM 처리
+        elif harm_anchor and not route_or_cta:
+            # 의도가 애매 (prob < 0.85) + route_or_cta=false → HAM
+            if spam_prob >= 0.6:
+                # 의도는 있지만 확신은 부족, route_or_cta 없음 → HAM 처리하되 경고
+                is_spam = False
+                if classification_code in ["0", "1", "2", "3", "10"]:
+                    classification_code = None
+                reason = f"[HARD GATE] harm_anchor=true, prob={spam_prob:.2f} but route_or_cta=false → HAM. 원래 reason: {reason}"
+            else:
+                is_spam = False
+                if classification_code in ["0", "1", "2", "3", "10"]:
+                    classification_code = None
+                reason = f"[HARD GATE] harm_anchor=true but route_or_cta=false → HAM. 원래 reason: {reason}"
+        else:
+            # harm_anchor=true AND route_or_cta=true → 확률 기반 판단
+            if spam_prob < 0.4:
+                is_spam = False
+                if classification_code in ["0", "1", "2", "3", "10"]:
+                    classification_code = None
+            elif 0.4 <= spam_prob < 0.6:
+                is_spam = None # Undecided, will be handled by HITL
+                classification_code = "30" # HITL Required
+                reason = f"[HITL] Probability ({spam_prob:.2f}) is ambiguous. Requesting user feedback."
+            else: # >= 0.6
+                is_spam = True
 
         return {
             "is_spam": is_spam,
             "spam_probability": spam_prob,
             "classification_code": classification_code,
             "reason": reason,
+            "signals": signals,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens
         }

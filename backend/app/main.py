@@ -191,18 +191,40 @@ def process_message(message: str) -> dict:
         logger.info(f"\n[DEBUG RESULT]\nMessage: {message}\nIs Spam: {final_is_spam}\nProbability: {final_prob}\nCode: {final_code}\nReason: {final_reason}\nTokens: In={input_tokens}, Out={output_tokens}\n")
         return build_result(True, final_code, final_reason)
     
-    # If Stage 2 is HAM/UNKNOWN -> Check for URLs (Stage 3)
-    # Stage 3 Overrides to SPAM if suspicious URL found
-    # [TEMPORARILY DISABLED] User requested to verify Stage 2 logic first
-    # logger.info("    [Stage 3] URL Deep Dive...")
-    # s3_result = url_filter.check(message)
-    # if s3_result["is_spam"]:
-    #      logger.info("    -> Suspicious URL found! Marked as SPAM.")
-    #      final_reason = s3_result.get("reason", "Suspicious URL")
-    #      logger.info(f"\n[DEBUG RESULT]\nMessage: {message}\nIs Spam: True\nProbability: {final_prob}\nCode: {final_code or 'SPAM_URL'}\nReason: {final_reason}\nTokens: In={input_tokens}, Out={output_tokens}\n")
-    #      return build_result(True, s2_result.get("classification_code") or "SPAM_URL", final_reason)
+    # Step 3: URL Deep Dive (Conditional)
+    # Check URL if Content is Spam OR if Content is Safe but URL exists
+    import re
+    url_pattern = re.compile(r'(https?://\S+|www\.\S+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})')
+    has_url = bool(url_pattern.search(message))
     
-    # If Stage 3 also says HAM (or no URL), then keep Stage 2 result
+    if has_url:
+        logger.info("    [Stage 3] URL Deep Dive...")
+        isaa_result = url_filter.check(message)
+        
+        url_is_spam = isaa_result.get("is_spam")
+        reason_lower = isaa_result.get("reason", "").lower()
+        is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only"])
+        
+        if is_inconclusive:
+             # Inconclusive -> Trust Content Verdict
+             final_reason += f" | [URL: Suspected but Inconclusive]"
+        elif url_is_spam:
+             # Confirmed Spam -> Force SPAM
+             logger.info("    -> Suspicious URL Confirmed! Overriding to SPAM.")
+             final_is_spam = True
+             final_reason += f" | [URL: DETECTED SPAM]"
+             # Ideally map code, but for now strictly override verdict
+             if not final_code or final_code == "0":
+                  final_code = isaa_result.get("classification_code")
+        else:
+             # Confirmed Safe -> Force HAM (Override Content SPAM if needed)
+             if final_is_spam:
+                  logger.info("    -> URL Confirmed Safe! Overriding Content SPAM to HAM.")
+                  final_is_spam = False
+                  final_reason += " | [URL: CONFIRMED SAFE (Override)]"
+                  final_code = None
+
+
     logger.info("    -> Classified as HAM.")
     logger.info(f"\n[DEBUG RESULT]\nMessage: {message}\nIs Spam: {final_is_spam}\nProbability: {final_prob}\nCode: {final_code}\nReason: {final_reason}\nTokens: In={input_tokens}, Out={output_tokens}\n")
     return build_result(final_is_spam, final_code, final_reason)
@@ -382,9 +404,31 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 url_text += f"- 사유: {isaa_result.get('reason')}\n"
                                 await send_text_chunk(url_text)
                                 
-                                # Update final decision if URL is spam
-                                if isaa_result.get('is_spam'):
-                                    final_is_spam = True
+                                # Bidirectional Override Logic
+                                url_is_spam = isaa_result.get('is_spam')
+                                reason_lower = isaa_result.get("reason", "").lower()
+                                is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only"])
+                                
+                                if is_inconclusive:
+                                     pass # Trust Content
+                                elif url_is_spam:
+                                     # Case 4: Content(HAM) -> URL(SPAM) : SPAM Confirmed
+                                     final_is_spam = True
+                                     # URL Agent의 classification_code로 업데이트 (Content가 "0" 기타이거나 없을 때)
+                                     url_code = isaa_result.get('classification_code')
+                                     original_code = code
+                                     if url_code and (not code or code == "0" or code == "Unk"):
+                                          code = url_code
+                                          logger.info(f"[URL Override] Updated code from '{original_code}' to '{code}' based on URL analysis")
+                                          # 코드 변경 알림 출력
+                                          new_code_desc = code_map.get(str(code), "기타")
+                                          await send_text_chunk(f"\n⚠️ **코드 업데이트**: {original_code} → **{code}. {new_code_desc}** (URL 분석 기반)\n")
+                                else:
+                                     # Case 2: Content(SPAM) -> URL(Safe) : HAM Confirmed
+                                     if final_is_spam:
+                                          final_is_spam = False
+                                          code = None  # HAM으로 바뀌면 코드도 초기화
+                                          content_reason += " | [URL: Confirmed Safe (Override)]" # Update display reason
 
                             # Step C: Auto-IBSE (Only if Spam)
                             if final_is_spam:
@@ -406,7 +450,13 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                             # Step D: Final Summary
                             if has_url: # Summary most useful when multiple factors exist
                                 await send_text_chunk("\n---\n**📝 종합 의견**\n\n")
-                                summary = await rag_filter.generate_final_summary(user_msg, s2_result, isaa_result)
+                                
+                                # URL 분석 결과로 코드가 업데이트된 경우, s2_result 복사본에 반영
+                                final_s2_result = s2_result.copy()
+                                final_s2_result["is_spam"] = final_is_spam
+                                final_s2_result["classification_code"] = code
+                                
+                                summary = await rag_filter.generate_final_summary(user_msg, final_s2_result, isaa_result)
                                 await send_text_chunk(summary)
 
                         # Signal End of Stream
@@ -609,7 +659,7 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
             # Process TXT (Blocking call -> Run in ThreadPool)
             result = await loop.run_in_executor(
                 None, 
-                lambda: excel_handler.process_kisa_txt(input_path, OUTPUT_DIR, process_message_with_hitl, progress_callback, batch_size=batch_size_env)
+                lambda: excel_handler.process_kisa_txt(input_path, OUTPUT_DIR, process_message_with_hitl, progress_callback, batch_size=batch_size_env, original_filename=file.filename)
             )
             if isinstance(result, dict) and "filename" in result:
                 output_filename = result["filename"]

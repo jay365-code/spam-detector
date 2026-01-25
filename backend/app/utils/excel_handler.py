@@ -284,7 +284,8 @@ class ExcelHandler:
             code_col_idx = get_col_idx("분류", gubun_col_idx + 1)
             prob_col_idx = get_col_idx("Probability", code_col_idx + 1)
             reason_col_idx = get_col_idx("Reason", prob_col_idx + 1)
-            in_token_col_idx = get_col_idx("In_Token", reason_col_idx + 1)
+            signals_col_idx = get_col_idx("Signals", reason_col_idx + 1)
+            in_token_col_idx = get_col_idx("In_Token", signals_col_idx + 1)
             out_token_col_idx = get_col_idx("Out_Token", in_token_col_idx + 1)
 
             # 3. Iterate Rows & Batch Processing
@@ -336,6 +337,18 @@ class ExcelHandler:
                         code_val = match.group(0) if match else raw_val
                     prob_val = result.get("spam_probability", 0.0)
                     reason_val = result.get("reason", "")
+                    
+                    # Signals Formatting
+                    signals = result.get("signals", {})
+                    if signals and isinstance(signals, dict):
+                         sig_list = []
+                         if signals.get("harm_anchor"): sig_list.append("HA")
+                         if signals.get("route_or_cta"): sig_list.append("RC")
+                         if signals.get("obfuscation_heavy"): sig_list.append("OB")
+                         signals_val = ",".join(sig_list)
+                    else:
+                         signals_val = ""
+
                     in_token_val = result.get("input_tokens", 0)
                     out_token_val = result.get("output_tokens", 0)
                     
@@ -343,6 +356,7 @@ class ExcelHandler:
                     ws.cell(row=row_idx, column=code_col_idx, value=code_val)
                     ws.cell(row=row_idx, column=prob_col_idx, value=prob_val)
                     ws.cell(row=row_idx, column=reason_col_idx, value=reason_val)
+                    ws.cell(row=row_idx, column=signals_col_idx, value=signals_val)
                     ws.cell(row=row_idx, column=in_token_col_idx, value=in_token_val)
                     ws.cell(row=row_idx, column=out_token_col_idx, value=out_token_val)
 
@@ -432,21 +446,30 @@ class ExcelHandler:
             logger.error(f"Error processing Excel: {e}")
             raise e
 
-    def process_kisa_txt(self, file_path: str, output_dir: str, processing_function, progress_callback=None, batch_size: int = 1):
+    def process_kisa_txt(self, file_path: str, output_dir: str, processing_function, progress_callback=None, batch_size: int = 1, original_filename: str = None):
         """
         Process KISA format TXT file: [Body] <TAB> [URL]
         """
         try:
             # 1. Parse Input Filename to determine Output Filename
-            # kisa_20260103_A_result_hamMsg_url.txt -> MMSC스팸추출_20260103(최종).xlsx
-            input_filename = os.path.basename(file_path)
-            date_match = re.search(r'\d{8}', input_filename)
-            if date_match:
-                date_str = date_match.group(0)
-            else:
-                date_str = datetime.now().strftime("%Y%m%d") # Fallback
+            # kisa_20260103_A_result_hamMsg_url.txt -> MMSC스팸추출_20260103_A.xlsx
+            input_filename = original_filename if original_filename else os.path.basename(file_path)
             
-            base_filename = f"MMSC스팸추출_{date_str}(최종)"
+            # Try to extract 'yyyymmdd_A' pattern
+            # Regex captures: kisa_(20260101_A)_result...
+            match = re.search(r'kisa_(\d{8}_[A-Za-z0-9]+)', input_filename)
+            
+            if match:
+                extracted_part = match.group(1)
+            else:
+                # Fallback: Just date
+                date_match = re.search(r'\d{8}', input_filename)
+                if date_match:
+                    extracted_part = date_match.group(0)
+                else:
+                    extracted_part = datetime.now().strftime("%Y%m%d")
+            
+            base_filename = f"MMSC스팸추출_{extracted_part}"
             ext = ".xlsx"
             output_filename = f"{base_filename}{ext}"
             output_path = os.path.join(output_dir, output_filename)
@@ -494,10 +517,10 @@ class ExcelHandler:
             # 3. Create Excel & Setup Styles
             wb = Workbook()
             ws = wb.active
-            ws.title = "육안분석(시뮬결과35-150)"
+            ws.title = "육안분석(시뮬결과35_150)"
             
             # Define Headers
-            headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Reason"]
+            headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Reason", "Signals"]
             ws.append(headers)
             
             # Styling
@@ -563,8 +586,19 @@ class ExcelHandler:
                     
                     # Write Row
                     # Headers: [Ms, U, G, C, ML, UL, P, R]
+                    # Signals Formatting (KISA TXT)
+                    signals = result.get("signals", {})
+                    if signals and isinstance(signals, dict):
+                         sig_list = []
+                         if signals.get("harm_anchor"): sig_list.append("HA")
+                         if signals.get("route_or_cta"): sig_list.append("RC")
+                         if signals.get("obfuscation_heavy"): sig_list.append("OB")
+                         signals_val = ",".join(sig_list)
+                    else:
+                         signals_val = ""
+
                     ws.append([
-                        msg_val, url_val, gubun_val, code_val, msg_len, url_len, prob_val, reason_val
+                        msg_val, url_val, gubun_val, code_val, msg_len, url_len, prob_val, reason_val, signals_val
                     ])
                     
                     # --- URL Collection Logic ---

@@ -42,6 +42,7 @@ venv.bak/
 
 # Project specific
 data/
+spams/  # 스팸 메시지 원문
 *.xlsx
 *.csv
 !sample_*.xlsx

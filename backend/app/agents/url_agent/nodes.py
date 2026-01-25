@@ -2,6 +2,7 @@ import re
 import os
 import json
 import asyncio
+import logging
 from typing import Dict, Any, List
 
 from .state import SpamState
@@ -13,6 +14,8 @@ from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_anthropic import ChatAnthropic
+
+logger = logging.getLogger(__name__)
 
 manager = PlaywrightManager()
 
@@ -74,17 +77,27 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
     현재 URL 스크래핑 (Playwright)
     """
     url = state.get("current_url")
-    print(f"[Nodes] Entering scrape_node for URL: {url}")
+    logger.info(f"[URL Agent] Scraping URL: {url}")
     if not url:
         return {"reason": "No URL to scrape"}
     
     # Playwright Manager 사용
-    print(f"[Nodes] Calling manager.scrape_url({url})...")
     try:
         result = await manager.scrape_url(url)
-        print(f"[Nodes] manager.scrape_url returned. Status: {result.get('status')}")
+        
+        # 스크래핑 결과 로깅
+        logger.info(f"[URL Agent] Scrape Result: status={result.get('status')}, "
+                   f"final_url={result.get('url')}, "
+                   f"title={result.get('title', '')[:50]}, "
+                   f"captcha={result.get('captcha_detected')}, "
+                   f"text_len={len(result.get('text', ''))}")
+        
+        # 텍스트 일부 로깅 (디버깅용)
+        text_preview = result.get('text', '')[:200].replace('\n', ' ')
+        logger.info(f"[URL Agent] Content Preview: {text_preview}...")
+        
     except Exception as e:
-        print(f"[Nodes] manager.scrape_url raised Exception: {e}")
+        logger.error(f"[URL Agent] Scrape Error: {e}")
         raise e
     
     # 방문 기록 추가
@@ -130,13 +143,25 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     
     Spam Criteria:
     - Asking for personal info (Social security, card numbers) implies Phishing.
-    - Gambling keywords (Casino, Betting) implies Spam.
-    - Illegal content.
-    - **IMPORTANT**: If 'Captcha/Security Check Detected' is True AND the content is just a security page (e.g. "Just a moment", "antiphishing.biz", "Cloudflare"):
-      - It is highly suspicious if it's hiding the final destination behind a short link.
-      - **DO NOT** hallicinate that the page contains gambling or phishing unless you see it in the text.
-      - If you cannot verify the destination, classify it as 'Suspicious' or 'Spam' (Code '1' or '9' depending on context, usually '1' for hiding intent).
-      - Reason should be: "Blocked by Bot Check/Security Page (Destination Hidden)".
+    - Gambling keywords (Casino, Betting, 배팅, 카지노, 토토, 슬롯, 바카라, 충전, 환전) implies Spam.
+    - Adult/Illegal content keywords (유흥, 출장, 안마, 오피).
+    - Illegal finance keywords (급전, 대출, 무서류).
+
+    ** CRITICAL RULES **
+    1. If 'Captcha/Security Check Detected' is True OR content is very short/empty:
+       - You CANNOT confirm this page is safe.
+       - You MUST include "Inconclusive" in your reason.
+       - Set is_spam=false but reason MUST contain "Inconclusive".
+       
+    2. Short URLs, Redirections, or Image-only pages are **NOT** evidence of SPAM, but also **NOT** evidence of SAFE.
+       - If you cannot see the actual destination content, reason MUST contain "Inconclusive".
+       
+    3. Only set is_spam=false WITHOUT "Inconclusive" when you can **clearly verify** the page is legitimate:
+       - Company info visible (사업자번호, 주소, 대표자)
+       - Official government/bank/news site
+       - Normal e-commerce with clear product info
+       
+    4. Do NOT guess. If content is insufficient to make a clear determination, reason MUST contain "Inconclusive".
 
     Valid Classification Codes:
 {code_list_str}
@@ -144,9 +169,9 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     Result Format (JSON):
     {{
         "is_spam": boolean,
-        "classification_code": "string (Must be one of the Valid Classification Codes, e.g. '1', '9')",
+        "classification_code": "string (e.g. '1', '3') or null if HAM",
         "spam_probability": float (0.0-1.0),
-        "reason": "string (Korean)"
+        "reason": "string (Korean). MUST include 'Inconclusive' if content is insufficient to verify." 
     }}
     """
     
@@ -166,7 +191,6 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
             content = "".join(text_parts)
         
         # JSON 파싱
-        # (실제론 JsonOutputParser 사용 권장)
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0]
         elif "```" in content:
@@ -176,21 +200,25 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         
         is_spam = result_json.get("is_spam")
         prob = result_json.get("spam_probability", 0.0)
+        reason = result_json.get("reason", "")
+        classification_code = result_json.get("classification_code")
         
-        # 판단 완료 조건: 확실한 스팸(>0.8)이거나 확실한 햄(<0.2)
-        is_final = False
-        if prob > 0.8 or prob < 0.2:
-            is_final = True
-            
+        # URL Agent 분석 결과 로깅
+        logger.info(f"[URL Agent] Analysis Result: is_spam={is_spam}, "
+                   f"probability={prob}, code={classification_code}, "
+                   f"reason={reason}")
+        
+        # 첫 번째 분석 후 항상 종료 (select_link_node 미구현 상태)
         return {
             "is_spam": is_spam,
             "spam_probability": prob,
-            "classification_code": result_json.get("classification_code"),
-            "reason": result_json.get("reason"),
-            "is_final": is_final
+            "classification_code": classification_code,
+            "reason": reason,
+            "is_final": True
         }
         
     except Exception as e:
+        logger.error(f"[URL Agent] Analysis Error: {e}")
         return {"reason": f"Analysis Error: {e}"}
 
 async def select_link_node(state: SpamState) -> Dict[str, Any]:
