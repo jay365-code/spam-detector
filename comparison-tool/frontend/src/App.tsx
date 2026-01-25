@@ -418,12 +418,12 @@ export default function App() {
                   value={data.summary.kappa.toFixed(3)}
                   subValue={data.summary.kappa_status}
                   type="brand"
-                  description="우연적 일치를 제거한 Human-LLM 판단 일치도. κ≥0.80이면 거의 인간 수준입니다."
+                  description="우연 일치를 제외한 판단 일치도 (Fleiss 기준) • ≥0.75 우수 • 0.40~0.75 양호 • <0.40 미흡"
                 />
                 <StatCard
                   title="MCC"
                   value={data.summary.mcc.toFixed(3)}
-                  description="클래스 불균형 상황에서의 종합 상관도. -1~1 범위이며 1에 가까울수록 완벽한 일치입니다."
+                  description="클래스 불균형에 강건한 상관계수 • ≥0.70 강함 • 0.50~0.70 중간 • 0.30~0.50 약함 • <0.30 미흡"
                 />
                 <StatCard
                   title="불일치율"

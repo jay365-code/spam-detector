@@ -55,43 +55,34 @@ def create_batch_graph(content_agent, url_agent, ibse_service):
         
         final = c_res.copy()
         
-        # 1. URL Override Logic
-        # 1. URL Analysis (Supplementary)
-        # Per User Request: Do NOT override Content Agent's decision (Spam Guide Priority)
-        # URL results are only for "Evidence" or "Confirmation", not for flipping HAM -> SPAM.
+        # 1. URL Override Logic (Chat mode와 동일한 로직)
+        # Bidirectional Override: URL 결과에 따라 Content 판정을 수정할 수 있음
         if u_res:
-             final["url_result"] = u_res # Keep the data
+             final["url_result"] = u_res  # Keep the data
              
-             if u_res.get("is_spam"):
-                 # Case: URL is SPAM (Candidate)
-                 reason_lower = u_res.get("reason", "").lower()
-                 is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only"])
-                 
-                 existing_reason = final.get("reason", "")
-                 
-                 if not is_inconclusive:
-                      # Confirmed SPAM -> Force SPAM (Override Content HAM if needed)
-                      final["is_spam"] = True
-                      final["reason"] = f"{existing_reason} | [URL: DETECTED SPAM]"
-                      final["classification_code"] = u_res.get("classification_code")
-                 else:
-                      # Inconclusive -> Trust Content Verdict
-                      final["reason"] = f"{existing_reason} | [URL: Suspected but Inconclusive]"
-
+             url_is_spam = u_res.get("is_spam")
+             reason_lower = u_res.get("reason", "").lower()
+             is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only"])
+             existing_reason = final.get("reason", "")
+             content_code = final.get("classification_code")
+             
+             if is_inconclusive:
+                 # Inconclusive -> Trust Content Verdict (no override)
+                 final["reason"] = f"{existing_reason} | [URL: Suspected but Inconclusive]"
+             elif url_is_spam:
+                 # Case: Content(HAM) -> URL(SPAM) : SPAM Confirmed
+                 final["is_spam"] = True
+                 final["reason"] = f"{existing_reason} | [URL: DETECTED SPAM]"
+                 # Code update: Content가 코드를 못 찾았거나 "0"(기타)일 때만 URL 코드로 업데이트
+                 url_code = u_res.get("classification_code")
+                 if url_code and (not content_code or content_code == "0" or content_code == "Unk"):
+                     final["classification_code"] = url_code
              else:
-                 # Case: URL is SAFE (Candidate)
-                 reason_lower = u_res.get("reason", "").lower()
-                 is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only"])
-                 
-                 if not is_inconclusive:
-                      # Confirmed SAFE -> Force HAM (Override Content SPAM if needed)
-                      if final.get("is_spam"):
-                           final["is_spam"] = False
-                           final["reason"] += " | [URL: CONFIRMED SAFE (Override)]"
-                           final["classification_code"] = None
-                 else:
-                      # Inconclusive (e.g. Error but is_spam=False) -> Trust Content Verdict
-                      pass
+                 # Case: Content(SPAM) -> URL(Safe) : HAM Confirmed
+                 if final.get("is_spam"):
+                     final["is_spam"] = False
+                     final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE (Override)]"
+                     final["classification_code"] = None
 
 
         # 2. Add IBSE Info
