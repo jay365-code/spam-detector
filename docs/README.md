@@ -54,7 +54,24 @@ graph TD
     *   **URL 확실 안전** → Content SPAM이어도 **최종 HAM** (관리비 스미싱 오탐 방지)
     *   **URL 불확실** → Content 판정 유지 (이미지 전용 등)
 
-#### 스팸/햄 판단 로직 Table
+#### Content Agent HARD GATE 규칙 (1차 판정)
+
+| harm_anchor | spam_probability | route_or_cta | Content 판정 | 설명 |
+|:-----------:|:----------------:|:------------:|:------------:|------|
+| **false** | any | any | **HAM** | 유해 의도 없음 → 무조건 HAM |
+| **true** | ≥ 0.85 | any | **SPAM** | 의도 매우 명확 → route_or_cta 무시 |
+| **true** | 0.60 ~ 0.84 | **true** | **SPAM** | 의도 + CTA 모두 존재 |
+| **true** | 0.60 ~ 0.84 | **false** | **HAM** | 의도 있지만 CTA 없음 |
+| **true** | 0.40 ~ 0.59 | **true** | **HITL** | 애매함 → 사용자 확인 (code 30) |
+| **true** | 0.40 ~ 0.59 | **false** | **HAM** | 의도 불확실 + CTA 없음 |
+| **true** | < 0.40 | any | **HAM** | 의도 불확실 |
+
+> **Signal 정의**:
+> - `harm_anchor`: 도박/성인/사기/피싱/불법금융 의도가 텍스트에서 확인됨
+> - `route_or_cta`: 금융거래, 앱설치, 로그인 요구, 또는 연락처(전화/문자/카톡/URL) 제공
+> - `spam_probability`: LLM이 판단한 스팸 확률 (0.0 ~ 1.0)
+
+#### Aggregator Override 규칙 (Content + URL 병합)
 
 | 케이스 | Content 판정 | URL 판정 | URL 상태 | 최종 판정 | 설명 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -64,8 +81,9 @@ graph TD
 | **Case 4** | **HAM** | **SPAM** | 확실한 스팸 | **SPAM** | URL이 피싱으로 확인 (이미지 스팸 대응) |
 | **Case 5** | **HAM** | HAM | 확실한 안전 | **HAM** | 둘 다 정상 |
 | **Case 6** | **HAM** | HAM | 불확실 | **HAM** | URL 판단 불가, Content 정상 유지 |
+| **Case 7** | **SPAM/HAM** | N/A | URL 없음 | **Content 유지** | URL 분석 대상 없음 |
 
-> 자세한 내용은 [`docs/README.md`](./docs/README.md) 참조
+> **URL 상태 판단 기준**: URL Agent의 reason에 `Inconclusive`, `Error`, `Insufficient` 포함 여부
 
 4.  **HITL**: 최종 신뢰도가 설정된 임계값보다 낮으면 운영자에게 피드백을 요청.
 
