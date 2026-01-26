@@ -80,8 +80,9 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 genai.configure(api_key=gemini_key)
                 model_name = self.model_name if "gemini" in self.model_name else "gemini-1.5-flash"
                 model = genai.GenerativeModel(model_name)
-                # Sync call
-                response = model.generate_content(prompt)
+                # Sync call with temperature=0.3 for classification tasks
+                generation_config = genai.GenerationConfig(temperature=0.3)
+                response = model.generate_content(prompt, generation_config=generation_config)
                 content = response.text
                 
             elif provider == "CLAUDE":
@@ -96,6 +97,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 response = client.messages.create(
                     model=model_name,
                     max_tokens=1024,
+                    temperature=0.3,  # 분류 작업에 적합한 낮은 temperature
                     messages=[
                         {"role": "user", "content": prompt}
                     ]
@@ -106,7 +108,8 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 local_client = OpenAI(api_key=self.api_key)
                 response = local_client.responses.create(
                     model=self.model_name,
-                    input=prompt
+                    input=prompt,
+                    temperature=0.3  # 분류 작업에 적합한 낮은 temperature
                 )
                 content = response.output_text.strip()
                 
@@ -363,20 +366,20 @@ Step 4. SPAM 확정 조건:
             return ChatGoogleGenerativeAI(
                 model=self.model_name if "gemini" in self.model_name else "gemini-1.5-flash",
                 google_api_key=api_key,
-                temperature=0.3
+                temperature=0.3  # 분류 작업에 적합한 낮은 temperature
             )
         elif provider == "CLAUDE":
             api_key = os.getenv("CLAUDE_API_KEY")
             return ChatAnthropic(
                 model=self.model_name if "claude" in self.model_name else "claude-3-haiku-20240307",
                 anthropic_api_key=api_key,
-                temperature=0.3
+                temperature=0.3  # 분류 작업에 적합한 낮은 temperature
             )
         else: # OPENAI
             return ChatOpenAI(
                 model=self.model_name,
                 api_key=self.api_key,
-                temperature=0.3
+                temperature=0.3  # 분류 작업에 적합한 낮은 temperature
             )
 
 
