@@ -36,8 +36,9 @@ def create_batch_graph(content_agent, url_agent, ibse_service):
 
     async def url_node(state: BatchState):
         msg = state["message"]
-        # URL Agent is already Async
-        res = await url_agent.acheck(msg)
+        content_result = state.get("content_result", {})
+        # URL Agent is already Async - Content 결과를 컨텍스트로 전달
+        res = await url_agent.acheck(msg, content_context=content_result)
         return {"url_result": res}
 
     async def ibse_node(state: BatchState):
@@ -73,9 +74,11 @@ def create_batch_graph(content_agent, url_agent, ibse_service):
                  # Case: Content(HAM) -> URL(SPAM) : SPAM Confirmed
                  final["is_spam"] = True
                  final["reason"] = f"{existing_reason} | [URL: DETECTED SPAM]"
-                 # Code update: Content가 코드를 못 찾았거나 "0"(기타)일 때만 URL 코드로 업데이트
+                 # Code update: URL 스팸 코드가 있으면 업데이트
+                 # Content가 HAM 코드(HAM-1, HAM-2 등)이거나 코드가 없거나 "0"(기타)일 때 URL 코드로 교체
                  url_code = u_res.get("classification_code")
-                 if url_code and (not content_code or content_code == "0" or content_code == "Unk"):
+                 is_content_ham_code = content_code and str(content_code).upper().startswith("HAM")
+                 if url_code and (not content_code or content_code == "0" or content_code == "Unk" or is_content_ham_code):
                      final["classification_code"] = url_code
              else:
                  # Case: Content(SPAM) -> URL(Safe) : HAM Confirmed

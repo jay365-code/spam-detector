@@ -4,6 +4,81 @@ spam_guide.md 및 관련 agent.py의 변경 이력을 추적합니다.
 
 ---
 
+## v1.8 - SMS 매체 특성 반영: route_or_cta 기본값 true (2026-01-27)
+
+### 핵심 변경: SMS는 기본적으로 CTA 존재
+
+**문제**
+- "비/상/금/비/대/면" 같은 난독화된 불법 금융 스팸이 HAM으로 판정
+- LLM이 난독화와 불법 금융 의도를 인식했지만 "CTA 없음"을 이유로 HAM 처리
+- 로그: `harm_anchor=false`, `route_or_cta=false`, `spam_probability=0.4`
+
+**원인 분석**
+- LLM이 "CTA 부재"를 의도 불명확의 근거로 사용
+- 하지만 SMS는 발신번호로 회신 가능하므로 이미 CTA가 존재
+- Changelog v1.6에서 "모든 SMS는 회신 가능하므로 route_or_cta 조건이 사실상 무의미"라고 언급했으나 가이드에 미반영
+
+**변경 (spam_guide.md 섹션 4)**
+```markdown
+## 4. route_or_cta 판정 원칙
+
+> **SMS 매체 특성**: SMS는 발신번호로 회신 가능하므로 **기본적으로 route_or_cta=true**
+> 메시지 내 추가 CTA(URL, 전화번호, 카톡 ID 등)가 있으면 CTA가 더 강화된 것으로 판단
+
+**따라서 harm_anchor=true인 SMS는 route_or_cta 조건을 자동 충족**:
+- 의도가 매우 명확(spam_probability ≥ 0.85) → SPAM
+- 의도가 애매(spam_probability < 0.85) → route_or_cta=true 이미 충족 → 확률 기반 판단
+
+**예시**:
+- "벳삼삼" (CTA 없어도 의도 명확) → SPAM
+- "비/상/금/비/대/면" (난독화=회피의도, SMS 자체가 CTA) → SPAM
+- "마ㄹㅇ 실장" (난독화된 성인 유흥, SMS 자체가 CTA) → SPAM
+```
+
+### 이유
+- SMS 매체의 본질적 특성 반영 (특정 케이스 추가 아님)
+- "CTA 없음" 변명으로 난독화된 스팸이 빠져나가는 것 방지
+- harm_anchor=true인데 route_or_cta=false로 HAM 처리되는 케이스 제거
+
+---
+
+## URL Agent Vision 분석 추가 (2026-01-26)
+
+### 기능
+- **Gemini Vision API를 사용한 스크린샷 기반 스팸 분석**
+- 텍스트 분석이 "Inconclusive"일 때 자동으로 Vision 분석 트리거
+
+### 구현 (`url_agent/nodes.py`)
+
+**새 함수: `analyze_with_vision()`**
+- Playwright 스크린샷 (screenshot_b64)을 Gemini Vision에 전달
+- 시각적 요소 분석: 색상, 레이아웃, 이미지, 로고
+- 도박/성인/피싱 사이트의 시각적 패턴 감지
+
+**수정: `analyze_node()`**
+- 2단계 분석 로직 추가:
+  1. 1차: 텍스트 기반 분석 (기존)
+  2. 2차: reason에 "Inconclusive" 포함 시 → Vision 분석
+
+### 분석 플로우
+```
+1차 텍스트 분석
+    │
+    ├─ 확정 판단 → 결과 반환
+    │
+    └─ Inconclusive → Vision 분석
+                        │
+                        ├─ 판단 가능 → Vision 결과 반환
+                        └─ 판단 불가 → Inconclusive 유지
+```
+
+### 이유
+- 이미지만 있는 페이지에서 텍스트 분석 불가 문제 해결
+- 도박/성인 사이트의 시각적 특징 (화려한 색상, 특정 레이아웃) 활용
+- 피싱 사이트의 브랜드 모방 감지
+
+---
+
 ## v1.7 - 피싱 의도 판단 강화 (2026-01-26)
 
 ### 핵심 변경: 의도 유형 명시화

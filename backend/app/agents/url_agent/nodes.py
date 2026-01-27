@@ -3,17 +3,64 @@ import os
 import json
 import asyncio
 import logging
+import base64
 from typing import Dict, Any, List
+from urllib.parse import urlparse, quote
+import idna  # Punycode 변환용
 
 from .state import SpamState
 from .tools import PlaywrightManager
 from app.core.constants import SPAM_CODE_MAP
+
+# 유명/신뢰 도메인 리스트 (리다이렉트 후 이 도메인이면 HAM)
+TRUSTED_DOMAINS = [
+    # 앱 스토어
+    "play.google.com",
+    "apps.apple.com",
+    "onestore.co.kr",
+    "galaxy.store",
+    # 대기업/포털
+    "google.com",
+    "naver.com",
+    "kakao.com",
+    "daum.net",
+    "samsung.com",
+    "lg.com",
+    "sk.com",
+    "kt.com",
+    # 공공기관
+    "go.kr",
+    "or.kr",
+    # SNS/서비스
+    "youtube.com",
+    "instagram.com",
+    "facebook.com",
+    "twitter.com",
+    "tiktok.com",
+]
+
+def is_trusted_domain(url: str) -> bool:
+    """리다이렉트된 URL이 유명/신뢰 도메인인지 확인"""
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        
+        for trusted in TRUSTED_DOMAINS:
+            # 정확히 일치하거나 서브도메인인 경우
+            if domain == trusted or domain.endswith("." + trusted):
+                return True
+        return False
+    except:
+        return False
 
 # LLM 관련 (기존 filter_rag.py 참조 또는 직접 호출)
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_anthropic import ChatAnthropic
+
+# Gemini Vision API
+import google.generativeai as genai
 
 logger = logging.getLogger(__name__)
 
@@ -34,32 +81,225 @@ def get_llm():
         return ChatAnthropic(model=model_name, anthropic_api_key=api_key, temperature=0)
     else:
         api_key = os.getenv("OPENAI_API_KEY")
-        return ChatOpenAI(model=model_name, api_key=api_key, temperature=0)
+        return ChatOpenAI(model=model_name, api_key=api_key, temperature=0.1)
+
+
+async def analyze_with_vision(screenshot_b64: str, url: str, title: str) -> Dict[str, Any]:
+    """
+    Gemini Vision API를 사용하여 스크린샷 기반 스팸 분석
+    텍스트 분석이 Inconclusive일 때 호출됨
+    """
+    logger.info(f"[URL Agent] Starting Vision analysis for: {url}")
+    
+    try:
+        # Gemini API 설정
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY is not set")
+        
+        genai.configure(api_key=api_key)
+        
+        # 모델 선택 (환경변수에서 가져오거나 기본값 사용)
+        model_name = os.getenv("LLM_MODEL", "gemini-2.0-flash")
+        model = genai.GenerativeModel(model_name)
+        
+        # Base64 이미지를 바이트로 변환
+        image_bytes = base64.b64decode(screenshot_b64)
+        
+        # 이미지 데이터 구성
+        image_part = {
+            "mime_type": "image/jpeg",
+            "data": image_bytes
+        }
+        
+        # Format code map for prompt (SPAM 코드만 사용, HAM 코드 제외)
+        spam_codes_only = {k: v for k, v in SPAM_CODE_MAP.items() if not k.startswith("HAM")}
+        code_list_str = "\n".join([f"    - '{k}': {v}" for k, v in spam_codes_only.items()])
+        
+        # Vision 프롬프트
+        prompt = f"""
+        You are a spam detection expert. Analyze this webpage screenshot and determine if it has **malicious/spam intent**.
+        
+        Page Title: {title}
+        
+        **Your task: Determine if this page has SPAM INTENT based on VISUAL CONTENT ONLY**
+        
+        SPAM INTENT (requires CLEAR visual evidence):
+        - Illegal gambling (도박, 카지노, 토토, 바카라, 슬롯 - flashy casino imagery, betting interfaces, chips/cards)
+        - Adult/prostitution (성인, 유흥 - provocative images, adult service ads)
+        - Phishing (피싱 - fake login pages mimicking known brands, urgent security warnings asking credentials)
+        - Illegal finance (불법 대출 - unlicensed loan offers, 급전, 무서류)
+        - Fraud/Scam (사기 - fake prizes, too-good-to-be-true offers)
+        
+        NOT SPAM (legitimate purposes):
+        - Delivery/shipping tracking pages (배송 조회, 배송 추적, 배송 완료)
+        - Normal business marketing/advertising
+        - E-commerce, product/service pages, order confirmations
+        - Real estate/apartment promotional pages
+        - Corporate websites, landing pages
+        - News, information sites
+        
+        **CRITICAL RULES:**
+        1. Judge ONLY by what you SEE in the screenshot, not by domain name or URL.
+        2. Unknown or unusual domain names are NOT evidence of spam.
+        3. Delivery tracking pages showing shipping timeline/status are LEGITIMATE.
+        4. Real estate marketing pages with apartment info are LEGITIMATE advertising.
+        5. If the page shows normal business content (배송, 주문, 분양, 상품 등), it is NOT spam.
+        6. Only mark as SPAM if you see CLEAR malicious visual content.
+        7. If you cannot see meaningful content (blocked, loading, etc.), include "Inconclusive" in reason.
+
+        Classification Codes (use only if SPAM):
+{code_list_str}
+        
+        Response (JSON):
+        {{
+            "is_spam": boolean,
+            "classification_code": "string or null if HAM",
+            "spam_probability": float (0.0-1.0),
+            "reason": "Korean explanation based on visual content analysis"
+        }}
+        """
+        
+        # Generation config
+        generation_config = genai.GenerationConfig(
+            temperature=0,
+            response_mime_type="application/json"
+        )
+        
+        # Vision API 호출
+        response = await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: model.generate_content(
+                [prompt, image_part],
+                generation_config=generation_config
+            )
+        )
+        
+        content = response.text
+        
+        # JSON 파싱
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0]
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0]
+        
+        result_json = json.loads(content.strip())
+        
+        is_spam = result_json.get("is_spam")
+        prob = result_json.get("spam_probability", 0.0)
+        reason = result_json.get("reason", "")
+        classification_code = result_json.get("classification_code")
+        
+        logger.info(f"[URL Agent] Vision Analysis Result: is_spam={is_spam}, "
+                   f"probability={prob}, code={classification_code}, "
+                   f"reason={reason}")
+        
+        return {
+            "is_spam": is_spam,
+            "spam_probability": prob,
+            "classification_code": classification_code,
+            "reason": f"[Vision 분석] {reason}",
+            "analysis_type": "vision"
+        }
+        
+    except Exception as e:
+        logger.error(f"[URL Agent] Vision Analysis Error: {e}")
+        return {
+            "is_spam": None,
+            "reason": f"Vision Analysis Error: {e}",
+            "analysis_type": "vision_error"
+        }
+
+def convert_korean_domain_to_punycode(url: str) -> str:
+    """
+    한글 도메인을 Punycode로 변환
+    예: http://두산위브트레지움월산.vvc.kr -> http://xn--...vvc.kr
+    """
+    try:
+        # URL 파싱
+        if not url.startswith("http"):
+            url = "http://" + url
+        
+        parsed = urlparse(url)
+        domain = parsed.netloc or parsed.path.split('/')[0]
+        
+        # 한글이 포함된 경우 Punycode로 변환
+        if any('\uac00' <= char <= '\ud7a3' or '\u3131' <= char <= '\u3163' for char in domain):
+            # 도메인 부분만 Punycode로 변환
+            parts = domain.split('.')
+            encoded_parts = []
+            for part in parts:
+                try:
+                    # 한글이 포함된 부분만 인코딩
+                    if any('\uac00' <= char <= '\ud7a3' or '\u3131' <= char <= '\u3163' for char in part):
+                        encoded_parts.append(idna.encode(part).decode('ascii'))
+                    else:
+                        encoded_parts.append(part)
+                except:
+                    encoded_parts.append(part)
+            
+            encoded_domain = '.'.join(encoded_parts)
+            
+            # URL 재구성
+            if parsed.scheme:
+                result = f"{parsed.scheme}://{encoded_domain}"
+            else:
+                result = f"http://{encoded_domain}"
+            
+            if parsed.path and parsed.path != '/':
+                # 한글 경로도 URL 인코딩
+                encoded_path = quote(parsed.path, safe='/')
+                result += encoded_path
+            if parsed.query:
+                result += f"?{parsed.query}"
+            
+            logger.info(f"[URL Agent] Converted Korean domain: {url} -> {result}")
+            return result
+        
+        return url
+    except Exception as e:
+        logger.warning(f"[URL Agent] Punycode conversion failed for {url}: {e}")
+        return url
+
 
 async def extract_node(state: SpamState) -> Dict[str, Any]:
     """
-    SMS 본문에서 URL 추출
+    SMS 본문에서 URL 추출 (한글 도메인 지원)
     """
     message = state.get("sms_content", "")
     
-    # Updated URL Pattern: Supports http/https optional, and common domain structures
-    # Matches: http://example.com, https://example.com, www.example.com, example.com/path
-    url_pattern = r'(?:http[s]?://)?(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(?:/[^\s]*)?'
+    # 한글 도메인을 포함한 URL 패턴
+    # 한글 유니코드 범위: \uac00-\ud7a3 (가-힣), \u3131-\u3163 (ㄱ-ㅣ)
+    url_pattern = r'(?:http[s]?://)?(?:[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.)+[a-zA-Z가-힣]{2,}(?:/[^\s]*)?'
     
     found_urls = re.findall(url_pattern, message)
     
     urls = []
     for url in found_urls:
-        # Filter out common false positives if necessary (e.g., file extensions not acting as urls)
-        # For now, just accept them.
+        # Filter out common false positives
+        # 최소 도메인 길이 체크 (너무 짧은 것 제외)
+        if len(url) < 4:
+            continue
         
         # Prepend http:// if missing
         if not url.startswith("http"):
             url = "http://" + url
+        
+        # 한글 도메인을 Punycode로 변환
+        url = convert_korean_domain_to_punycode(url)
+        
         urls.append(url)
     
-    # 중복 제거
-    urls = list(set(urls))
+    # 중복 제거 (순서 유지)
+    seen = set()
+    unique_urls = []
+    for url in urls:
+        if url not in seen:
+            seen.add(url)
+            unique_urls.append(url)
+    urls = unique_urls
+    
+    logger.info(f"[URL Agent] Extracted URLs: {urls}")
     
     return {
         "target_urls": urls,
@@ -113,6 +353,8 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
 async def analyze_node(state: SpamState) -> Dict[str, Any]:
     """
     수집된 데이터를 기반으로 스팸 여부 판단 (LLM)
+    1차: 텍스트 기반 분석
+    2차: Inconclusive일 경우 Vision 분석 (스크린샷)
     """
     scraped = state.get("scraped_data", {})
     if scraped.get("status") != "success":
@@ -125,57 +367,97 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     # 프롬프트 구성
     raw_text = scraped.get("text", "")[:3000] # 길이 제한
     page_title = scraped.get("title", "")
-    current_url = scraped.get("url", "")
+    current_url = scraped.get("url", "")  # 리다이렉트 후 최종 URL
+    screenshot_b64 = scraped.get("screenshot_b64", "")
     
-    # Format code map for prompt
-    code_list_str = "\n".join([f"    - '{k}': {v}" for k, v in SPAM_CODE_MAP.items()])
+    # 신뢰 도메인 체크 (Google, Naver, Play Store 등)
+    if is_trusted_domain(current_url):
+        logger.info(f"[URL Agent] Trusted domain detected: {current_url} → Auto HAM")
+        return {
+            "is_spam": False,
+            "spam_probability": 0.0,
+            "classification_code": None,
+            "reason": f"리다이렉트 목적지가 신뢰할 수 있는 공식 도메인 ({current_url.split('/')[2]}) - 자동 HAM 처리",
+            "is_final": True,
+            "analysis_type": "trusted_domain"
+        }
+    
+    # Format code map for prompt (SPAM 코드만 사용, HAM 코드 제외)
+    spam_codes_only = {k: v for k, v in SPAM_CODE_MAP.items() if not k.startswith("HAM")}
+    code_list_str = "\n".join([f"    - '{k}': {v}" for k, v in spam_codes_only.items()])
 
     is_captcha = scraped.get("captcha_detected", False)
     
-    prompt = f"""
-    Analyze the following webpage content to determine if it is SPAM (Phishing, Illegal Gambling, Smishing) or HAM (Legitimate).
+    # Content Agent 분석 결과 가져오기 (연관성 확보)
+    content_context = state.get("content_context", {})
+    sms_content = state.get("sms_content", "")
+    content_context_str = ""
+    if content_context:
+        content_label = "HAM" if not content_context.get("is_spam") else "SPAM"
+        content_reason = content_context.get("reason", "")
+        content_context_str = f"""
+    [SMS 메시지 원문]
+    {sms_content}
     
-    URL: {current_url}
+    [Content Agent의 SMS 분석 결과]
+    - 판정: {content_label}
+    - 근거: {content_reason}
+    
+    **당신의 임무**: SMS 메시지와 URL 페이지 내용을 **종합적으로 연결**하여 스팸 의도를 판단하세요.
+    
+    핵심 질문: SMS가 URL을 통해 **유해한 목적(도박/피싱/사기 등)**으로 유도하려는 의도가 있는가?
+    
+    **SPAM 판단 기준**: URL이 도박/피싱/사기 등 **유해 목적**으로 유도하는 경우
+    **HAM 판단 기준**: URL이 SMS 내용과 연관된 정상 비즈니스인 경우 (성인용품 포함)
+    """
+    
+    prompt = f"""
+    You are a spam detection expert. Analyze this webpage and determine if it has **malicious/spam intent**.
+    {content_context_str}
     Title: {page_title}
     Captcha/Security Check Detected: {is_captcha}
-    Content Snippet:
+    Content:
     {raw_text}
     
-    Spam Criteria:
-    - Asking for personal info (Social security, card numbers) implies Phishing.
-    - Gambling keywords (Casino, Betting, 배팅, 카지노, 토토, 슬롯, 바카라, 충전, 환전) implies Spam.
-    - Adult/Illegal content keywords (유흥, 출장, 안마, 오피).
-    - Illegal finance keywords (급전, 대출, 무서류).
+    **Your task: Determine if this page has SPAM INTENT based on CONTENT ONLY**
+    
+    SPAM INTENT (requires CLEAR evidence in content):
+    - Illegal gambling (도박, 카지노, 토토, 바카라, 슬롯 - actual gambling content/interface)
+    - Adult/prostitution services (성인, 유흥, 출장, 안마, 오피 - explicit adult content)
+    - Phishing (가짜 로그인, 브랜드 사칭 - fake forms asking for passwords/credentials)
+    - Illegal finance (불법 대출, 급전, 무서류 대출 - unlicensed loan offers)
+    - Fraud/Scam (사기, 가짜 이벤트, 허위 당첨 - clear deception)
+    
+    NOT SPAM (legitimate purposes):
+    - Delivery/shipping tracking pages (배송 조회, 배송 추적)
+    - Normal business marketing/advertising
+    - E-commerce, product sales, order confirmations
+    - Service notifications, transaction alerts
+    - News, blogs, information sites
+    
+    **CRITICAL RULES:**
+    1. Judge ONLY by the actual PAGE CONTENT, not by domain name or URL format.
+    2. Unknown or unusual domain names are NOT evidence of spam - focus on what the page SHOWS.
+    3. Delivery tracking pages showing shipping status are legitimate even if domain seems unfamiliar.
+    4. If content shows normal business activity (배송, 주문, 결제 등), it is NOT spam.
+    5. Only mark as SPAM if you see CLEAR malicious content (gambling UI, adult content, fake login, etc.)
+    6. If content is too short/empty or blocked by captcha, include "Inconclusive" in reason.
 
-    ** CRITICAL RULES **
-    1. If 'Captcha/Security Check Detected' is True OR content is very short/empty:
-       - You CANNOT confirm this page is safe.
-       - You MUST include "Inconclusive" in your reason.
-       - Set is_spam=false but reason MUST contain "Inconclusive".
-       
-    2. Short URLs, Redirections, or Image-only pages are **NOT** evidence of SPAM, but also **NOT** evidence of SAFE.
-       - If you cannot see the actual destination content, reason MUST contain "Inconclusive".
-       
-    3. Only set is_spam=false WITHOUT "Inconclusive" when you can **clearly verify** the page is legitimate:
-       - Company info visible (사업자번호, 주소, 대표자)
-       - Official government/bank/news site
-       - Normal e-commerce with clear product info
-       
-    4. Do NOT guess. If content is insufficient to make a clear determination, reason MUST contain "Inconclusive".
-
-    Valid Classification Codes:
+    Classification Codes (use only if SPAM):
 {code_list_str}
     
-    Result Format (JSON):
+    Response (JSON):
     {{
         "is_spam": boolean,
-        "classification_code": "string (e.g. '1', '3') or null if HAM",
+        "classification_code": "string or null if HAM",
         "spam_probability": float (0.0-1.0),
-        "reason": "string (Korean). MUST include 'Inconclusive' if content is insufficient to verify." 
+        "reason": "Korean explanation. Include 'Inconclusive' if content insufficient."
     }}
     """
     
     try:
+        # ========== 1차: 텍스트 기반 분석 ==========
+        logger.info(f"[URL Agent] Text Analysis Prompt:\n{prompt[:2000]}...")  # 프롬프트 로그 출력 (2000자 제한)
         llm = get_llm()
         response = await llm.ainvoke(prompt)
         content = response.content
@@ -203,18 +485,45 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         reason = result_json.get("reason", "")
         classification_code = result_json.get("classification_code")
         
-        # URL Agent 분석 결과 로깅
-        logger.info(f"[URL Agent] Analysis Result: is_spam={is_spam}, "
+        # URL Agent 1차 분석 결과 로깅
+        logger.info(f"[URL Agent] Text Analysis Result: is_spam={is_spam}, "
                    f"probability={prob}, code={classification_code}, "
                    f"reason={reason}")
         
-        # 첫 번째 분석 후 항상 종료 (select_link_node 미구현 상태)
+        # ========== 2차: Inconclusive 체크 → Vision 분석 ==========
+        reason_lower = reason.lower()
+        is_inconclusive = "inconclusive" in reason_lower
+        
+        if is_inconclusive and screenshot_b64:
+            logger.info(f"[URL Agent] Text analysis is Inconclusive. Triggering Vision analysis...")
+            
+            # Vision 분석 호출
+            vision_result = await analyze_with_vision(screenshot_b64, current_url, page_title)
+            
+            # Vision 분석 성공 시 결과 사용
+            if vision_result.get("analysis_type") == "vision" and vision_result.get("is_spam") is not None:
+                logger.info(f"[URL Agent] Vision analysis completed. Using Vision result.")
+                return {
+                    "is_spam": vision_result.get("is_spam"),
+                    "spam_probability": vision_result.get("spam_probability", 0.0),
+                    "classification_code": vision_result.get("classification_code"),
+                    "reason": vision_result.get("reason"),
+                    "is_final": True,
+                    "analysis_type": "vision"
+                }
+            else:
+                # Vision도 실패하면 원래 Inconclusive 결과 유지
+                logger.info(f"[URL Agent] Vision analysis failed or inconclusive. Keeping text result.")
+                reason = f"{reason} | [Vision 분석 시도했으나 판단 불가]"
+        
+        # 1차 분석 결과 반환 (확정 판단 또는 Vision 실패 시)
         return {
             "is_spam": is_spam,
             "spam_probability": prob,
             "classification_code": classification_code,
             "reason": reason,
-            "is_final": True
+            "is_final": True,
+            "analysis_type": "text"
         }
         
     except Exception as e:

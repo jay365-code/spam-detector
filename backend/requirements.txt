@@ -22,6 +22,7 @@ langchain-anthropic
 langgraph
 playwright
 greenlet
+idna
 
 # AI Agent & Testing
 pytest-asyncio

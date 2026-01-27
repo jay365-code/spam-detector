@@ -22,3 +22,6 @@ class SpamState(TypedDict):
     depth: int                      # 현재 탐색 깊이
     max_depth: int                  # 최대 탐색 허용 깊이 (기본: 2)
     is_final: bool                  # 최종 판단 완료 여부
+    
+    # Content Agent 연동
+    content_context: Optional[Dict[str, Any]]  # Content Agent 분석 결과 (연관성 확보용)

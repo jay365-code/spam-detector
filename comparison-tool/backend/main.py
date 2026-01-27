@@ -178,10 +178,17 @@ async def compare_results(
         "precision": round(precision, 4),
         "recall": round(recall, 4),
         "f1": round(f1, 4),
+        # 주요 지표
+        "accuracy": advanced_metrics["accuracy"],
         "kappa": advanced_metrics["kappa"],
         "kappa_status": advanced_metrics["kappa_status"],
         "mcc": advanced_metrics["mcc"],
         "disagreement_rate": advanced_metrics["disagreement_rate"],
+        # 주요 판정 (Accuracy + Kappa 기반)
+        "primary_status": advanced_metrics["primary_status"],
+        "primary_color": advanced_metrics["primary_color"],
+        "primary_description": advanced_metrics["primary_description"],
+        # 보조 지표 (HEI)
         "hei": advanced_metrics["hei"],
         "hei_status": advanced_metrics["hei_status"],
         "hei_color": advanced_metrics["hei_color"]
@@ -197,7 +204,7 @@ async def compare_results(
 
 def calculate_advanced_metrics(tp: int, tn: int, fp: int, fn: int, total: int) -> dict:
     """
-    Cohen's Kappa, MCC, Disagreement Rate, HEI를 계산합니다.
+    Cohen's Kappa, MCC, Disagreement Rate, HEI, Primary Status를 계산합니다.
     
     Args:
         tp: True Positives
@@ -207,8 +214,11 @@ def calculate_advanced_metrics(tp: int, tn: int, fp: int, fn: int, total: int) -
         total: Total matched messages
         
     Returns:
-        dict with keys: kappa, kappa_status, mcc, disagreement_rate, hei, hei_status, hei_color
+        dict with metrics including primary_status based on Accuracy + Kappa
     """
+    # Accuracy (단순 일치율)
+    accuracy = (tp + tn) / total if total > 0 else 0
+    
     # Cohen's Kappa
     po = (tp + tn) / total if total > 0 else 0  # 관찰된 합의도
     
@@ -222,14 +232,14 @@ def calculate_advanced_metrics(tp: int, tn: int, fp: int, fn: int, total: int) -
     kappa = (po - pe) / (1 - pe) if (1 - pe) > 0 else 0
     
     # Kappa 상태 레이블
-    if kappa >= 0.80:
-        kappa_status = "거의 인간 수준 합의"
+    if kappa >= 0.75:
+        kappa_status = "우수한 일치"
     elif kappa >= 0.60:
-        kappa_status = "강한 합의"
+        kappa_status = "상당한 일치"
     elif kappa >= 0.40:
-        kappa_status = "중간 수준 합의"
+        kappa_status = "중간 수준"
     else:
-        kappa_status = "약한 합의"
+        kappa_status = "미흡"
     
     # MCC (Matthews Correlation Coefficient)
     numerator = (tp * tn) - (fp * fn)
@@ -239,12 +249,12 @@ def calculate_advanced_metrics(tp: int, tn: int, fp: int, fn: int, total: int) -
     # Disagreement Rate
     disagreement_rate = (fp + fn) / total if total > 0 else 0
     
-    # Human Equivalence Index (HEI)
+    # Human Equivalence Index (HEI) - 보조 지표로 유지
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0
     fn_rate = fn / (tp + fn) if (tp + fn) > 0 else 0
     hei = 0.4 * recall + 0.3 * (1 - fn_rate) + 0.3 * kappa
     
-    # HEI 상태
+    # HEI 상태 (보조용)
     if hei >= 0.85:
         hei_status = "인간 대체 가능"
         hei_color = "success"
@@ -255,14 +265,38 @@ def calculate_advanced_metrics(tp: int, tn: int, fp: int, fn: int, total: int) -
         hei_status = "검토 필요"
         hei_color = "danger"
     
+    # ===== PRIMARY STATUS (Accuracy + Kappa 기반) =====
+    # 판정 기준:
+    # - 협업 가능: Accuracy >= 95% AND Kappa >= 0.60
+    # - 모니터링 필요: Accuracy >= 90% AND Kappa >= 0.40
+    # - 개선 필요: 그 외
+    
+    if accuracy >= 0.95 and kappa >= 0.60:
+        primary_status = "협업 가능"
+        primary_color = "success"
+        primary_description = "Human-AI 간 높은 일치율과 통계적으로 유의미한 합의를 보입니다."
+    elif accuracy >= 0.90 and kappa >= 0.40:
+        primary_status = "모니터링 필요"
+        primary_color = "warning"
+        primary_description = "일치율은 양호하나, 지속적인 모니터링이 권장됩니다."
+    else:
+        primary_status = "개선 필요"
+        primary_color = "danger"
+        primary_description = "일치율 또는 합의도가 기준에 미달합니다. 모델 개선이 필요합니다."
+    
     return {
+        "accuracy": round(accuracy, 4),
         "kappa": round(kappa, 4),
         "kappa_status": kappa_status,
         "mcc": round(mcc, 4),
         "disagreement_rate": round(disagreement_rate, 4),
         "hei": round(hei, 4),
         "hei_status": hei_status,
-        "hei_color": hei_color
+        "hei_color": hei_color,
+        # Primary metrics (Accuracy + Kappa based)
+        "primary_status": primary_status,
+        "primary_color": primary_color,
+        "primary_description": primary_description
     }
 
 def interpret_policy(diff_type: str, llm_reason: str, human_reason: str) -> str:
@@ -306,17 +340,18 @@ def generate_summary_text(metrics: dict, advanced: dict) -> str:
     Returns:
         마크다운 형식의 한국어 요약문
     """
-    recall_pct = round(metrics['recall'] * 100, 1)
+    accuracy_pct = round(advanced['accuracy'] * 100, 1)
     kappa = advanced['kappa']
     kappa_status = advanced['kappa_status']
-    hei_status = advanced['hei_status']
+    primary_status = advanced['primary_status']
     fp = metrics['fp']
+    fn = metrics['fn']
     
-    summary = f"""본 LLM 기반 Spam Detector는 사람 수작업 대비 **스팸 탐지 Recall {recall_pct}%**를 달성했으며, Cohen's Kappa 기준 **κ={kappa}**로 우연적 일치를 제거하더라도 사람 판단과 **{kappa_status.lower()}**를 보입니다.
+    summary = f"""본 LLM 기반 Spam Detector는 Human 판정 대비 **Accuracy {accuracy_pct}%**를 달성했으며, Cohen's Kappa **κ={kappa}** ({kappa_status})로 우연적 일치를 제외하더라도 통계적으로 유의미한 합의를 보입니다.
 
-False Positive는 {fp}건으로, 주로 보수적 정책 차이에서 발생하며 운영 정책 튜닝을 통해 감소 가능한 영역입니다.
+불일치 케이스는 총 {fp + fn}건 (FN {fn}건, FP {fp}건)이며, 이는 운영 정책 조정 및 모델 튜닝을 통해 개선 가능한 영역입니다.
 
-**종합 평가(HEI)**: 본 모델은 **{hei_status}** 수준으로 평가됩니다."""
+**종합 판정**: 본 모델은 **{primary_status}** 수준입니다."""
     
     return summary
 

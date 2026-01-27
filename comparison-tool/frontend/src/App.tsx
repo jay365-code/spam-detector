@@ -28,10 +28,17 @@ interface SummaryMetrics {
   precision: number;
   recall: number;
   f1: number;
+  // 주요 지표
+  accuracy: number;
   kappa: number;
   kappa_status: string;
   mcc: number;
   disagreement_rate: number;
+  // 주요 판정 (Accuracy + Kappa 기반)
+  primary_status: string;
+  primary_color: 'success' | 'warning' | 'danger';
+  primary_description: string;
+  // 보조 지표 (HEI)
   hei: number;
   hei_status: string;
   hei_color: 'success' | 'warning' | 'danger';
@@ -377,114 +384,188 @@ export default function App() {
 
             <div className="w-full border-t border-slate-100"></div>
 
-            {/* HEI 히어로 카드 */}
-            <div className="bg-gradient-to-br from-indigo-50 to-violet-50 rounded-3xl p-8 border-2 border-indigo-200 shadow-lg">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-indigo-600 mb-1">
-                    종합 평가 (Human Equivalence Index)
+            {/* 주요 지표: Accuracy + Kappa 듀얼 카드 */}
+            <div className="bg-gradient-to-br from-indigo-50 to-violet-50 rounded-3xl p-8 border-2 border-indigo-200 shadow-lg relative group">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
+                {/* Accuracy */}
+                <div className="flex-1">
+                  <p className="text-xs font-bold uppercase tracking-widest text-indigo-600 mb-1 flex items-center gap-2">
+                    Accuracy (일치율)
+                    <AlertCircle size={12} className="text-indigo-400 cursor-help" />
                   </p>
-                  <div className="flex items-baseline gap-3">
+                  <div className="flex items-baseline gap-2">
                     <span className="text-5xl font-extrabold text-slate-900">
-                      {(data.summary.hei * 100).toFixed(1)}
+                      {(data.summary.accuracy * 100).toFixed(1)}
                     </span>
-                    <span className="text-lg text-slate-500 font-semibold">/ 100</span>
+                    <span className="text-lg text-slate-500 font-semibold">%</span>
                   </div>
+                  <p className="text-xs text-slate-500 mt-1">Human-AI 전체 일치율</p>
                 </div>
+
+                {/* Divider */}
+                <div className="hidden md:block w-px h-20 bg-indigo-200"></div>
+
+                {/* Kappa */}
+                <div className="flex-1">
+                  <p className="text-xs font-bold uppercase tracking-widest text-violet-600 mb-1 flex items-center gap-2">
+                    Cohen's Kappa (κ)
+                    <AlertCircle size={12} className="text-violet-400 cursor-help" />
+                  </p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-5xl font-extrabold text-slate-900">
+                      {data.summary.kappa.toFixed(3)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">{data.summary.kappa_status} (우연 제외)</p>
+                </div>
+
+                {/* Status Badge */}
                 <div className={cn(
-                  "px-6 py-3 rounded-2xl font-bold text-lg shadow-lg",
-                  data.summary.hei_color === 'success' ? "bg-emerald-500 text-white" :
-                    data.summary.hei_color === 'warning' ? "bg-amber-500 text-white" :
+                  "px-6 py-4 rounded-2xl font-bold text-lg shadow-lg text-center min-w-[160px]",
+                  data.summary.primary_color === 'success' ? "bg-emerald-500 text-white" :
+                    data.summary.primary_color === 'warning' ? "bg-amber-500 text-white" :
                       "bg-rose-500 text-white"
                 )}>
-                  {data.summary.hei_status === '인간 대체 가능' ? '🟢 인간 대체 가능' :
-                    data.summary.hei_status === '보조적 대체' ? '🟡 보조적 대체' :
-                      '🔴 검토 필요'}
+                  {data.summary.primary_status === '협업 가능' ? '🟢 협업 가능' :
+                    data.summary.primary_status === '모니터링 필요' ? '🟡 모니터링 필요' :
+                      '🔴 개선 필요'}
                 </div>
               </div>
+              
               <p className="text-sm text-slate-600 leading-relaxed">
-                Recall, False Negative Rate, Cohen's Kappa를 종합한 대체 가능성 지표입니다.
+                {data.summary.primary_description}
               </p>
+
+              {/* Tooltip */}
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-[420px] p-4 bg-slate-900 text-white text-xs rounded-2xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none border border-slate-700">
+                <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900 rotate-45 border-t border-l border-slate-700"></div>
+                
+                {/* Why these metrics */}
+                <div className="mb-4">
+                  <p className="text-[10px] uppercase font-bold text-indigo-400 mb-2">왜 Accuracy + Kappa인가?</p>
+                  <div className="space-y-1 text-slate-300 leading-relaxed">
+                    <p>• <strong>Accuracy</strong>: 직관적인 전체 일치율</p>
+                    <p>• <strong>Kappa</strong>: 우연 일치를 제외한 실질적 합의도</p>
+                    <p>• 두 지표 조합으로 과장 없는 객관적 평가 가능</p>
+                  </div>
+                </div>
+
+                {/* Cohen's Kappa Explanation */}
+                <div className="mb-4 p-3 bg-slate-800 rounded-lg">
+                  <p className="text-[10px] uppercase font-bold text-violet-400 mb-2">Cohen's Kappa (κ) 란?</p>
+                  <div className="space-y-2 text-slate-300 leading-relaxed">
+                    <p>두 평가자 간 일치도를 측정하되, <strong className="text-white">우연히 일치할 확률을 제외</strong>한 지표입니다.</p>
+                    <div className="bg-slate-700 rounded px-2 py-1 font-mono text-[10px] text-center">
+                      κ = (Po - Pe) / (1 - Pe)
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      <p>• Po = 실제 일치율 (Accuracy)</p>
+                      <p>• Pe = 우연에 의한 기대 일치율</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-slate-700">
+                    <p className="text-[10px] font-bold text-slate-400 mb-1">Kappa 해석 기준 (Fleiss)</p>
+                    <div className="grid grid-cols-2 gap-1 text-[10px]">
+                      <span>≥0.75: 우수한 일치</span>
+                      <span>0.40~0.59: 중간 수준</span>
+                      <span>0.60~0.74: 상당한 일치</span>
+                      <span>&lt;0.40: 미흡</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Judgment Criteria */}
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-indigo-400 mb-2">종합 판정 기준</p>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between bg-emerald-900/30 rounded-lg px-3 py-1.5">
+                      <span className="font-mono text-[10px]">Acc ≥95% & κ ≥0.60</span>
+                      <span className="font-semibold text-emerald-400">🟢 협업 가능</span>
+                    </div>
+                    <div className="flex items-center justify-between bg-amber-900/30 rounded-lg px-3 py-1.5">
+                      <span className="font-mono text-[10px]">Acc ≥90% & κ ≥0.40</span>
+                      <span className="font-semibold text-amber-400">🟡 모니터링 필요</span>
+                    </div>
+                    <div className="flex items-center justify-between bg-rose-900/30 rounded-lg px-3 py-1.5">
+                      <span className="font-mono text-[10px]">그 외</span>
+                      <span className="font-semibold text-rose-400">🔴 개선 필요</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Human-LLM 합의도 섹션 */}
+            {/* Human-LLM 합의도 섹션 (보조 지표) */}
             <div>
               <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <BarChart3 size={16} /> Human–LLM 합의도
+                <BarChart3 size={16} /> 보조 지표
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard
-                  title="Cohen's Kappa (κ)"
-                  value={data.summary.kappa.toFixed(3)}
-                  subValue={data.summary.kappa_status}
-                  type="brand"
-                  description="우연 일치를 제외한 판단 일치도 (Fleiss 기준) • ≥0.75 우수 • 0.40~0.75 양호 • <0.40 미흡"
-                />
-                <StatCard
                   title="MCC"
                   value={data.summary.mcc.toFixed(3)}
-                  description="클래스 불균형에 강건한 상관계수 • ≥0.70 강함 • 0.50~0.70 중간 • 0.30~0.50 약함 • <0.30 미흡"
+                  description="클래스 불균형에 강건한 상관계수 • ≥0.70 강함 • 0.50~0.70 중간 • <0.50 개선필요"
                 />
                 <StatCard
                   title="불일치율"
                   value={`${(data.summary.disagreement_rate * 100).toFixed(1)}%`}
                   subValue={`${data.summary.fp + data.summary.fn} 건`}
-                  type={data.summary.disagreement_rate < 0.1 ? "success" : "warning"}
-                  description="전체 판단 중 Human-LLM이 불일치한 비율 (FP + FN)입니다."
+                  type={data.summary.disagreement_rate < 0.05 ? "success" : data.summary.disagreement_rate < 0.1 ? "warning" : "danger"}
+                  description="전체 판단 중 Human-AI 불일치 비율 (FP + FN)"
                 />
                 <StatCard
-                  title="Accuracy (참고)"
-                  value={`${(data.summary.agreement_rate * 100).toFixed(1)}%`}
-                  subValue="단순 일치율"
-                  type="neutral"
-                  description="전체 예측 중 Human과 AI가 같은 판정을 내린 비율. 클래스 불균형에 취약하여 참고용으로만 사용합니다."
-                />
-              </div>
-            </div>
-
-            <div className="w-full border-t border-slate-100"></div>
-
-            {/* Performance Metrics Grid */}
-            <div>
-              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <BarChart3 size={16} /> Performance Metrics
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                <StatCard
-                  title="F1 Score"
-                  value={data.summary.f1.toFixed(3)}
-                  type="brand"
-                  description="Precision과 Recall의 조화 평균으로, 모델의 종합적인 성능을 나타냅니다. (높을수록 좋음)"
-                />
-                <StatCard
-                  title="Precision"
-                  value={data.summary.precision.toFixed(3)}
-                  description="AI가 스팸이라고 분류한 것 중 실제로 스팸인 비율입니다."
-                />
-                <StatCard
-                  title="Recall"
-                  value={data.summary.recall.toFixed(3)}
-                  description="전체 실제 스팸 중에서 AI가 찾아낸 비율입니다."
-                />
-
-                <StatCard
-                  title="Missed (FN)"
-                  value={data.summary.fn}
-                  type={data.summary.fn > 0 ? "danger" : "neutral"}
-                  description="실제로는 스팸인데 AI가 정상(HAM)으로 잘못 판정한 메시지 수입니다."
-                />
-                <StatCard
-                  title="False Alarm (FP)"
-                  value={data.summary.fp}
-                  type={data.summary.fp > 0 ? "warning" : "neutral"}
-                  description="정상(HAM) 메시지인데 AI가 스팸으로 잘못 차단한 메시지 수입니다."
+                  title="일치 건수"
+                  value={`${data.summary.tp + data.summary.tn}`}
+                  subValue={`/ ${data.summary.tp + data.summary.tn + data.summary.fp + data.summary.fn} 건`}
+                  type="success"
+                  description="Accuracy 산출 기준: (TP + TN) / Total. Human-AI가 동일하게 판정한 건수입니다."
                 />
                 <StatCard
                   title="원본 매치율"
                   value={`${(data.summary.match_rate * 100).toFixed(1)}%`}
                   subValue="(참고용)"
                   type="neutral"
-                  description="업로드된 두 파일 간 메시지 매칭 비율. 성능 지표가 아닌 참고용입니다."
+                  description="업로드된 두 파일 간 메시지 매칭 비율. 성능 지표가 아닌 데이터 정합성 참고용입니다."
+                />
+              </div>
+            </div>
+
+            <div className="w-full border-t border-slate-100"></div>
+
+            {/* Performance Metrics Grid (참고용 - Ground Truth 전제) */}
+            <div>
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <BarChart3 size={16} /> 스팸 탐지 성능 (참고용)
+              </h3>
+              <p className="text-xs text-slate-400 mb-4 -mt-2">※ Ground Truth를 정답으로 가정한 참고 지표입니다.</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                <StatCard
+                  title="F1 Score"
+                  value={data.summary.f1.toFixed(3)}
+                  type="neutral"
+                  description="Precision과 Recall의 조화 평균. Ground Truth 전제 하의 참고 지표입니다."
+                />
+                <StatCard
+                  title="Precision"
+                  value={data.summary.precision.toFixed(3)}
+                  description="AI가 스팸이라고 분류한 것 중 Human도 스팸으로 판정한 비율입니다."
+                />
+                <StatCard
+                  title="Recall"
+                  value={data.summary.recall.toFixed(3)}
+                  description="Human이 스팸으로 판정한 것 중 AI도 스팸으로 분류한 비율입니다."
+                />
+                <StatCard
+                  title="Missed (FN)"
+                  value={data.summary.fn}
+                  type={data.summary.fn > 0 ? "danger" : "neutral"}
+                  description="Human=SPAM, AI=HAM인 케이스. Human 오류일 가능성도 있습니다."
+                />
+                <StatCard
+                  title="False Alarm (FP)"
+                  value={data.summary.fp}
+                  type={data.summary.fp > 0 ? "warning" : "neutral"}
+                  description="Human=HAM, AI=SPAM인 케이스. AI가 맞을 가능성도 있습니다."
                 />
               </div>
             </div>

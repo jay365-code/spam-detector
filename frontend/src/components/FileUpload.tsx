@@ -126,12 +126,12 @@ export const FileUpload: React.FC<FileUploadProps> = ({ clientId, onUploadStart,
 
                 {uploadStatus === 'selected' && (
                     <div className="flex items-center gap-4 z-30 w-full justify-between px-4">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-green-500/20 rounded-full">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="p-2 bg-green-500/20 rounded-full flex-shrink-0">
                                 <FileSpreadsheet className="w-5 h-5 text-green-400" />
                             </div>
-                            <div>
-                                <p className="text-sm font-medium text-white">{fileName}</p>
+                            <div className="min-w-0">
+                                <p className="text-sm font-medium text-white truncate max-w-[200px]" title={fileName || ''}>{fileName}</p>
                                 <p className="text-xs text-slate-400">Ready to analyze</p>
                             </div>
                         </div>

@@ -130,9 +130,14 @@ class UrlAnalysisAgent:
                 "reason": f"ISAA Error: {str(e)}"
             }
 
-    async def acheck(self, message: str, status_callback: Callable[[str], Awaitable[None]] = None) -> Dict[str, Any]:
+    async def acheck(self, message: str, status_callback: Callable[[str], Awaitable[None]] = None, content_context: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Async version of check for WebSocket compatibility with Status Streaming
+        
+        Args:
+            message: SMS 메시지 내용
+            status_callback: 상태 업데이트 콜백
+            content_context: Content Agent 분석 결과 (URL Agent 판단 시 참고용)
         """
         initial_state = {
             "sms_content": message,
@@ -141,7 +146,8 @@ class UrlAnalysisAgent:
             "scraped_data": {},
             "depth": 0,
             "max_depth": 2, 
-            "is_final": False
+            "is_final": False,
+            "content_context": content_context  # Content Agent 결과 전달
         }
         
         try:

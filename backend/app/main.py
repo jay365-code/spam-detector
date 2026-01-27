@@ -155,9 +155,20 @@ def process_message(message: str) -> dict:
     # logger.info("    [Stage 1] Rule Checking...")
     s1_result = rule_filter.check(message)
     
-    # If HAM confirmed (not implemented yet in s1, but placeholder logic exists)
+    # If HAM confirmed by Rule (e.g., Non-Korean message)
     if s1_result["is_spam"] is False:
-        pass
+        s1_code = s1_result.get("classification_code")
+        s1_reason = s1_result.get("reason", "Rule-based HAM")
+        logger.info(f"    -> Rule-based HAM (Code: {s1_code})")
+        logger.info(f"\n[DEBUG RESULT]\nMessage: {message}\nIs Spam: False\nCode: {s1_code}\nReason: {s1_reason}\n")
+        return {
+            "is_spam": False,
+            "classification_code": s1_code,
+            "spam_probability": 0.0,
+            "reason": s1_reason,
+            "input_tokens": 0,
+            "output_tokens": 0
+        }
 
     # Stage 2: RAG + LLM + Antigravity
     # We pass s1_result to include detected patterns in prompt
@@ -333,6 +344,23 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                             # Use new async check with callbacks
                             s1 = rule_filter.check(user_msg) # Stage 1 is fast/local
                             
+                            # Rule-based HAM (e.g., Non-Korean message)
+                            if s1.get("is_spam") is False:
+                                s1_code = s1.get("classification_code", "HAM-5")
+                                s1_reason = s1.get("reason", "Rule-based HAM")
+                                code_map = SPAM_CODE_MAP
+                                code_desc = code_map.get(s1_code, "외국어 메시지")
+                                
+                                msg_text = f"✅ **정상 문자** - {s1_code}. {code_desc}\n- 사유: {s1_reason}\n"
+                                await send_text_chunk(msg_text)
+                                
+                                # Signal End of Stream
+                                await manager.send_personal_message({
+                                    "type": "CHAT_STREAM_END",
+                                    "content": ""
+                                }, client_id)
+                                continue
+                            
                             # Calls Content Agent asynchronously
                             s2_result = await rag_filter.acheck(user_msg, s1, status_callback=send_status)
                             
@@ -361,8 +389,27 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
 
                         # 4. Unified / Smart Mode (Default)
                         else:
-                            # Step A: Content Analysis
+                            # Step A: Rule-based Check
                             s1 = rule_filter.check(user_msg)
+                            
+                            # Rule-based HAM (e.g., Non-Korean message)
+                            if s1.get("is_spam") is False:
+                                s1_code = s1.get("classification_code", "HAM-5")
+                                s1_reason = s1.get("reason", "Rule-based HAM")
+                                code_map = SPAM_CODE_MAP
+                                code_desc = code_map.get(s1_code, "외국어 메시지")
+                                
+                                msg_text = f"✅ **정상 문자** - {s1_code}. {code_desc}\n- 사유: {s1_reason}\n\n"
+                                await send_text_chunk(msg_text)
+                                
+                                # Signal End of Stream
+                                await manager.send_personal_message({
+                                    "type": "CHAT_STREAM_END",
+                                    "content": ""
+                                }, client_id)
+                                continue
+                            
+                            # Step B: Content Analysis
                             s2_result = await rag_filter.acheck(user_msg, s1, status_callback=send_status)
                             
                             final_is_spam = s2_result.get("is_spam")
@@ -398,7 +445,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                             
                             if has_url:
                                 await send_text_chunk("---\n")
-                                isaa_result = await url_filter.acheck(user_msg, status_callback=send_status)
+                                # Content Agent 결과를 URL Agent에 전달 (연관성 확보)
+                                isaa_result = await url_filter.acheck(user_msg, status_callback=send_status, content_context=s2_result)
                                 
                                 url_text = f"**[URL 분석]** {'🚫 위험' if isaa_result.get('is_spam') else '✅ 안전'}\n"
                                 url_text += f"- 사유: {isaa_result.get('reason')}\n"
@@ -525,6 +573,19 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
 
                 async def process_single_item(index, message, s1_res):
                     logger.info(f"    [Batch] Item {index+1} 분석 시작... (Unified Graph)")
+                    
+                    # Rule-based HAM (e.g., Non-Korean message) - Skip Graph
+                    if s1_res.get("is_spam") is False:
+                        s1_code = s1_res.get("classification_code")
+                        s1_reason = s1_res.get("reason", "Rule-based HAM")
+                        logger.info(f"    -> [Batch] Rule-based HAM (Code: {s1_code})")
+                        logger.info(f"\n[DEBUG RESULT] (Rule-based HAM)\nMessage: {message}\nIs Spam: False\nCode: {s1_code}\nReason: {s1_reason}\n")
+                        return index, {
+                            "is_spam": False,
+                            "classification_code": s1_code,
+                            "spam_probability": 0.0,
+                            "reason": s1_reason
+                        }
                     
                     # Construct Input State
                     input_state = {
