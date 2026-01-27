@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Upload, FileSpreadsheet, RefreshCw, AlertCircle, ChevronRight, BarChart3, Search, Download } from 'lucide-react';
+import { Upload, FileSpreadsheet, RefreshCw, AlertCircle, ChevronRight, BarChart3, Search, Download, Database, Check, X } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -139,6 +139,33 @@ export default function App() {
   const [selectedDiff, setSelectedDiff] = useState<DiffItem | null>(null);
   const [filter, setFilter] = useState<'ALL' | 'FN' | 'FP'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // RAG Save State
+  const [ragSaveStatus, setRagSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+  const [ragSaveMessage, setRagSaveMessage] = useState('');
+
+  // RAG 저장 함수
+  const handleSaveToRag = async (diff: DiffItem) => {
+    setRagSaveStatus('saving');
+    try {
+      const payload = {
+        message: diff.message_full,
+        label: diff.human_is_spam ? 'SPAM' : 'HAM',
+        code: diff.human_code || '',
+        category: diff.diff_type === 'FN' ? 'FN 스팸 (AI 미탐지)' : 'FP 정상 (AI 오탐)',
+        reason: diff.human_reason || `${diff.diff_type}: Human=${diff.human_is_spam ? 'SPAM' : 'HAM'}, AI=${diff.llm_is_spam ? 'SPAM' : 'HAM'}`
+      };
+      
+      await axios.post('http://localhost:8000/api/fn-examples', payload);
+      setRagSaveStatus('success');
+      setRagSaveMessage('RAG에 저장되었습니다');
+      setTimeout(() => setRagSaveStatus('idle'), 2000);
+    } catch (err) {
+      setRagSaveStatus('error');
+      setRagSaveMessage('저장 실패');
+      setTimeout(() => setRagSaveStatus('idle'), 2000);
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setter: (f: File | null) => void) => {
     if (e.target.files && e.target.files[0]) {
@@ -741,6 +768,34 @@ export default function App() {
                           <div className="flex items-center justify-between mb-4">
                             <span className="text-sm font-bold text-slate-700 flex items-center gap-2">
                               <span className="w-2 h-2 rounded-full bg-indigo-500"></span> Human Label
+                              {/* RAG 저장 버튼 */}
+                              <button
+                                onClick={() => handleSaveToRag(selectedDiff)}
+                                disabled={ragSaveStatus === 'saving'}
+                                className={cn(
+                                  "ml-1 p-1 rounded-md transition-all",
+                                  ragSaveStatus === 'saving' && "animate-pulse",
+                                  ragSaveStatus === 'success' && "bg-emerald-100 text-emerald-600",
+                                  ragSaveStatus === 'error' && "bg-rose-100 text-rose-600",
+                                  ragSaveStatus === 'idle' && "hover:bg-indigo-100 text-slate-400 hover:text-indigo-600"
+                                )}
+                                title="RAG DB에 저장"
+                              >
+                                {ragSaveStatus === 'saving' && <RefreshCw size={14} className="animate-spin" />}
+                                {ragSaveStatus === 'success' && <Check size={14} />}
+                                {ragSaveStatus === 'error' && <X size={14} />}
+                                {ragSaveStatus === 'idle' && <Database size={14} />}
+                              </button>
+                              {ragSaveStatus !== 'idle' && (
+                                <span className={cn(
+                                  "text-[10px] font-medium",
+                                  ragSaveStatus === 'success' && "text-emerald-600",
+                                  ragSaveStatus === 'error' && "text-rose-600",
+                                  ragSaveStatus === 'saving' && "text-slate-500"
+                                )}>
+                                  {ragSaveStatus === 'saving' ? '저장 중...' : ragSaveMessage}
+                                </span>
+                              )}
                             </span>
                             {selectedDiff.human_is_spam ? (
                               <div className="flex items-center gap-2">

@@ -122,6 +122,129 @@ async def health_check():
     logger.info("✅ Health Check Endpoint Reached!")
     return {"status": "ok"}
 
+# ========== FN Examples RAG API ==========
+from app.services.fn_examples_service import get_fn_examples_service
+from pydantic import BaseModel
+
+class FnExampleCreate(BaseModel):
+    message: str
+    label: str = "SPAM"
+    code: str
+    category: str
+    reason: str
+
+class FnExampleUpdate(BaseModel):
+    message: str = None
+    label: str = None
+    code: str = None
+    category: str = None
+    reason: str = None
+
+@app.get("/api/fn-examples")
+async def get_fn_examples():
+    """FN 예시 전체 조회"""
+    try:
+        service = get_fn_examples_service()
+        examples = service.get_all_examples()
+        return {"success": True, "data": examples, "total": len(examples)}
+    except Exception as e:
+        logger.error(f"FN Examples GET Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/fn-examples/stats")
+async def get_fn_examples_stats():
+    """FN 예시 통계 조회"""
+    try:
+        service = get_fn_examples_service()
+        stats = service.get_stats()
+        return {"success": True, "data": stats}
+    except Exception as e:
+        logger.error(f"FN Examples Stats Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/fn-examples/{example_id}")
+async def get_fn_example(example_id: str):
+    """특정 FN 예시 조회"""
+    try:
+        service = get_fn_examples_service()
+        example = service.get_example_by_id(example_id)
+        if not example:
+            raise HTTPException(status_code=404, detail="Example not found")
+        return {"success": True, "data": example}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"FN Example GET Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/fn-examples")
+async def create_fn_example(example: FnExampleCreate):
+    """새 FN 예시 추가"""
+    try:
+        service = get_fn_examples_service()
+        result = service.add_example(
+            message=example.message,
+            label=example.label,
+            code=example.code,
+            category=example.category,
+            reason=example.reason
+        )
+        logger.info(f"FN Example Created: {result['id']}")
+        return {"success": True, "data": result}
+    except Exception as e:
+        logger.error(f"FN Example Create Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/fn-examples/{example_id}")
+async def update_fn_example(example_id: str, example: FnExampleUpdate):
+    """FN 예시 수정"""
+    try:
+        service = get_fn_examples_service()
+        result = service.update_example(
+            example_id=example_id,
+            message=example.message,
+            label=example.label,
+            code=example.code,
+            category=example.category,
+            reason=example.reason
+        )
+        if not result:
+            raise HTTPException(status_code=404, detail="Example not found")
+        logger.info(f"FN Example Updated: {example_id}")
+        return {"success": True, "data": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"FN Example Update Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/fn-examples/{example_id}")
+async def delete_fn_example(example_id: str):
+    """FN 예시 삭제"""
+    try:
+        service = get_fn_examples_service()
+        success = service.delete_example(example_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Example not found or delete failed")
+        logger.info(f"FN Example Deleted: {example_id}")
+        return {"success": True, "message": "Deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"FN Example Delete Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/fn-examples/search/{query}")
+async def search_fn_examples(query: str, k: int = 3):
+    """유사 FN 예시 검색"""
+    try:
+        service = get_fn_examples_service()
+        results = service.search_similar(query, k=k)
+        return {"success": True, "data": results, "total": len(results)}
+    except Exception as e:
+        logger.error(f"FN Examples Search Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # CORS config
 app.add_middleware(
     CORSMiddleware,
@@ -758,6 +881,241 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
         
     except Exception as e:
         logger.error(f"Error during upload/processing: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class ExcelRowUpdate(BaseModel):
+    """엑셀 행 업데이트 요청"""
+    filename: str
+    message: str  # 메시지로 행 찾기
+    is_spam: bool
+    classification_code: str
+    reason: str
+    spam_probability: float = 0.95
+
+@app.put("/api/excel/update-row")
+async def update_excel_row(update: ExcelRowUpdate):
+    """엑셀 파일의 특정 행을 업데이트 + URL중복제거/문자문장차단등록 시트 동기화"""
+    import re
+    from openpyxl import load_workbook
+    
+    file_path = os.path.join(OUTPUT_DIR, update.filename)
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"File not found: {update.filename}")
+    
+    # URL 추출 헬퍼 함수
+    def extract_urls_from_message(message: str) -> list:
+        """메시지에서 URL 추출 (short URL 제외)"""
+        url_pattern = r'(?:https?://|www\.)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+        urls = re.findall(url_pattern, message)
+        
+        # Short URL 도메인 목록
+        shortener_domains = [
+            "bit.ly", "goo.gl", "tinyurl.com", "ow.ly", "t.co", 
+            "is.gd", "buff.ly", "adf.ly", "bit.do", "mcaf.ee", 
+            "me2.do", "naver.me", "kakaolink.com", "buly.kr", 
+            "vo.la", "url.kr", "zrr.kr", "yun.kr", "han.gl",
+            "shorter.me", "shrl.me"
+        ]
+        
+        result = []
+        for url in urls:
+            url = url.rstrip('.,;!?)]}"\'')
+            clean_url = re.sub(r'^https?://', '', url.lower())
+            clean_url = re.sub(r'^www\.', '', clean_url)
+            
+            is_short = any(clean_url.startswith(domain) for domain in shortener_domains)
+            if not is_short and url:
+                result.append(url)
+        return result
+    
+    def _lenb(text: str) -> int:
+        """CP949 바이트 길이 계산"""
+        if not isinstance(text, str):
+            text = str(text) if text is not None else ""
+        try:
+            return len(text.encode('cp949'))
+        except UnicodeEncodeError:
+            return len(text.encode('utf-8'))
+    
+    try:
+        wb = load_workbook(file_path)
+        ws = wb.active
+        
+        # 헤더 찾기
+        headers = [cell.value for cell in ws[1]]
+        
+        def get_col_idx(name):
+            try:
+                return headers.index(name) + 1
+            except ValueError:
+                return None
+        
+        msg_col = get_col_idx("메시지")
+        gubun_col = get_col_idx("구분")
+        code_col = get_col_idx("분류")
+        prob_col = get_col_idx("Probability")
+        reason_col = get_col_idx("Reason")
+        
+        if not msg_col:
+            raise HTTPException(status_code=400, detail="'메시지' column not found in Excel")
+        
+        # 메시지로 행 찾기 + 현재 상태 저장
+        found_row = None
+        was_spam = False
+        old_code = ""
+        
+        for row_idx in range(2, ws.max_row + 1):
+            cell_value = ws.cell(row=row_idx, column=msg_col).value
+            if cell_value and str(cell_value).strip() == update.message.strip():
+                found_row = row_idx
+                # 현재 상태 저장
+                if gubun_col:
+                    gubun_val = ws.cell(row=row_idx, column=gubun_col).value
+                    was_spam = (gubun_val == "o")
+                if code_col:
+                    old_code = str(ws.cell(row=row_idx, column=code_col).value or "")
+                break
+        
+        if not found_row:
+            raise HTTPException(status_code=404, detail="Message not found in Excel")
+        
+        # 새 코드 값 계산
+        if update.is_spam:
+            match = re.search(r'\d+', str(update.classification_code))
+            new_code = match.group(0) if match else update.classification_code
+        else:
+            new_code = ""
+        
+        # ========== 메인 시트 업데이트 ==========
+        if gubun_col:
+            ws.cell(row=found_row, column=gubun_col, value="o" if update.is_spam else "")
+        
+        if code_col:
+            ws.cell(row=found_row, column=code_col, value=new_code)
+        
+        if prob_col:
+            prob_val = f"{int(update.spam_probability * 100)}%"
+            ws.cell(row=found_row, column=prob_col, value=prob_val)
+        
+        if reason_col:
+            ws.cell(row=found_row, column=reason_col, value=update.reason)
+        
+        # ========== 메시지 셀 채우기 색 업데이트 ==========
+        from openpyxl.styles import PatternFill, Alignment
+        spam_fill = PatternFill(start_color="FFE699", end_color="FFE699", fill_type="solid")
+        no_fill = PatternFill(fill_type=None)
+        wrap_vcenter_align = Alignment(wrap_text=True, vertical='center')
+        
+        if msg_col:
+            cell = ws.cell(row=found_row, column=msg_col)
+            if not was_spam and update.is_spam:
+                # HAM → SPAM: 황금색 채우기 적용
+                cell.fill = spam_fill
+                cell.alignment = wrap_vcenter_align
+            elif was_spam and not update.is_spam:
+                # SPAM → HAM: 채우기 제거
+                cell.fill = no_fill
+                cell.alignment = wrap_vcenter_align
+        
+        # ========== URL중복제거 시트 동기화 ==========
+        urls_in_message = extract_urls_from_message(update.message)
+        url_sheet_name = "URL중복 제거"
+        
+        if url_sheet_name in wb.sheetnames and urls_in_message:
+            url_ws = wb[url_sheet_name]
+            
+            if was_spam and not update.is_spam:
+                # SPAM → HAM: URL 삭제 (다른 SPAM이 사용하지 않는 경우만)
+                # 먼저 다른 SPAM 메시지들의 URL 수집
+                other_spam_urls = set()
+                for row_idx in range(2, ws.max_row + 1):
+                    if row_idx == found_row:
+                        continue
+                    gubun_val = ws.cell(row=row_idx, column=gubun_col).value if gubun_col else None
+                    if gubun_val == "o":  # 다른 SPAM 메시지
+                        other_msg = ws.cell(row=row_idx, column=msg_col).value
+                        if other_msg:
+                            other_spam_urls.update(extract_urls_from_message(str(other_msg)))
+                
+                # URL 시트에서 삭제할 행 찾기 (역순으로 삭제)
+                rows_to_delete = []
+                for url_row in range(2, url_ws.max_row + 1):
+                    url_val = url_ws.cell(row=url_row, column=1).value  # URL(중복제거) 컬럼
+                    if url_val and url_val in urls_in_message and url_val not in other_spam_urls:
+                        rows_to_delete.append(url_row)
+                
+                for row in sorted(rows_to_delete, reverse=True):
+                    url_ws.delete_rows(row)
+                    
+            elif not was_spam and update.is_spam:
+                # HAM → SPAM: URL 추가
+                existing_urls = set()
+                for url_row in range(2, url_ws.max_row + 1):
+                    url_val = url_ws.cell(row=url_row, column=1).value
+                    if url_val:
+                        existing_urls.add(url_val)
+                
+                for url in urls_in_message:
+                    if url not in existing_urls:
+                        url_ws.append([url, _lenb(url), new_code])
+                        
+            elif was_spam and update.is_spam and old_code != new_code:
+                # SPAM 코드 변경: 분류 컬럼 업데이트
+                for url_row in range(2, url_ws.max_row + 1):
+                    url_val = url_ws.cell(row=url_row, column=1).value
+                    if url_val and url_val in urls_in_message:
+                        url_ws.cell(row=url_row, column=3, value=new_code)  # 분류 컬럼
+        
+        # ========== 문자문장차단등록 시트 동기화 ==========
+        blocklist_sheet_name = "문자문장차단등록"
+        clean_msg = re.sub(r'[ \t\r\n\f\v]+', '', update.message)  # 공백 제거된 메시지
+        
+        if blocklist_sheet_name in wb.sheetnames:
+            bl_ws = wb[blocklist_sheet_name]
+            
+            if was_spam and not update.is_spam:
+                # SPAM → HAM: 블록리스트에서 삭제
+                rows_to_delete = []
+                for bl_row in range(2, bl_ws.max_row + 1):
+                    bl_msg = bl_ws.cell(row=bl_row, column=1).value  # 메시지 컬럼
+                    if bl_msg and str(bl_msg).strip() == clean_msg.strip():
+                        rows_to_delete.append(bl_row)
+                
+                for row in sorted(rows_to_delete, reverse=True):
+                    bl_ws.delete_rows(row)
+                    
+            elif was_spam and update.is_spam and old_code != new_code:
+                # SPAM 코드 변경: 분류 컬럼 업데이트
+                for bl_row in range(2, bl_ws.max_row + 1):
+                    bl_msg = bl_ws.cell(row=bl_row, column=1).value
+                    if bl_msg and str(bl_msg).strip() == clean_msg.strip():
+                        bl_ws.cell(row=bl_row, column=4, value=new_code)  # 분류 컬럼
+            
+            # HAM → SPAM: 블록리스트 추가 불가 (ibse_signature 없음)
+        
+        # 저장
+        wb.save(file_path)
+        
+        # 동기화 결과 로깅
+        sync_info = []
+        if was_spam != update.is_spam:
+            sync_info.append(f"{'SPAM→HAM' if was_spam else 'HAM→SPAM'}")
+        if was_spam and update.is_spam and old_code != new_code:
+            sync_info.append(f"Code: {old_code}→{new_code}")
+        
+        return {
+            "success": True,
+            "message": f"Row {found_row} updated successfully",
+            "row": found_row,
+            "sync": sync_info if sync_info else None,
+            "urls_affected": len(urls_in_message) if urls_in_message else 0
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating Excel row: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/download/{filename}")

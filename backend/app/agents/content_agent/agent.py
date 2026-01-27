@@ -31,37 +31,82 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         return self.vector_db
 
     def search_guide(self, message: str, k: int = 3):
-        db = self._get_vector_db()
-        return db.similarity_search(message, k=k)
+        """Guide 검색 (실패 시 빈 리스트 반환)"""
+        try:
+            db = self._get_vector_db()
+            return db.similarity_search(message, k=k)
+        except Exception as e:
+            print(f"    [Guide Search] Error: {e}")
+            return []
+    
+    def _search_fn_examples(self, message: str, k: int = 2) -> list:
+        """FN 예시 검색 (유사 스팸 사례 참조)"""
+        # 환경변수로 FN 검색 비활성화 가능 (비용 절감)
+        fn_enabled = os.getenv("FN_EXAMPLES_ENABLED", "1")
+        if fn_enabled != "1":
+            print(f"    [FN Search] Disabled (FN_EXAMPLES_ENABLED={fn_enabled})")
+            return []
+        
+        try:
+            from app.services.fn_examples_service import get_fn_examples_service
+            fn_service = get_fn_examples_service()
+            results = fn_service.search_similar(message, k=k)
+            return results
+        except Exception as e:
+            print(f"    [FN Search] Error: {e}")
+            return []
 
-    def _retrieve_context(self, message: str) -> str:
+    def _retrieve_context(self, message: str) -> dict:
         """
         Retrieves context from Vector DB or loads full spam guide.
+        Also retrieves similar FN examples.
+        
+        Returns:
+            dict with 'guide_context' and 'fn_examples'
         """
         rag_on = os.getenv("RAG_ON", "1")
+        guide_context = ""
         
         if rag_on == "1":
             print(f"    [RAG] Mode ON: Searching Vector DB...")
             similar_docs = self.search_guide(message)
-            context_text = "\n".join([doc.page_content for doc in similar_docs])
+            if similar_docs:
+                guide_context = "\n".join([doc.page_content for doc in similar_docs])
+            else:
+                # RAG 검색 실패 시 Fallback: 전체 가이드 로드
+                print(f"    [RAG] Fallback: Loading full guide (search returned empty)")
+                guide_context = self._load_full_guide()
         else:
             print(f"    [RAG] Mode OFF: Using Full Spam Guide Text...")
-            try:
-                guide_path = os.path.join(os.path.dirname(__file__), "../../../data/spam_guide.md") # Path adjusted
+            guide_context = self._load_full_guide()
+        
+        # FN 예시 검색 (유사 스팸 사례) - 실패해도 분석 계속 진행
+        fn_examples = self._search_fn_examples(message, k=2)
+        if fn_examples:
+            print(f"    [FN Examples] Found {len(fn_examples)} similar examples")
+        else:
+            print(f"    [FN Examples] No similar examples found (or search failed)")
+        
+        return {
+            "guide_context": guide_context,
+            "fn_examples": fn_examples
+        }
+    
+    def _load_full_guide(self) -> str:
+        """전체 spam_guide.md 로드 (Fallback용)"""
+        try:
+            guide_path = os.path.join(os.path.dirname(__file__), "../../../data/spam_guide.md")
+            with open(guide_path, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception as e:
+            try: 
+                base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
+                guide_path = os.path.join(base_dir, "data/spam_guide.md")
                 with open(guide_path, "r", encoding="utf-8") as f:
-                    context_text = f.read()
-            except Exception as e:
-                # Try absolute path fallback matching the pattern in original
-                try: 
-                     # Attempt to find data dir dynamically
-                     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
-                     guide_path = os.path.join(base_dir, "data/spam_guide.md")
-                     with open(guide_path, "r", encoding="utf-8") as f:
-                        context_text = f.read()
-                except Exception as e2:
-                    print(f"    [Error] Failed to load spam_guide.md: {e2}")
-                    context_text = "Error loading context."
-        return context_text
+                    return f.read()
+            except Exception as e2:
+                print(f"    [Error] Failed to load spam_guide.md: {e2}")
+                return "스팸 판단 기준: 도박, 성인, 사기, 불법 대출 의도가 명확하면 SPAM, 그렇지 않으면 HAM."
 
     def _query_llm(self, prompt: str) -> str:
         """
@@ -119,7 +164,39 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         
         return content
 
-    def _build_prompt(self, message: str, detected_pattern: str, context_text: str) -> str:
+    def _build_prompt(self, message: str, detected_pattern: str, context_data: dict) -> str:
+        guide_context = context_data.get("guide_context", "")
+        fn_examples = context_data.get("fn_examples", [])
+        
+        # FN 예시 섹션 구성
+        # ChromaDB L2 distance: 0에 가까울수록 유사, 일반적으로 1.0 이하면 관련성 있음
+        # 임계값은 환경변수로 조정 가능 (기본값 1.5)
+        similarity_threshold = float(os.getenv("FN_SIMILARITY_THRESHOLD", "1.5"))
+        
+        fn_section = ""
+        valid_examples = []
+        
+        if fn_examples:
+            print(f"    [FN Examples] Filtering with threshold: {similarity_threshold}")
+            for ex in fn_examples:
+                score = ex.get('score', 999)  # 기본값을 높게 설정 (유사하지 않음)
+                print(f"    [FN Examples]   - score: {score:.3f}, included: {score <= similarity_threshold}")
+                # 유사도 점수가 임계값 이하인 경우만 포함
+                if score <= similarity_threshold:
+                    valid_examples.append(ex)
+            
+            if valid_examples:
+                fn_section = "\n[Similar SPAM Examples - IMPORTANT REFERENCE]\n"
+                fn_section += "아래는 과거 유사 메시지의 판정 결과입니다. 참고하여 판단하세요:\n"
+                for i, ex in enumerate(valid_examples, 1):
+                    msg_preview = ex.get('message', '')[:100]
+                    fn_section += f"\n예시 {i} (유사도: {ex.get('score', 0):.3f}):\n"
+                    fn_section += f"  메시지: \"{msg_preview}{'...' if len(ex.get('message', '')) > 100 else ''}\"\n"
+                    fn_section += f"  판정: {ex.get('label', 'SPAM')} (code: {ex.get('code', '')})\n"
+                    fn_section += f"  카테고리: {ex.get('category', '')}\n"
+                    fn_section += f"  근거: {ex.get('reason', '')}\n"
+                print(f"    [FN Examples] {len(valid_examples)} examples included in prompt (threshold: {similarity_threshold})")
+        
         return f"""
 너는 스팸 분류 전문가다. 판단 기준은 아래 Spam Guide에만 존재한다.
 
@@ -128,7 +205,8 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
 \"\"\"{message}\"\"\"
 
 [Spam Guide]
-{context_text}
+{guide_context}
+{fn_section}
 --------------------------------------------------
 
 [CRITICAL] 너는 텍스트만 분석한다. URL 존재는 SPAM 근거가 아니다 (URL은 별도 Agent가 분석).
@@ -265,12 +343,12 @@ Step 4. SPAM 확정 조건:
         Stage 2: RAG + LLM (Sync Version)
         """
         try:
-            # 1. RAG Retrieval
-            context_text = self._retrieve_context(message)
+            # 1. RAG Retrieval (guide + FN examples)
+            context_data = self._retrieve_context(message)
             
             # 2. LLM Inference
             detected_pattern = stage1_result.get("detected_pattern", "None")
-            prompt = self._build_prompt(message, detected_pattern, context_text)
+            prompt = self._build_prompt(message, detected_pattern, context_data)
             
             content = self._query_llm(prompt)
             
@@ -290,21 +368,25 @@ Step 4. SPAM 확정 조건:
         loop = asyncio.get_running_loop()
         
         try:
-            # 1. RAG Retrieval (Run in thread to avoid blocking)
+            # 1. RAG Retrieval (guide + FN examples, Run in thread to avoid blocking)
             if status_callback:
-                await status_callback("🔍 문맥 검색 중... (RAG)")
+                await status_callback("🔍 문맥 검색 중... (RAG + FN Examples)")
             
-            context_text = await loop.run_in_executor(None, lambda: self._retrieve_context(message))
+            context_data = await loop.run_in_executor(None, lambda: self._retrieve_context(message))
             
             # 2. LLM Inference
             if status_callback:
                 await status_callback("🧠 AI 정밀 분석 중...")
-                
-            detected_pattern = stage1_result.get("detected_pattern", "None")
-            prompt = self._build_prompt(message, detected_pattern, context_text)
             
+            print(f"    [Content Agent] Building prompt...")
+            detected_pattern = stage1_result.get("detected_pattern", "None")
+            prompt = self._build_prompt(message, detected_pattern, context_data)
+            print(f"    [Content Agent] Prompt built, length: {len(prompt)} chars")
+            
+            print(f"    [Content Agent] Calling LLM...")
             # Run blocking LLM call in executor
             content = await loop.run_in_executor(None, lambda: self._query_llm(prompt))
+            print(f"    [Content Agent] LLM response received")
             
             result = self._parse_response(content, os.getenv("LLM_PROVIDER", "OPENAI"))
             

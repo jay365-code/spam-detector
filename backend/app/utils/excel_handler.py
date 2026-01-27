@@ -5,6 +5,7 @@ import re
 from datetime import datetime
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
+from openpyxl.utils import get_column_letter
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,109 @@ class ExcelHandler:
         except UnicodeEncodeError:
             # Fallback for chars not in cp949
             return len(text.encode('utf-8'))
+
+    def _sort_sheet_by_gubun(self, ws, gubun_col_idx: int):
+        """
+        구분 컬럼 기준으로 정렬: SPAM("o") 상단, HAM("") 하단
+        """
+        if ws.max_row <= 1:
+            return  # 헤더만 있거나 데이터 없음
+        
+        # 모든 데이터 행 읽기 (헤더 제외)
+        data_rows = []
+        for row_idx in range(2, ws.max_row + 1):
+            row_data = []
+            for col_idx in range(1, ws.max_column + 1):
+                row_data.append(ws.cell(row=row_idx, column=col_idx).value)
+            data_rows.append(row_data)
+        
+        # 구분 컬럼 기준 정렬 (SPAM "o" 먼저, HAM "" 나중)
+        # "o"는 빈 문자열보다 먼저 오도록 정렬
+        def sort_key(row):
+            gubun_val = row[gubun_col_idx - 1] if len(row) >= gubun_col_idx else ""
+            # "o" = 0 (상위), "" or None = 1 (하위)
+            return 0 if gubun_val == "o" else 1
+        
+        data_rows.sort(key=sort_key)
+        
+        # 정렬된 데이터로 다시 쓰기
+        for i, row_data in enumerate(data_rows):
+            row_idx = i + 2  # 헤더가 1행이므로 2행부터
+            for col_idx, value in enumerate(row_data, start=1):
+                ws.cell(row=row_idx, column=col_idx, value=value)
+
+    def _apply_formatting(self, ws, headers: list):
+        """
+        엑셀 서식 적용:
+        - 메시지 컬럼: 너비 90, 자동줄바꿈, SPAM인 경우 황금색 강조
+        - URL 컬럼: 너비 22
+        - 구분 컬럼: 텍스트 중앙 정렬
+        - 분류 컬럼: 텍스트 중앙 정렬
+        - 메시지 길이 컬럼: 너비 10
+        - Probability 컬럼: 텍스트 중앙 정렬, 너비 10
+        - Reason 컬럼: 너비 90, 자동줄바꿈
+        """
+        # 컬럼 인덱스 찾기 (1-based)
+        def get_col_idx(name):
+            try:
+                return headers.index(name) + 1
+            except ValueError:
+                return None
+        
+        msg_col = get_col_idx("메시지")
+        url_col = get_col_idx("URL")
+        gubun_col = get_col_idx("구분")
+        code_col = get_col_idx("분류")
+        msg_len_col = get_col_idx("메시지 길이")
+        prob_col = get_col_idx("Probability")
+        reason_col = get_col_idx("Reason")
+        
+        # 컬럼 너비 설정
+        if msg_col:
+            ws.column_dimensions[get_column_letter(msg_col)].width = 90
+        if url_col:
+            ws.column_dimensions[get_column_letter(url_col)].width = 22
+        if msg_len_col:
+            ws.column_dimensions[get_column_letter(msg_len_col)].width = 10
+        if prob_col:
+            ws.column_dimensions[get_column_letter(prob_col)].width = 10
+        if reason_col:
+            ws.column_dimensions[get_column_letter(reason_col)].width = 90
+        
+        # 정렬 스타일 정의
+        center_align = Alignment(horizontal='center', vertical='center')
+        wrap_vcenter_align = Alignment(wrap_text=True, vertical='center')
+        # 강조4 80% 더 밝게 (Gold, Accent 4, Lighter 80%) = FFE699
+        spam_fill = PatternFill(start_color="FFE699", end_color="FFE699", fill_type="solid")
+        
+        for row_idx in range(2, ws.max_row + 1):
+            # 구분 컬럼 중앙 정렬
+            if gubun_col:
+                ws.cell(row=row_idx, column=gubun_col).alignment = center_align
+            
+            # 분류 컬럼 중앙 정렬
+            if code_col:
+                ws.cell(row=row_idx, column=code_col).alignment = center_align
+            
+            # Probability 컬럼 중앙 정렬
+            if prob_col:
+                ws.cell(row=row_idx, column=prob_col).alignment = center_align
+            
+            # 메시지 컬럼: 자동줄바꿈 + 세로 중앙
+            if msg_col:
+                ws.cell(row=row_idx, column=msg_col).alignment = wrap_vcenter_align
+            
+            # Reason 컬럼: 자동줄바꿈 + 세로 중앙
+            if reason_col:
+                ws.cell(row=row_idx, column=reason_col).alignment = wrap_vcenter_align
+            
+            # SPAM인 경우 메시지 셀 황금색 채우기
+            if gubun_col and msg_col:
+                gubun_val = ws.cell(row=row_idx, column=gubun_col).value
+                if gubun_val == "o":  # SPAM
+                    cell = ws.cell(row=row_idx, column=msg_col)
+                    cell.fill = spam_fill
+                    cell.alignment = wrap_vcenter_align  # 채우기와 함께 정렬 유지
 
     def process_file(self, file_path: str, output_path: str, processing_function, progress_callback=None, batch_size: int = 1):
         """
@@ -284,8 +388,7 @@ class ExcelHandler:
             code_col_idx = get_col_idx("분류", gubun_col_idx + 1)
             prob_col_idx = get_col_idx("Probability", code_col_idx + 1)
             reason_col_idx = get_col_idx("Reason", prob_col_idx + 1)
-            signals_col_idx = get_col_idx("Signals", reason_col_idx + 1)
-            in_token_col_idx = get_col_idx("In_Token", signals_col_idx + 1)
+            in_token_col_idx = get_col_idx("In_Token", reason_col_idx + 1)
             out_token_col_idx = get_col_idx("Out_Token", in_token_col_idx + 1)
 
             # 3. Iterate Rows & Batch Processing
@@ -337,18 +440,6 @@ class ExcelHandler:
                         code_val = match.group(0) if match else raw_val
                     prob_val = result.get("spam_probability", 0.0)
                     reason_val = result.get("reason", "")
-                    
-                    # Signals Formatting
-                    signals = result.get("signals", {})
-                    if signals and isinstance(signals, dict):
-                         sig_list = []
-                         if signals.get("harm_anchor"): sig_list.append("HA")
-                         if signals.get("route_or_cta"): sig_list.append("RC")
-                         if signals.get("obfuscation_heavy"): sig_list.append("OB")
-                         signals_val = ",".join(sig_list)
-                    else:
-                         signals_val = ""
-
                     in_token_val = result.get("input_tokens", 0)
                     out_token_val = result.get("output_tokens", 0)
                     
@@ -356,7 +447,6 @@ class ExcelHandler:
                     ws.cell(row=row_idx, column=code_col_idx, value=code_val)
                     ws.cell(row=row_idx, column=prob_col_idx, value=prob_val)
                     ws.cell(row=row_idx, column=reason_col_idx, value=reason_val)
-                    ws.cell(row=row_idx, column=signals_col_idx, value=signals_val)
                     ws.cell(row=row_idx, column=in_token_col_idx, value=in_token_val)
                     ws.cell(row=row_idx, column=out_token_col_idx, value=out_token_val)
 
@@ -431,6 +521,12 @@ class ExcelHandler:
             if batch_buffer:
                 logger.info(f"Processing Remaining Batch...")
                 flush_batch()
+
+            # 3.5 구분 컬럼 기준 정렬 (SPAM 상단, HAM 하단)
+            self._sort_sheet_by_gubun(ws, gubun_col_idx)
+            
+            # 3.6 서식 적용
+            self._apply_formatting(ws, headers)
 
             # 4. Create Dedup Sheet (After all rows processed)
             self._create_dedup_sheet(wb, unique_urls)
@@ -520,7 +616,7 @@ class ExcelHandler:
             ws.title = "육안분석(시뮬결과35_150)"
             
             # Define Headers
-            headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Reason", "Signals"]
+            headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Reason"]
             ws.append(headers)
             
             # Styling
@@ -585,20 +681,8 @@ class ExcelHandler:
                     url_len = self._lenb(url_val)
                     
                     # Write Row
-                    # Headers: [Ms, U, G, C, ML, UL, P, R]
-                    # Signals Formatting (KISA TXT)
-                    signals = result.get("signals", {})
-                    if signals and isinstance(signals, dict):
-                         sig_list = []
-                         if signals.get("harm_anchor"): sig_list.append("HA")
-                         if signals.get("route_or_cta"): sig_list.append("RC")
-                         if signals.get("obfuscation_heavy"): sig_list.append("OB")
-                         signals_val = ",".join(sig_list)
-                    else:
-                         signals_val = ""
-
                     ws.append([
-                        msg_val, url_val, gubun_val, code_val, msg_len, url_len, prob_val, reason_val, signals_val
+                        msg_val, url_val, gubun_val, code_val, msg_len, url_len, prob_val, reason_val
                     ])
                     
                     # --- URL Collection Logic ---
@@ -679,6 +763,13 @@ class ExcelHandler:
             # Remaining
             if batch_buffer:
                 flush_batch(total_rows - len(batch_buffer))
+            
+            # 4.5 구분 컬럼 기준 정렬 (SPAM 상단, HAM 하단)
+            # Headers: ["메시지", "URL", "구분", ...] → 구분은 3번째 컬럼
+            self._sort_sheet_by_gubun(ws, gubun_col_idx=3)
+            
+            # 4.6 서식 적용
+            self._apply_formatting(ws, headers)
             
             # 5. Create Dedup Sheet
             self._create_dedup_sheet(wb, unique_urls)
