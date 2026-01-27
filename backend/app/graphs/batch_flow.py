@@ -37,8 +37,11 @@ def create_batch_graph(content_agent, url_agent, ibse_service):
     async def url_node(state: BatchState):
         msg = state["message"]
         content_result = state.get("content_result", {})
+        s1 = state.get("s1_result", {})
+        # 난독화 디코딩된 텍스트가 있으면 전달
+        decoded_text = s1.get("decoded_text")
         # URL Agent is already Async - Content 결과를 컨텍스트로 전달
-        res = await url_agent.acheck(msg, content_context=content_result)
+        res = await url_agent.acheck(msg, content_context=content_result, decoded_text=decoded_text)
         return {"url_result": res}
 
     async def ibse_node(state: BatchState):
@@ -101,13 +104,25 @@ def create_batch_graph(content_agent, url_agent, ibse_service):
     def router(state: BatchState):
         c_res = state.get("content_result", {})
         msg = state.get("message", "")
+        s1 = state.get("s1_result", {})
         
         routes = []
         
         # Check URL existence (Pre-check) to avoid unnecessary agent call
         import re
         url_pattern = re.compile(r'(https?://\S+|www\.\S+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})')
+        
+        # 원본 메시지에서 URL 체크
         has_url = bool(url_pattern.search(msg))
+        
+        # 난독화 디코딩된 텍스트에서도 URL 체크
+        decoded_text = s1.get("decoded_text")
+        if decoded_text and not has_url:
+            has_url = bool(url_pattern.search(decoded_text))
+        
+        # 또는 s1에서 이미 추출한 decoded_urls가 있으면 사용
+        if s1.get("decoded_urls"):
+            has_url = True
         
         # If Content Spam -> Run URL (if exists) AND IBSE (Parallel)
         # If Content Ham -> Run URL (if exists) -> If URL Spam -> Aggregator

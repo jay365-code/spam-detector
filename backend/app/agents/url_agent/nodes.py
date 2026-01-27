@@ -265,8 +265,10 @@ def convert_korean_domain_to_punycode(url: str) -> str:
 async def extract_node(state: SpamState) -> Dict[str, Any]:
     """
     SMS 본문에서 URL 추출 (한글 도메인 지원)
+    난독화된 텍스트가 있으면 디코딩된 텍스트에서 URL 추출
     """
-    message = state.get("sms_content", "")
+    # 난독화 디코딩된 텍스트가 있으면 우선 사용
+    message = state.get("decoded_text") or state.get("sms_content", "")
     
     # 한글 도메인을 포함한 URL 패턴
     # 한글 유니코드 범위: \uac00-\ud7a3 (가-힣), \u3131-\u3163 (ㄱ-ㅣ)

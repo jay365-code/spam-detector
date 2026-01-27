@@ -5,7 +5,7 @@
 ## ✨ 주요 기능 (Key Features)
 
 - **🧠 다단계 분석 파이프라인 (Multi-Stage Analysis)**
-  - **1단계 (Rule-Based)**: 알려진 패턴 및 화이트리스트를 통한 즉각적인 필터링.
+  - **1단계 (Rule-Based)**: 알려진 패턴, Unicode 난독화 감지, 외국어 필터링을 통한 즉각적인 분류.
   - **2단계 (Content AI)**: LLM(RAG)을 활용하여 문맥을 이해하고 교묘한 스팸 의도를 탐지.
   - **3단계 (URL Deep Dive)**: Playwright를 사용해 URL을 실시간으로 방문하여 피싱 사이트나 리다이렉트 체인을 추적.
 
@@ -43,6 +43,24 @@ graph TD
     HITL -- "확실함(Clear)" --> End([최종 판정])
     User --> End
 ```
+
+### Rule-Based Filter (1단계 사전 필터링)
+
+메시지가 Content Agent로 전달되기 전에 빠른 규칙 기반 필터링을 수행합니다.
+
+| 순서 | 체크 항목 | 결과 | 설명 |
+|:---:|----------|------|------|
+| 1 | **Unicode 난독화** | → URL Agent | Circle letters(ⓐⓑⓒ), Fullwidth(ａｂｃ) 등 감지 시 디코딩 후 URL 분석 |
+| 2 | **한글 난독화** | → Content Agent | `향.꼼.썽`, `안/내/주` 패턴 감지 시 LLM 분석 |
+| 3 | **외국어 메시지** | → HAM-5 | 중국어 5자+, 일본어 5자+, 순수 영어 10자+ |
+| 4 | **기타** | → Content Agent | 일반 한글 메시지는 LLM 분석 |
+
+**Unicode 난독화 디코딩 예시:**
+| 원본 | 디코딩 결과 |
+|------|------------|
+| `lⓔtⓩ.kr/abc` | `letz.kr/abc` |
+| `ｗｗｗ．ｅｘａｍｐｌｅ．ｃｏｍ` | `www.example.com` |
+| `₁₂₃` | `123` |
 
 ### 분석 로직
 1.  **Content Node**: 규칙 및 LLM을 사용한 1차 내용 분석.

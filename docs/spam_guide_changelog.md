@@ -4,6 +4,94 @@ spam_guide.md 및 관련 agent.py의 변경 이력을 추적합니다.
 
 ---
 
+## Unicode 난독화 URL 디코딩 및 외국어 필터 개선 (2026-01-27)
+
+### 배경
+- `0,000 00,000 777 lⓔtⓩ.kr/yFfOb` 같은 난독화된 URL 메시지가 외국어로 오분류
+- 기존 로직: 한글 비율 < 10% → 무조건 HAM-5 (외국어)
+- 문제: 숫자/기호/난독화 문자만 있는 스팸도 HAM 처리됨
+
+### 변경 사항
+
+#### 1. Unicode 난독화 감지 및 디코딩 (`rule_service.py`)
+
+**지원 문자 유형:**
+| 유형 | 원본 | 디코딩 |
+|------|------|--------|
+| Circle letters | `ⓐⓑⓒ...ⓩ`, `ⒶⒷⒸ...Ⓩ` | `abc...z`, `ABC...Z` |
+| Fullwidth | `ａｂｃ`, `０１２`, `．／：` | `abc`, `012`, `./:` |
+| Math bold | `𝐀𝐁𝐂`, `𝐚𝐛𝐜` | `ABC`, `abc` |
+| Sub/superscript | `₀₁₂`, `⁰¹²` | `012`, `012` |
+
+**새 함수:**
+- `_build_unicode_map()`: 난독화 문자 → ASCII 매핑 딕셔너리
+- `decode_obfuscated_text()`: 텍스트 전체 디코딩
+- `has_unicode_obfuscation()`: 난독화 문자 포함 여부 확인
+- `extract_obfuscated_urls()`: 디코딩된 URL 추출
+
+#### 2. 외국어 판정 로직 개선
+
+**기존:**
+```python
+if korean_ratio < 0.1:
+    return HAM-5  # 문제: 숫자/기호만 있어도 HAM
+```
+
+**변경:**
+```python
+if has_unicode_obfuscation(message):
+    return None  # URL Agent로 전달
+
+if has_foreign_language(message):  # 실제 외국어 문자 존재 시에만
+    return HAM-5
+```
+
+**외국어 판정 기준:**
+- 중국어(CJK): 5자 이상
+- 일본어(히라가나/가타카나): 5자 이상
+- 영어: 10자 이상 + 한글 0자
+
+#### 3. 체크 순서 변경
+
+```
+[1] Unicode 난독화 → 감지 시 디코딩 후 URL Agent 전달
+[2] 한글 난독화 (향.꼼.썽) → Content Agent 전달
+[3] 외국어 → HAM-5 즉시 분류
+[4] 기타 → Content Agent 전달
+```
+
+#### 4. URL Agent 연동 (`nodes.py`, `agent.py`, `batch_flow.py`, `main.py`)
+
+- `SpamState`에 `decoded_text` 필드 추가
+- `extract_node`: 디코딩된 텍스트에서 URL 추출
+- `acheck()`, `check()`: `decoded_text` 파라미터 추가
+- 모든 모드(sync, websocket, batch)에서 디코딩된 URL 전달
+
+#### 5. SSL 인증서 오류 무시 (`tools.py`)
+
+```python
+context = await self.browser.new_context(
+    ...
+    ignore_https_errors=True  # 스팸 사이트 분석용
+)
+```
+
+### 테스트 결과
+
+| 입력 | 기존 결과 | 변경 후 결과 |
+|------|----------|-------------|
+| `0,000 00,000 777 lⓔtⓩ.kr/yFfOb` | HAM-5 (외국어) | URL `letz.kr` 분석 |
+| `ｗｗｗ．ｅｘａｍｐｌｅ．ｃｏｍ` | HAM-5 (외국어) | URL `www.example.com` 분석 |
+| `用 看看 玩 子的 朋友...` (중국어) | HAM-5 | HAM-5 (정상) |
+| `Telegram code: 73324...` (영어) | HAM-5 | HAM-5 (정상) |
+
+### 이유
+- 난독화 URL을 사용하는 스팸이 외국어 필터를 우회하는 문제 해결
+- 실제 외국어 메시지(중국어, 영어 등)는 정상적으로 HAM-5 처리
+- 스팸 사이트의 SSL 인증서 문제로 분석 실패하는 케이스 해결
+
+---
+
 ## v1.8 - SMS 매체 특성 반영: route_or_cta 기본값 true (2026-01-27)
 
 ### 핵심 변경: SMS는 기본적으로 CTA 존재

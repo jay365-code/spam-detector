@@ -5,6 +5,7 @@ class SpamState(TypedDict):
     ISAA (Intelligent Spam URL Analysis Agent)의 상태(State) 정의
     """
     sms_content: str                # 원본 문자 메시지
+    decoded_text: Optional[str]     # 난독화 디코딩된 텍스트 (없으면 sms_content 사용)
     target_urls: List[str]          # 추출된 URL 목록 (초기)
     current_url: Optional[str]      # 현재 분석 중인 URL
     

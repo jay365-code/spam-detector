@@ -89,12 +89,17 @@ class UrlAnalysisAgent:
     def __init__(self):
         pass
 
-    def check(self, message: str) -> Dict[str, Any]:
+    def check(self, message: str, decoded_text: str = None) -> Dict[str, Any]:
         """
         Stage 3: URL Deep Dive
+        
+        Args:
+            message: SMS 메시지 내용
+            decoded_text: 난독화 디코딩된 텍스트 (있으면 URL 추출 시 사용)
         """
         initial_state = {
             "sms_content": message,
+            "decoded_text": decoded_text,
             "target_urls": [],
             "visited_history": [],
             "scraped_data": {},
@@ -130,7 +135,7 @@ class UrlAnalysisAgent:
                 "reason": f"ISAA Error: {str(e)}"
             }
 
-    async def acheck(self, message: str, status_callback: Callable[[str], Awaitable[None]] = None, content_context: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def acheck(self, message: str, status_callback: Callable[[str], Awaitable[None]] = None, content_context: Dict[str, Any] = None, decoded_text: str = None) -> Dict[str, Any]:
         """
         Async version of check for WebSocket compatibility with Status Streaming
         
@@ -138,9 +143,11 @@ class UrlAnalysisAgent:
             message: SMS 메시지 내용
             status_callback: 상태 업데이트 콜백
             content_context: Content Agent 분석 결과 (URL Agent 판단 시 참고용)
+            decoded_text: 난독화 디코딩된 텍스트 (있으면 URL 추출 시 사용)
         """
         initial_state = {
             "sms_content": message,
+            "decoded_text": decoded_text,  # 난독화 디코딩 텍스트
             "target_urls": [],
             "visited_history": [],
             "scraped_data": {},

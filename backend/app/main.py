@@ -206,11 +206,22 @@ def process_message(message: str) -> dict:
     # Check URL if Content is Spam OR if Content is Safe but URL exists
     import re
     url_pattern = re.compile(r'(https?://\S+|www\.\S+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})')
+    
+    # 원본 메시지에서 URL 체크
     has_url = bool(url_pattern.search(message))
+    
+    # 난독화 디코딩된 텍스트에서도 URL 체크
+    decoded_text = s1_result.get("decoded_text")
+    if decoded_text and not has_url:
+        has_url = bool(url_pattern.search(decoded_text))
+    
+    # s1에서 이미 추출한 decoded_urls가 있으면 URL 존재
+    if s1_result.get("decoded_urls"):
+        has_url = True
     
     if has_url:
         logger.info("    [Stage 3] URL Deep Dive...")
-        isaa_result = url_filter.check(message)
+        isaa_result = url_filter.check(message, decoded_text=decoded_text)
         
         url_is_spam = isaa_result.get("is_spam")
         reason_lower = isaa_result.get("reason", "").lower()
@@ -322,7 +333,10 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
 
                         # 2. URL Mode (URL Only)
                         elif mode == "URL":
-                            isaa_result = await url_filter.acheck(user_msg, status_callback=send_status)
+                            # URL 모드에서도 난독화 체크
+                            s1_url = rule_filter.check(user_msg)
+                            decoded_text_url = s1_url.get("decoded_text")
+                            isaa_result = await url_filter.acheck(user_msg, status_callback=send_status, decoded_text=decoded_text_url)
                             
                             analysis_text = f"**[ISAA URL 분석 결과]**\n"
                             if isaa_result["is_spam"]:
@@ -441,12 +455,21 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                             url_pattern = re.compile(r'(https?://\S+|www\.\S+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})')
                             has_url = bool(url_pattern.search(user_msg))
                             
+                            # 난독화 디코딩된 텍스트에서도 URL 체크
+                            decoded_text = s1.get("decoded_text")
+                            if decoded_text and not has_url:
+                                has_url = bool(url_pattern.search(decoded_text))
+                            
+                            # s1에서 이미 추출한 decoded_urls가 있으면 URL 존재
+                            if s1.get("decoded_urls"):
+                                has_url = True
+                            
                             isaa_result = None
                             
                             if has_url:
                                 await send_text_chunk("---\n")
                                 # Content Agent 결과를 URL Agent에 전달 (연관성 확보)
-                                isaa_result = await url_filter.acheck(user_msg, status_callback=send_status, content_context=s2_result)
+                                isaa_result = await url_filter.acheck(user_msg, status_callback=send_status, content_context=s2_result, decoded_text=decoded_text)
                                 
                                 url_text = f"**[URL 분석]** {'🚫 위험' if isaa_result.get('is_spam') else '✅ 안전'}\n"
                                 url_text += f"- 사유: {isaa_result.get('reason')}\n"

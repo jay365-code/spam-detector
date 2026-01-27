@@ -456,7 +456,8 @@ class PlaywrightManager:
                     viewport={"width": 390, "height": 844},
                     device_scale_factor=3,
                     is_mobile=True,
-                    has_touch=True
+                    has_touch=True,
+                    ignore_https_errors=True  # SSL 인증서 오류 무시 (스팸 사이트 분석용)
                 )
                 print("[Playwright] Mobile context created (iPhone 14 Pro emulation).")
                 break # Success
