@@ -15,6 +15,14 @@
 - **🤝 전문가 검토 (HITL - Human-in-the-Loop)**
   - AI의 판단이 모호한 경우(예: 확률 40~70%), 자동으로 분석을 일시 정지하고 운영자의 최종 판단을 요청합니다.
 
+- **📚 RAG 기반 FN 학습**
+  - 오탐(False Negative) 사례를 ChromaDB에 저장하여 유사 메시지 분석 시 참조합니다.
+  - UI에서 쉽게 FN 예제 등록/관리 가능합니다.
+
+- **✏️ 결과 수정 및 동기화**
+  - 분석 결과를 실시간으로 수정하고 Excel 파일에 자동 반영합니다.
+  - HAM ↔ SPAM 변경 시 URL중복제거/문자문장차단등록 시트도 동기화됩니다.
+
 - **⚡ 고성능 처리 (High-Performance)**
   - **실시간 채팅**: WebSocket 스트리밍을 통해 분석 결과를 즉시 제공.
   - **대량 일괄 처리 (Batch)**: Excel(`*.xlsx`) 및 텍스트(`*.txt`) 파일의 대용량 데이터를 고속으로 분석.
@@ -162,7 +170,19 @@ graph LR
     *   `HAM-1`, `HAM-2`, `HAM-3`, `HAM-4`: 정상 메시지 세부 분류
 *   **스팸 확률**: 0~100% 사이의 신뢰도 점수.
 *   **판단 사유**: AI가 해당 판정을 내린 구체적인 이유.
-*   **Signals**: 판단 근거 (harm_anchor, route_or_cta, obfuscation_heavy 등).
+
+#### 엑셀 서식
+*   **정렬**: 구분 컬럼 기준 SPAM 상단, HAM 하단 정렬
+*   **서식**:
+    | 컬럼 | 너비 | 정렬 | 기타 |
+    |------|------|------|------|
+    | 메시지 | 90 | 세로 중앙 | 자동줄바꿈, SPAM시 황금색 채우기 |
+    | URL | 22 | - | - |
+    | 구분 | - | 중앙 | - |
+    | 분류 | - | 중앙 | - |
+    | 메시지 길이 | 10 | - | - |
+    | Probability | 10 | 중앙 | - |
+    | Reason | 90 | 세로 중앙 | 자동줄바꿈 |
 
 ### 4. 추가 시트 생성 (Post-Processing)
 분석 완료 후, 활용성을 높이기 위해 두 개의 시트가 자동으로 생성됩니다:
@@ -184,7 +204,46 @@ graph LR
   - **Styling**: TailwindCSS
   - **State**: React Query
 
-## 🚀 설치 및 실행 (Getting Started)
+## 📋 로깅 시스템 (Logging)
+
+### 개요
+중앙 집중식 로깅 시스템으로 콘솔/파일 동시 출력, 일별 로테이션, 런타임 레벨 변경을 지원합니다.
+
+### 로그 파일 위치
+- **일반 로그**: `backend/logs/spam_detector.log` (7일 보관, 일별 로테이션)
+- **JSON 로그**: `backend/logs/spam_detector.json.log` (10MB, 5개 백업)
+
+### 환경변수 설정 (.env)
+```env
+LOG_LEVEL_CONSOLE=INFO    # DEBUG, INFO, WARNING, ERROR
+LOG_LEVEL_FILE=DEBUG      # DEBUG, INFO, WARNING, ERROR
+LOG_JSON_ENABLED=1        # 1=활성화, 0=비활성화
+LOG_CONSOLE_ENABLED=1     # 1=ON, 0=OFF (운영환경에서는 0 권장)
+```
+
+### 런타임 API
+
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| `GET` | `/api/log-level` | 현재 로그 레벨 조회 |
+| `POST` | `/api/log-level` | 로그 레벨 변경 |
+| `POST` | `/api/log-console` | 콘솔 출력 ON/OFF |
+
+**사용 예시:**
+```bash
+# 레벨 조회
+curl http://localhost:8000/api/log-level
+
+# 콘솔 레벨을 DEBUG로 변경
+curl -X POST http://localhost:8000/api/log-level \
+  -H "Content-Type: application/json" \
+  -d '{"target": "console", "level": "DEBUG"}'
+
+# 콘솔 출력 끄기 (운영 환경)
+curl -X POST http://localhost:8000/api/log-console \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
 
 ### 사전 준비사항
 - Python 3.10 이상

@@ -5,9 +5,10 @@ load_dotenv(override=True) # Load .env file (override system variables)
 
 import json
 import logging
+from app.core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
-from openai import OpenAI
+logger = get_logger(__name__)
+# from openai import OpenAI  <-- Removed global import
 
 class ContentAnalysisAgent: # Renamed from RagBasedFilter
     def __init__(self):
@@ -22,11 +23,11 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             from langchain_community.vectorstores import Chroma
             from langchain_openai import OpenAIEmbeddings
             
-            print("[ContentAnalysisAgent] Initializing ChromaDB...")
+            logger.debug("ChromaDB 초기화 중...")
             self.vector_db = Chroma(
                 collection_name="spam_guide",
                 embedding_function=OpenAIEmbeddings(model="text-embedding-ada-002"),
-                persist_directory="../../data/chroma_db"
+                persist_directory="../../../data/chroma_db"
             )
         return self.vector_db
 
@@ -34,26 +35,30 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         """Guide 검색 (실패 시 빈 리스트 반환)"""
         try:
             db = self._get_vector_db()
-            return db.similarity_search(message, k=k)
+            results = db.similarity_search(message, k=k)
+            logger.info(f"RAG 검색 결과: {len(results)}건")
+            for i, doc in enumerate(results):
+                logger.debug(f"  [{i+1}] {doc.page_content[:80]}...")
+            return results
         except Exception as e:
-            print(f"    [Guide Search] Error: {e}")
+            logger.warning(f"RAG Guide Search Error: {e}")
             return []
     
-    def _search_fn_examples(self, message: str, k: int = 2) -> list:
-        """FN 예시 검색 (유사 스팸 사례 참조)"""
-        # 환경변수로 FN 검색 비활성화 가능 (비용 절감)
-        fn_enabled = os.getenv("FN_EXAMPLES_ENABLED", "1")
-        if fn_enabled != "1":
-            print(f"    [FN Search] Disabled (FN_EXAMPLES_ENABLED={fn_enabled})")
+    def _search_spam_rag(self, message: str, k: int = 2) -> list:
+        """스팸 참조 예시 검색 (Spam RAG)"""
+        # 환경변수로 검색 비활성화 가능 (비용 절감)
+        rag_enabled = os.getenv("SPAM_RAG_ENABLED", "1")
+        if rag_enabled != "1":
+            print(f"    [Spam RAG] Disabled (SPAM_RAG_ENABLED={rag_enabled})")
             return []
         
         try:
-            from app.services.fn_examples_service import get_fn_examples_service
-            fn_service = get_fn_examples_service()
-            results = fn_service.search_similar(message, k=k)
+            from app.services.spam_rag_service import get_spam_rag_service
+            rag_service = get_spam_rag_service()
+            results = rag_service.search_similar(message, k=k)
             return results
         except Exception as e:
-            print(f"    [FN Search] Error: {e}")
+            logger.warning(f"FN Search Error: {e}")
             return []
 
     def _retrieve_context(self, message: str) -> dict:
@@ -64,28 +69,30 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         Returns:
             dict with 'guide_context' and 'fn_examples'
         """
-        rag_on = os.getenv("RAG_ON", "1")
-        guide_context = ""
+        # [Deprecated] RAG 기능 비활성화 (항상 Full Context 사용)
+        # rag_on = os.getenv("RAG_ON", "1")
+        # guide_context = ""
+        # 
+        # if rag_on == "1":
+        #     logger.debug("RAG Mode ON: Searching Vector DB...")
+        #     similar_docs = self.search_guide(message)
+        #     if similar_docs:
+        #         guide_context = "\n".join([doc.page_content for doc in similar_docs])
+        #     else:
+        #         # RAG 검색 실패 시 Fallback: 전체 가이드 로드
+        #         logger.info("RAG Fallback: Loading full guide (search returned empty)")
+        #         guide_context = self._load_full_guide()
+        # else:
         
-        if rag_on == "1":
-            print(f"    [RAG] Mode ON: Searching Vector DB...")
-            similar_docs = self.search_guide(message)
-            if similar_docs:
-                guide_context = "\n".join([doc.page_content for doc in similar_docs])
-            else:
-                # RAG 검색 실패 시 Fallback: 전체 가이드 로드
-                print(f"    [RAG] Fallback: Loading full guide (search returned empty)")
-                guide_context = self._load_full_guide()
-        else:
-            print(f"    [RAG] Mode OFF: Using Full Spam Guide Text...")
-            guide_context = self._load_full_guide()
+        logger.debug("Using Full Spam Guide Text (RAG Disabled)")
+        guide_context = self._load_full_guide()
         
         # FN 예시 검색 (유사 스팸 사례) - 실패해도 분석 계속 진행
-        fn_examples = self._search_fn_examples(message, k=2)
+        fn_examples = self._search_spam_rag(message, k=2)
         if fn_examples:
-            print(f"    [FN Examples] Found {len(fn_examples)} similar examples")
+            logger.info(f"Spam RAG: {len(fn_examples)}건 검색됨")
         else:
-            print(f"    [FN Examples] No similar examples found (or search failed)")
+            logger.debug("Spam RAG: 유사 사례 없음")
         
         return {
             "guide_context": guide_context,
@@ -105,7 +112,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 with open(guide_path, "r", encoding="utf-8") as f:
                     return f.read()
             except Exception as e2:
-                print(f"    [Error] Failed to load spam_guide.md: {e2}")
+                logger.error(f"    [Error] Failed to load spam_guide.md: {e2}")
                 return "스팸 판단 기준: 도박, 성인, 사기, 불법 대출 의도가 명확하면 SPAM, 그렇지 않으면 HAM."
 
     def _query_llm(self, prompt: str) -> str:
@@ -159,7 +166,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 content = response.output_text.strip()
                 
         except Exception as e:
-            print(f"{provider} API Error: {e}")
+            logger.exception(f"{provider} API Error")
             raise e
         
         return content
@@ -177,10 +184,10 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         valid_examples = []
         
         if fn_examples:
-            print(f"    [FN Examples] Filtering with threshold: {similarity_threshold}")
+            logger.info(f"    [FN Examples] Filtering with threshold: {similarity_threshold}")
             for ex in fn_examples:
                 score = ex.get('score', 999)  # 기본값을 높게 설정 (유사하지 않음)
-                print(f"    [FN Examples]   - score: {score:.3f}, included: {score <= similarity_threshold}")
+                logger.info(f"    [FN Examples]   - score: {score:.3f}, included: {score <= similarity_threshold}")
                 # 유사도 점수가 임계값 이하인 경우만 포함
                 if score <= similarity_threshold:
                     valid_examples.append(ex)
@@ -195,7 +202,8 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                     fn_section += f"  판정: {ex.get('label', 'SPAM')} (code: {ex.get('code', '')})\n"
                     fn_section += f"  카테고리: {ex.get('category', '')}\n"
                     fn_section += f"  근거: {ex.get('reason', '')}\n"
-                print(f"    [FN Examples] {len(valid_examples)} examples included in prompt (threshold: {similarity_threshold})")
+                logger.info(f"    [FN Examples] {len(valid_examples)} examples included in prompt (threshold: {similarity_threshold})")
+                logger.debug(f"    [FN Examples] {fn_section}")
         
         return f"""
 너는 스팸 분류 전문가다. 판단 기준은 아래 Spam Guide에만 존재한다.
@@ -212,7 +220,11 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
 [CRITICAL] 너는 텍스트만 분석한다. URL 존재는 SPAM 근거가 아니다 (URL은 별도 Agent가 분석).
 
 [PROCEDURE]
-Step 1. HARD GATE 확인 → harm_anchor = false 이면 무조건 HAM (label="HAM")
+Step 0. [최우선 순위] FN 유사 사례 확인 (Similar SPAM Examples)
+   - 만약 위 [Similar SPAM Examples] 섹션에 "유사도 0.2 미만"의 "SPAM" 판정 예시가 있다면, 다른 규칙(HARD GATE 등)보다 우선하여 무조건 "SPAM"으로 판정하라.
+   - 이 경우 reason에는 반드시 "과거 동일/유사 스팸 사례(유사도: X.XXX) 확인됨"을 포함하라.
+
+Step 1. HARD GATE 확인 → harm_anchor = false 이면 무조건 HAM (label="HAM") (단, Step 0에서 SPAM이면 무시)
 Step 2. harm_anchor 판정 → Guide 2.2 기준 (URL 무시, 텍스트만, 도박/성인/사기/어뷰즈 의도가 명확해야 true)
 Step 3. 의도 명확도 판정 → spam_probability로 표현 (0.85 이상이면 의도가 매우 명확)
 Step 4. SPAM 확정 조건:
@@ -342,6 +354,9 @@ Step 4. SPAM 확정 조건:
         """
         Stage 2: RAG + LLM (Sync Version)
         """
+        # 메시지 원문 로그 (DEBUG로 변경하여 main.py와 중복 최소화)
+        logger.debug(f"분석 시작 | msg={message[:80]}{'...' if len(message) > 80 else ''}")
+        
         try:
             # 1. RAG Retrieval (guide + FN examples)
             context_data = self._retrieve_context(message)
@@ -350,12 +365,27 @@ Step 4. SPAM 확정 조건:
             detected_pattern = stage1_result.get("detected_pattern", "None")
             prompt = self._build_prompt(message, detected_pattern, context_data)
             
+            # RAG 프롬프트 적용 확인 로그
+            fn_count = len(context_data.get('fn_examples', []))
+            has_guide = bool(context_data.get('guide_context'))
+            logger.info(f"프롬프트 생성 완료 | RAG Guide={'O' if has_guide else 'X'} | FN Examples={fn_count}건 포함")
+            
             content = self._query_llm(prompt)
             
-            return self._parse_response(content, os.getenv("LLM_PROVIDER", "OPENAI"))
+            # LLM 응답 로그
+            logger.debug(f"LLM 응답: {content[:300]}{'...' if len(content) > 300 else ''}")
+            
+            result = self._parse_response(content, os.getenv("LLM_PROVIDER", "OPENAI"))
+            
+            # 판정 결과 로그 (표준화된 형식)
+            is_spam = result.get('is_spam')
+            verdict = "SPAM" if is_spam else ("HITL" if is_spam is None else "HAM")
+            logger.info(f"판정완료 | {verdict} | code={result.get('classification_code')} | prob={result.get('spam_probability')}")
+            
+            return result
             
         except Exception as e:
-            print(f"LLM Error: {e}")
+            logger.exception("LLM 분석 중 오류 발생")
             return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": "Error (LLM Fail)"}
 
     from typing import Callable, Awaitable, Optional
@@ -366,6 +396,9 @@ Step 4. SPAM 확정 조건:
         """
         import asyncio
         loop = asyncio.get_running_loop()
+        
+        # 메시지 원문 로그 (DEBUG로 변경)
+        logger.debug(f"분석 시작 (async) | msg={message[:80]}{'...' if len(message) > 80 else ''}")
         
         try:
             # 1. RAG Retrieval (guide + FN examples, Run in thread to avoid blocking)
@@ -378,27 +411,38 @@ Step 4. SPAM 확정 조건:
             if status_callback:
                 await status_callback("🧠 AI 정밀 분석 중...")
             
-            print(f"    [Content Agent] Building prompt...")
+            logger.debug("Building prompt...")
             detected_pattern = stage1_result.get("detected_pattern", "None")
             prompt = self._build_prompt(message, detected_pattern, context_data)
-            print(f"    [Content Agent] Prompt built, length: {len(prompt)} chars")
             
-            print(f"    [Content Agent] Calling LLM...")
+            # RAG 프롬프트 적용 확인 로그
+            fn_count = len(context_data.get('fn_examples', []))
+            has_guide = bool(context_data.get('guide_context'))
+            logger.info(f"프롬프트 생성 완료 | RAG Guide={'O' if has_guide else 'X'} | FN Examples={fn_count}건 포함")
+            
+            logger.debug(f"Prompt built, length: {len(prompt)} chars")
+            
+            logger.debug("Calling LLM...")
             # Run blocking LLM call in executor
             content = await loop.run_in_executor(None, lambda: self._query_llm(prompt))
-            print(f"    [Content Agent] LLM response received")
+            
+            # LLM 응답 로그
+            logger.debug(f"LLM 응답: {content[:300]}{'...' if len(content) > 300 else ''}")
             
             result = self._parse_response(content, os.getenv("LLM_PROVIDER", "OPENAI"))
             
+            # 판정 결과 로그 (표준화된 형식)
+            is_spam = result.get('is_spam')
+            verdict = "SPAM" if is_spam else ("HITL" if is_spam is None else "HAM")
+            logger.info(f"판정완료 | {verdict} | code={result.get('classification_code')} | prob={result.get('spam_probability')}")
+            
             if status_callback:
-                verdict = "SPAM" if result['is_spam'] else "HAM"
-                if result['is_spam'] is None: verdict = "HITL"
                 await status_callback(f"✅ 분석 완료 (판정: {verdict})")
                 
             return result
             
         except Exception as e:
-            logger.error(f"Async LLM Error: {e}")
+            logger.exception("Async LLM 분석 중 오류 발생")
             if status_callback:
                  await status_callback(f"⚠️ 오류 발생: {str(e)}")
             return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": f"Error: {e}"}

@@ -7,6 +7,11 @@ import io
 import hashlib
 import warnings
 
+# 로깅 설정 (다른 import 전에 초기화)
+from logging_config import setup_logging, get_logger
+setup_logging()
+logger = get_logger(__name__)
+
 # Suppress warnings
 warnings.filterwarnings("ignore")
 
@@ -43,12 +48,45 @@ def normalize_label(val: Any) -> bool:
     s = str(val).strip()
     return s == 'o'
 
+
+# ========== 로그 레벨 런타임 변경 API ==========
+from logging_config import get_log_levels, set_log_level, set_console_enabled
+from pydantic import BaseModel
+
+class LogLevelChange(BaseModel):
+    target: str  # "console" 또는 "file"
+    level: str   # "DEBUG", "INFO", "WARNING", "ERROR"
+
+class ConsoleToggle(BaseModel):
+    enabled: bool  # True=ON, False=OFF
+
+@app.get("/api/log-level")
+async def get_current_log_level():
+    """현재 로그 레벨 및 콘솔 상태 조회"""
+    return get_log_levels()
+
+@app.post("/api/log-level")
+async def change_log_level(request: LogLevelChange):
+    """런타임에 로그 레벨 변경"""
+    result = set_log_level(request.target, request.level)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+@app.post("/api/log-console")
+async def toggle_console_log(request: ConsoleToggle):
+    """콘솔 로그 출력 ON/OFF"""
+    return set_console_enabled(request.enabled)
+
+
 @app.post("/compare")
 async def compare_results(
     human_file: UploadFile = File(...),
     llm_file: UploadFile = File(...),
     sheet_name: str = Form("육안분석(시뮬결과35_150)")
 ):
+    logger.info(f"비교 요청 | Human: {human_file.filename} | LLM: {llm_file.filename} | Sheet: {sheet_name}")
+    
     try:
         # Load Excels
         human_content = await human_file.read()
@@ -60,8 +98,10 @@ async def compare_results(
         
     except ValueError as e:
         # Sheet not found or other Excel error
+        logger.warning(f"Sheet not found: {sheet_name} - {e}")
         raise HTTPException(status_code=400, detail=f"Sheet '{sheet_name}' not found or error loading excel: {str(e)}")
     except Exception as e:
+        logger.exception("Excel 로드 중 오류")
         raise HTTPException(status_code=400, detail=f"Error reading excel file: {str(e)}")
 
     # Check Columns
@@ -195,6 +235,8 @@ async def compare_results(
     }
     
     auto_summary = generate_summary_text(summary_dict, advanced_metrics)
+    
+    logger.info(f"비교 완료 | Matched: {matched_count} | TP: {tp} | FP: {fp} | FN: {fn} | TN: {tn} | Accuracy: {advanced_metrics['accuracy']}")
     
     return {
         "summary": summary_dict,

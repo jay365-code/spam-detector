@@ -120,7 +120,7 @@ function App() {
   // 수정 저장
   const saveEdit = async () => {
     if (!editingLog || !downloadFilename) return;
-    
+
     setEditSaving(true);
     try {
       // 1. 백엔드 API로 엑셀 업데이트
@@ -183,6 +183,25 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const logContainerRef = useRef<HTMLDivElement>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+
+  // 스크롤 위치 감지
+  const handleScroll = () => {
+    if (logContainerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = logContainerRef.current;
+      // 하단에서 10px 이내면 바닥에 있는 것으로 간주 (사용자가 위로 스크롤 시 즉시 감지하기 위함)
+      const atBottom = scrollHeight - scrollTop - clientHeight < 10;
+      setIsAtBottom(atBottom);
+    }
+  };
+
+  // 새로운 로그 수신 시 하단 이동 (Smart Scroll)
+  useEffect(() => {
+    if (isAtBottom && logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [logs, isAtBottom]);
 
   // WebSocket Connection (Auto-Reconnect)
   useEffect(() => {
@@ -457,7 +476,11 @@ function App() {
             <span>System Logs</span>
             <span className="ml-auto">Client ID: {clientId} | Status: {isConnected ? '🟢' : '🔴'}</span>
           </div>
-          <div className="flex-1 overflow-auto p-4 space-y-2">
+          <div
+            ref={logContainerRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-auto p-4 space-y-2"
+          >
             {logs.map((log, idx) => {
               const { cleanReason, note, isManual } = log.result ? parseReason(log.result.reason) : { cleanReason: "", note: null, isManual: false };
 
@@ -530,15 +553,14 @@ function App() {
                 </div>
               );
             })}
-            <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth' })} />
           </div>
         </div>
 
       </div>
 
       {/* RAG Manager Modal */}
-      <RagManager 
-        isOpen={isRagManagerOpen} 
+      <RagManager
+        isOpen={isRagManagerOpen}
         onClose={() => {
           setIsRagManagerOpen(false);
           setRagInitialData(undefined);
@@ -580,21 +602,19 @@ function App() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => setEditingLog({ ...editingLog, is_spam: true, classification_code: editingLog.classification_code || '1' })}
-                    className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
-                      editingLog.is_spam
-                        ? 'bg-red-500 text-white'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    }`}
+                    className={`flex-1 py-2 rounded-lg font-medium transition-colors ${editingLog.is_spam
+                      ? 'bg-red-500 text-white'
+                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                      }`}
                   >
                     SPAM
                   </button>
                   <button
                     onClick={() => setEditingLog({ ...editingLog, is_spam: false, classification_code: '' })}
-                    className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
-                      !editingLog.is_spam
-                        ? 'bg-green-500 text-white'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                    }`}
+                    className={`flex-1 py-2 rounded-lg font-medium transition-colors ${!editingLog.is_spam
+                      ? 'bg-green-500 text-white'
+                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                      }`}
                   >
                     HAM
                   </button>

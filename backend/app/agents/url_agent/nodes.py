@@ -3,40 +3,38 @@ import os
 import json
 import asyncio
 import logging
+from app.core.logging_config import get_logger
+logger = get_logger(__name__)
 import base64
 from typing import Dict, Any, List
 from urllib.parse import urlparse, quote
 import idna  # Punycode 변환용
 
 from .state import SpamState
-from .tools import PlaywrightManager
 from app.core.constants import SPAM_CODE_MAP
 
 # 유명/신뢰 도메인 리스트 (리다이렉트 후 이 도메인이면 HAM)
+# ※ 주의: 사용자 생성 콘텐츠(UGC) 도메인은 포함하면 안 됨
 TRUSTED_DOMAINS = [
-    # 앱 스토어
+    # 앱 스토어 (공식 앱 다운로드)
     "play.google.com",
     "apps.apple.com",
     "onestore.co.kr",
     "galaxy.store",
-    # 대기업/포털
-    "google.com",
-    "naver.com",
-    "kakao.com",
-    "daum.net",
-    "samsung.com",
-    "lg.com",
-    "sk.com",
-    "kt.com",
-    # 공공기관
+    # 공공기관 (정부, 공공기관)
     "go.kr",
     "or.kr",
-    # SNS/서비스
-    "youtube.com",
-    "instagram.com",
-    "facebook.com",
-    "twitter.com",
-    "tiktok.com",
+]
+
+# 사용자 생성 콘텐츠(UGC) 도메인 - 신뢰할 수 없음, Inconclusive 처리 대상
+# 이 도메인들은 스팸에 악용될 수 있으므로 자동 HAM 처리 금지
+UGC_DOMAINS = [
+    "open.kakao.com",     # 카카오톡 오픈채팅
+    "t.me",               # 텔레그램
+    "telegram.me",        # 텔레그램
+    "line.me",            # 라인 메신저
+    "bit.ly",             # 단축 URL
+    "tinyurl.com",        # 단축 URL
 ]
 
 def is_trusted_domain(url: str) -> bool:
@@ -44,6 +42,11 @@ def is_trusted_domain(url: str) -> bool:
     try:
         parsed = urlparse(url)
         domain = parsed.netloc.lower()
+        
+        # 먼저 UGC 도메인인지 체크 - UGC면 신뢰 불가
+        for ugc in UGC_DOMAINS:
+            if domain == ugc or domain.endswith("." + ugc):
+                return False
         
         for trusted in TRUSTED_DOMAINS:
             # 정확히 일치하거나 서브도메인인 경우
@@ -53,33 +56,35 @@ def is_trusted_domain(url: str) -> bool:
     except:
         return False
 
-# LLM 관련 (기존 filter_rag.py 참조 또는 직접 호출)
-from langchain_core.prompts import PromptTemplate
-from langchain_openai import ChatOpenAI
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_anthropic import ChatAnthropic
-
-# Gemini Vision API
-import google.generativeai as genai
-
-logger = logging.getLogger(__name__)
-
-manager = PlaywrightManager()
+# Lazy load PlaywrightManager
+_playwright_manager = None
+def get_playwright_manager():
+    global _playwright_manager
+    if _playwright_manager is None:
+        from .tools import PlaywrightManager
+        _playwright_manager = PlaywrightManager()
+    return _playwright_manager
 
 def get_llm():
     """
     .env 설정에 따른 LLM 인스턴스 반환
     """
+    # Lazy imports for LLM providers
+    from langchain_core.prompts import PromptTemplate
+    
     provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
     model_name = os.getenv("LLM_MODEL", "gpt-4o-mini")
     
     if provider == "GEMINI":
+        from langchain_google_genai import ChatGoogleGenerativeAI
         api_key = os.getenv("GEMINI_API_KEY")
         return ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=0, convert_system_message_to_human=True)
     elif provider == "CLAUDE":
+        from langchain_anthropic import ChatAnthropic
         api_key = os.getenv("CLAUDE_API_KEY")
         return ChatAnthropic(model=model_name, anthropic_api_key=api_key, temperature=0)
     else:
+        from langchain_openai import ChatOpenAI
         api_key = os.getenv("OPENAI_API_KEY")
         return ChatOpenAI(model=model_name, api_key=api_key, temperature=0.1)
 
@@ -92,6 +97,9 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str) -> Dict
     logger.info(f"[URL Agent] Starting Vision analysis for: {url}")
     
     try:
+        # Lazy import gemini
+        import google.generativeai as genai
+        
         # Gemini API 설정
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
@@ -146,7 +154,14 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str) -> Dict
         4. Real estate marketing pages with apartment info are LEGITIMATE advertising.
         5. If the page shows normal business content (배송, 주문, 분양, 상품 등), it is NOT spam.
         6. Only mark as SPAM if you see CLEAR malicious visual content.
-        7. If you cannot see meaningful content (blocked, loading, etc.), include "Inconclusive" in reason.
+        7. **CRITICAL - Inconclusive Conditions (include "Inconclusive" in reason if ANY of these apply):**
+           - You cannot see meaningful content (blocked, loading, error page, etc.)
+           - Page only shows redirect/link UI to external apps (KakaoTalk, Telegram, etc.) without actual service content
+           - Page only shows "click to proceed" buttons without revealing what the destination offers
+           - You CANNOT determine the TRUE INTENT of the final service from this screenshot alone
+           - The page is just a landing/bridge page without actual service details
+           
+        **IMPORTANT**: If the screenshot does not clearly reveal the PURPOSE/INTENT of the service, mark it as Inconclusive - do NOT assume HAM just because no malicious content is visible.
 
         Classification Codes (use only if SPAM):
 {code_list_str}
@@ -325,6 +340,7 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
     
     # Playwright Manager 사용
     try:
+        manager = get_playwright_manager()
         result = await manager.scrape_url(url)
         
         # 스크래핑 결과 로깅
@@ -359,8 +375,14 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     2차: Inconclusive일 경우 Vision 분석 (스크린샷)
     """
     scraped = state.get("scraped_data", {})
+    sms_content = state.get("sms_content", "")
+    
+    # 분석 시작 로그
+    logger.info(f"URL 분석 시작 | msg={sms_content[:80]}{'...' if len(sms_content) > 80 else ''}")
+    
     if scraped.get("status") != "success":
         # 스크래핑 실패 시 TLD 검사 등 폴백 로직 (간소화)
+        logger.warning(f"스크래핑 실패: {scraped.get('error')}")
         return {
             "is_spam": None, 
             "reason": f"Scraping failed: {scraped.get('error')}"
@@ -372,9 +394,12 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     current_url = scraped.get("url", "")  # 리다이렉트 후 최종 URL
     screenshot_b64 = scraped.get("screenshot_b64", "")
     
+    # 스크래핑 결과 로그
+    logger.info(f"스크래핑 결과: URL={current_url} | Title={page_title[:50]} | Text길이={len(raw_text)}자")
+    
     # 신뢰 도메인 체크 (Google, Naver, Play Store 등)
     if is_trusted_domain(current_url):
-        logger.info(f"[URL Agent] Trusted domain detected: {current_url} → Auto HAM")
+        logger.info(f"Trusted domain 검출 | URL={current_url} → Auto HAM")
         return {
             "is_spam": False,
             "spam_probability": 0.0,
@@ -443,7 +468,14 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     3. Delivery tracking pages showing shipping status are legitimate even if domain seems unfamiliar.
     4. If content shows normal business activity (배송, 주문, 결제 등), it is NOT spam.
     5. Only mark as SPAM if you see CLEAR malicious content (gambling UI, adult content, fake login, etc.)
-    6. If content is too short/empty or blocked by captcha, include "Inconclusive" in reason.
+    6. **CRITICAL - Inconclusive Conditions (include "Inconclusive" in reason if ANY of these apply):**
+       - Content is too short/empty or blocked by captcha
+       - Page only redirects to external apps/messengers (KakaoTalk, Telegram, Line, etc.) without showing actual service content
+       - Page only shows "click to proceed" or link buttons without revealing what the destination offers
+       - You CANNOT determine the TRUE INTENT of the final service from this page's content alone
+       - The page is just a landing/bridge page that doesn't show the actual service details
+       
+    **IMPORTANT**: If the page content does not clearly reveal the PURPOSE/INTENT of the service, you MUST mark it as Inconclusive - do NOT assume HAM just because no malicious content is visible.
 
     Classification Codes (use only if SPAM):
 {code_list_str}
@@ -459,7 +491,8 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     
     try:
         # ========== 1차: 텍스트 기반 분석 ==========
-        logger.info(f"[URL Agent] Text Analysis Prompt:\n{prompt[:2000]}...")  # 프롬프트 로그 출력 (2000자 제한)
+        # logger.info(f"[URL Agent] Text Analysis Prompt:\n{prompt[:2000]}...")  # 프롬프트 로그 출력 제거
+        logger.info(f"[URL Agent] Scraped Content Preview (100 chars): {raw_text[:100]}...")
         llm = get_llm()
         response = await llm.ainvoke(prompt)
         content = response.content
@@ -488,23 +521,23 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         classification_code = result_json.get("classification_code")
         
         # URL Agent 1차 분석 결과 로깅
-        logger.info(f"[URL Agent] Text Analysis Result: is_spam={is_spam}, "
-                   f"probability={prob}, code={classification_code}, "
-                   f"reason={reason}")
+        verdict = "SPAM" if is_spam else ("INCONCLUSIVE" if is_spam is None else "HAM")
+        logger.info(f"LLM 분석결과 | {verdict} | code={classification_code} | prob={prob}")
+        logger.debug(f"Reason: {reason[:150]}{'...' if len(reason) > 150 else ''}")
         
         # ========== 2차: Inconclusive 체크 → Vision 분석 ==========
         reason_lower = reason.lower()
         is_inconclusive = "inconclusive" in reason_lower
         
         if is_inconclusive and screenshot_b64:
-            logger.info(f"[URL Agent] Text analysis is Inconclusive. Triggering Vision analysis...")
+            logger.info("Text분석 Inconclusive → Vision 분석 시도")
             
             # Vision 분석 호출
             vision_result = await analyze_with_vision(screenshot_b64, current_url, page_title)
             
             # Vision 분석 성공 시 결과 사용
             if vision_result.get("analysis_type") == "vision" and vision_result.get("is_spam") is not None:
-                logger.info(f"[URL Agent] Vision analysis completed. Using Vision result.")
+                logger.info("Vision 분석 완료 → Vision 결과 사용")
                 return {
                     "is_spam": vision_result.get("is_spam"),
                     "spam_probability": vision_result.get("spam_probability", 0.0),
@@ -515,7 +548,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                 }
             else:
                 # Vision도 실패하면 원래 Inconclusive 결과 유지
-                logger.info(f"[URL Agent] Vision analysis failed or inconclusive. Keeping text result.")
+                logger.warning("Vision 분석 실패/불확실 → Text 결과 유지")
                 reason = f"{reason} | [Vision 분석 시도했으나 판단 불가]"
         
         # 1차 분석 결과 반환 (확정 판단 또는 Vision 실패 시)
@@ -529,7 +562,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         }
         
     except Exception as e:
-        logger.error(f"[URL Agent] Analysis Error: {e}")
+        logger.exception("URL 분석 중 오류 발생")
         return {"reason": f"Analysis Error: {e}"}
 
 async def select_link_node(state: SpamState) -> Dict[str, Any]:

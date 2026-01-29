@@ -1,10 +1,28 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Form
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import shutil
 import os
 import asyncio
 import sys
+import logging
+import warnings
+
+# **CRITICAL**: 다른 앱 모듈 import 전에 로깅 설정 먼저 초기화
+from dotenv import load_dotenv
+load_dotenv(override=True)  # .env 파일 로드
+
+from app.core.logging_config import setup_logging, get_logger
+
+# 로깅 시스템 초기화 (앱 모듈 import 전에 반드시 호출!)
+# 환경변수: LOG_LEVEL_CONSOLE, LOG_LEVEL_FILE, LOG_JSON_ENABLED
+setup_logging()
+
+logger = get_logger(__name__)
+
+# Suppress noisy warnings
+warnings.filterwarnings("ignore")
 
 # **CRITICAL FIX**: Force ProactorEventLoop on Windows for Playwright/Subprocess support
 if sys.platform == 'win32':
@@ -12,25 +30,13 @@ if sys.platform == 'win32':
 
 import uuid
 from typing import List, Dict
+
+# 이제 앱 모듈들을 import (로깅 설정 완료 후)
 from app.services.rule_service import RuleBasedFilter
 from app.agents.content_agent.agent import ContentAnalysisAgent
 from app.agents.url_agent.agent import UrlAnalysisAgent
 from app.utils.excel_handler import ExcelHandler
 from app.core.constants import SPAM_CODE_MAP
-
-import logging
-
-# Configure Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler()]
-)
-logger = logging.getLogger(__name__)
-
-import warnings
-# Suppress noisy warnings
-warnings.filterwarnings("ignore")
 
 app = FastAPI()
 
@@ -122,51 +128,89 @@ async def health_check():
     logger.info("✅ Health Check Endpoint Reached!")
     return {"status": "ok"}
 
-# ========== FN Examples RAG API ==========
-from app.services.fn_examples_service import get_fn_examples_service
-from pydantic import BaseModel
+# ========== 로그 레벨 런타임 변경 API ==========
+from app.core.logging_config import get_log_levels, set_log_level, set_console_enabled
 
-class FnExampleCreate(BaseModel):
+@app.get("/api/log-level")
+async def get_current_log_level():
+    """현재 로그 레벨 조회"""
+    return get_log_levels()
+
+class LogLevelChange(BaseModel):
+    target: str  # "console" 또는 "file"
+    level: str   # "DEBUG", "INFO", "WARNING", "ERROR"
+
+class ConsoleToggle(BaseModel):
+    enabled: bool  # True=ON, False=OFF
+
+@app.post("/api/log-level")
+async def change_log_level(request: LogLevelChange):
+    """런타임에 로그 레벨 변경 (서버 재시작 없이)"""
+    result = set_log_level(request.target, request.level)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+@app.post("/api/log-console")
+async def toggle_console_log(request: ConsoleToggle):
+    """콘솔 로그 출력 ON/OFF"""
+    return set_console_enabled(request.enabled)
+
+# ========== Spam RAG API (Reference Examples) ==========
+from app.services.spam_rag_service import get_spam_rag_service
+
+class SpamRagCreate(BaseModel):
     message: str
     label: str = "SPAM"
     code: str
     category: str
     reason: str
 
-class FnExampleUpdate(BaseModel):
+class SpamRagUpdate(BaseModel):
     message: str = None
     label: str = None
     code: str = None
     category: str = None
     reason: str = None
 
-@app.get("/api/fn-examples")
-async def get_fn_examples():
-    """FN 예시 전체 조회"""
+@app.get("/api/spam-rag")
+async def get_spam_rag_examples():
+    """참조 예시 전체 조회"""
     try:
-        service = get_fn_examples_service()
+        service = get_spam_rag_service()
         examples = service.get_all_examples()
         return {"success": True, "data": examples, "total": len(examples)}
     except Exception as e:
-        logger.error(f"FN Examples GET Error: {e}")
+        logger.error(f"Spam RAG GET Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/fn-examples/stats")
-async def get_fn_examples_stats():
-    """FN 예시 통계 조회"""
+@app.get("/api/spam-rag/stats")
+async def get_spam_rag_stats():
+    """참조 예시 통계 조회"""
     try:
-        service = get_fn_examples_service()
+        service = get_spam_rag_service()
         stats = service.get_stats()
         return {"success": True, "data": stats}
     except Exception as e:
-        logger.error(f"FN Examples Stats Error: {e}")
+        logger.error(f"Spam RAG Stats Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/fn-examples/{example_id}")
-async def get_fn_example(example_id: str):
-    """특정 FN 예시 조회"""
+@app.get("/api/spam-rag/search")
+async def search_spam_rag_examples(query: str, k: int = 3):
+    """유사 참조 예시 검색"""
     try:
-        service = get_fn_examples_service()
+        service = get_spam_rag_service()
+        results = service.search_similar(query, k=k)
+        return {"success": True, "data": results, "total": len(results)}
+    except Exception as e:
+        logger.error(f"Spam RAG Search Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/spam-rag/{example_id}")
+async def get_spam_rag_example(example_id: str):
+    """특정 참조 예시 조회"""
+    try:
+        service = get_spam_rag_service()
         example = service.get_example_by_id(example_id)
         if not example:
             raise HTTPException(status_code=404, detail="Example not found")
@@ -174,14 +218,14 @@ async def get_fn_example(example_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"FN Example GET Error: {e}")
+        logger.error(f"Spam RAG GET Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/fn-examples")
-async def create_fn_example(example: FnExampleCreate):
-    """새 FN 예시 추가"""
+@app.post("/api/spam-rag")
+async def create_spam_rag_example(example: SpamRagCreate):
+    """새 참조 예시 추가"""
     try:
-        service = get_fn_examples_service()
+        service = get_spam_rag_service()
         result = service.add_example(
             message=example.message,
             label=example.label,
@@ -189,17 +233,21 @@ async def create_fn_example(example: FnExampleCreate):
             category=example.category,
             reason=example.reason
         )
-        logger.info(f"FN Example Created: {result['id']}")
+        logger.info(f"Spam RAG Example Created: {result['id']}")
         return {"success": True, "data": result}
+    except ValueError as e:
+        # 중복 에러 처리 (409 Conflict)
+        logger.warning(f"Spam RAG Create Conflict: {e}")
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
-        logger.error(f"FN Example Create Error: {e}")
+        logger.error(f"Spam RAG Create Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.put("/api/fn-examples/{example_id}")
-async def update_fn_example(example_id: str, example: FnExampleUpdate):
-    """FN 예시 수정"""
+@app.put("/api/spam-rag/{example_id}")
+async def update_spam_rag_example(example_id: str, example: SpamRagUpdate):
+    """참조 예시 수정"""
     try:
-        service = get_fn_examples_service()
+        service = get_spam_rag_service()
         result = service.update_example(
             example_id=example_id,
             message=example.message,
@@ -210,40 +258,31 @@ async def update_fn_example(example_id: str, example: FnExampleUpdate):
         )
         if not result:
             raise HTTPException(status_code=404, detail="Example not found")
-        logger.info(f"FN Example Updated: {example_id}")
+        logger.info(f"Spam RAG Example Updated: {example_id}")
         return {"success": True, "data": result}
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"FN Example Update Error: {e}")
+        logger.error(f"Spam RAG Update Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/api/fn-examples/{example_id}")
-async def delete_fn_example(example_id: str):
-    """FN 예시 삭제"""
+@app.delete("/api/spam-rag/{example_id}")
+async def delete_spam_rag_example(example_id: str):
+    """참조 예시 삭제"""
     try:
-        service = get_fn_examples_service()
+        service = get_spam_rag_service()
         success = service.delete_example(example_id)
         if not success:
             raise HTTPException(status_code=404, detail="Example not found or delete failed")
-        logger.info(f"FN Example Deleted: {example_id}")
+        logger.info(f"Spam RAG Example Deleted: {example_id}")
         return {"success": True, "message": "Deleted successfully"}
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"FN Example Delete Error: {e}")
+        logger.error(f"Spam RAG Delete Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/fn-examples/search/{query}")
-async def search_fn_examples(query: str, k: int = 3):
-    """유사 FN 예시 검색"""
-    try:
-        service = get_fn_examples_service()
-        results = service.search_similar(query, k=k)
-        return {"success": True, "data": results, "total": len(results)}
-    except Exception as e:
-        logger.error(f"FN Examples Search Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+
 
 # CORS config
 app.add_middleware(
@@ -395,7 +434,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     user_msg = data.get("content", "")
                     mode = data.get("mode", "Unified") # Default to Unified "Smart" Mode
                     
-                    logger.info(f"Chat Message from {client_id} (Mode: {mode}): {user_msg}")
+                    logger.info(f"\n{'='*60}\n[Chat] Mode: {mode}\n[Chat] 메시지 원문:\n  {user_msg}\n{'='*60}")
                     
                     if user_msg:
                         # Signal Start of Stream
@@ -718,14 +757,14 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                 batch_graph = create_batch_graph(rag_filter, url_filter, ibse_service)
 
                 async def process_single_item(index, message, s1_res):
-                    logger.info(f"    [Batch] Item {index+1} 분석 시작... (Unified Graph)")
+                    # 배치 Item 시작 로그
+                    logger.info(f"[Batch {index+1}] 분석 시작 | msg={message[:80]}{'...' if len(message) > 80 else ''}")
                     
                     # Rule-based HAM (e.g., Non-Korean message) - Skip Graph
                     if s1_res.get("is_spam") is False:
                         s1_code = s1_res.get("classification_code")
                         s1_reason = s1_res.get("reason", "Rule-based HAM")
-                        logger.info(f"    -> [Batch] Rule-based HAM (Code: {s1_code})")
-                        logger.info(f"\n[DEBUG RESULT] (Rule-based HAM)\nMessage: {message}\nIs Spam: False\nCode: {s1_code}\nReason: {s1_reason}\n")
+                        logger.info(f"[Batch {index+1}] Rule-based HAM | code={s1_code}")
                         return index, {
                             "is_spam": False,
                             "classification_code": s1_code,
@@ -753,9 +792,9 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                         final_is_spam = final_res.get("is_spam")
                         final_code = final_res.get("classification_code")
                         final_prob = final_res.get("spam_probability", 0.0)
-                        final_reason = final_res.get("reason", "")
+                        verdict = "SPAM" if final_is_spam else ("HITL" if final_is_spam is None else "HAM")
                         
-                        logger.info(f"\n[DEBUG RESULT] (Immediate)\nMessage: {message}\nIs Spam: {final_is_spam}\nProbability: {final_prob}\nCode: {final_code}\nReason: {final_reason}\n")
+                        logger.info(f"[Batch {index+1}] 완료 | {verdict} | code={final_code} | prob={final_prob}")
                         
                         return index, final_res
                         
@@ -1093,6 +1132,40 @@ async def update_excel_row(update: ExcelRowUpdate):
                         bl_ws.cell(row=bl_row, column=4, value=new_code)  # 분류 컬럼
             
             # HAM → SPAM: 블록리스트 추가 불가 (ibse_signature 없음)
+        
+        # ========== SPAM↔HAM 변경 시 시트 재정렬 ==========
+        if was_spam != update.is_spam and gubun_col:
+            # 모든 데이터 행 읽기 (헤더 제외)
+            data_rows = []
+            for row_idx in range(2, ws.max_row + 1):
+                row_data = []
+                for col_idx in range(1, ws.max_column + 1):
+                    row_data.append(ws.cell(row=row_idx, column=col_idx).value)
+                data_rows.append(row_data)
+            
+            # 구분 컬럼 기준 정렬 (SPAM "o" 먼저, HAM "" 나중)
+            def sort_key(row):
+                gubun_val = row[gubun_col - 1] if len(row) >= gubun_col else ""
+                return 0 if gubun_val == "o" else 1
+            
+            data_rows.sort(key=sort_key)
+            
+            # 정렬된 데이터로 다시 쓰기
+            for i, row_data in enumerate(data_rows):
+                row_idx = i + 2  # 헤더가 1행이므로 2행부터
+                for col_idx, value in enumerate(row_data, start=1):
+                    ws.cell(row=row_idx, column=col_idx, value=value)
+            
+            # 재정렬 후 서식 재적용 (채우기 색)
+            for row_idx in range(2, ws.max_row + 1):
+                gubun_val = ws.cell(row=row_idx, column=gubun_col).value
+                if msg_col:
+                    cell = ws.cell(row=row_idx, column=msg_col)
+                    if gubun_val == "o":  # SPAM
+                        cell.fill = spam_fill
+                    else:  # HAM
+                        cell.fill = no_fill
+                    cell.alignment = wrap_vcenter_align
         
         # 저장
         wb.save(file_path)

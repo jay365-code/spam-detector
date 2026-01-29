@@ -4,6 +4,57 @@ spam_guide.md 및 관련 agent.py의 변경 이력을 추적합니다.
 
 ---
 
+## RAG 시스템 및 결과 수정 기능 추가 (2026-01-27)
+
+### 1. FN(False Negative) 예제 RAG 시스템
+
+**기능**
+- ChromaDB 기반 FN 예제 저장/검색
+- Content Agent 프롬프트에 유사 스팸 예제 자동 삽입
+- 환경 변수: `FN_EXAMPLES_ENABLED`, `FN_SIMILARITY_THRESHOLD`
+
+**구현 파일**
+- `backend/app/services/fn_examples_service.py` (신규)
+- `backend/app/agents/content_agent/agent.py` (수정)
+- `frontend/src/components/RagManager.tsx` (신규)
+
+**UI**
+- 스팸 RAG 관리 화면 (CRUD + 유사도 검색)
+- System Logs에서 RAG 저장 아이콘 클릭으로 빠른 등록
+- Comparison Tool에서 Human Label 옆 RAG 저장 버튼
+
+### 2. 결과 수정 기능
+
+**기능**
+- System Logs에서 수정 아이콘(✏️) 클릭 → 모달에서 편집
+- HAM ↔ SPAM 변경 시 시트 동기화:
+  - 메인 시트 업데이트
+  - URL중복제거 시트 동기화
+  - 문자문장차단등록 시트 동기화
+  - 구분 컬럼 기준 재정렬
+  - 메시지 셀 채우기 색 반영
+
+**API**
+- `PUT /api/excel/update-row`: 엑셀 행 업데이트 + 시트 동기화
+
+### 3. 엑셀 서식 개선
+
+**변경사항**
+- Signals 컬럼 삭제
+- 구분 컬럼 기준 정렬 (SPAM 상단, HAM 하단)
+- 서식 적용:
+  | 컬럼 | 너비 | 정렬 | 기타 |
+  |------|------|------|------|
+  | 메시지 | 90 | 세로 중앙 | 자동줄바꿈, SPAM시 황금색 채우기 |
+  | URL | 22 | - | - |
+  | 구분 | - | 중앙 | - |
+  | 분류 | - | 중앙 | - |
+  | 메시지 길이 | 10 | - | - |
+  | Probability | 10 | 중앙 | - |
+  | Reason | 90 | 세로 중앙 | 자동줄바꿈 |
+
+---
+
 ## Unicode 난독화 URL 디코딩 및 외국어 필터 개선 (2026-01-27)
 
 ### 배경

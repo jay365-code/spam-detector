@@ -4,6 +4,9 @@ from playwright.async_api import async_playwright, Page, BrowserContext
 import base64
 import random
 import time
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # 강화된 Stealth 스크립트 (Cloudflare, Turnstile 우회용)
 ENHANCED_STEALTH_SCRIPT = """
@@ -203,16 +206,16 @@ class PlaywrightManager:
             await page.wait_for_timeout(random.randint(100, 300))
             await page.evaluate(f"window.scrollBy(0, -{scroll_amount // 2})")
             
-            print("[Playwright] Human behavior simulated.")
+            logger.debug("Human behavior simulated")
         except Exception as e:
-            print(f"[Playwright] Human behavior simulation warning: {e}")
+            logger.debug(f"Human behavior simulation warning: {e}")
 
     async def wait_for_bot_protection(self, page: Page, max_wait: int = 15) -> bool:
         """
         다양한 봇 방어 페이지(Cloudflare, 부정클릭방지 등)가 해결될 때까지 대기
         Returns: True if protection passed, False otherwise
         """
-        print(f"[Playwright] Waiting for bot protection to resolve (max {max_wait}s)...")
+        logger.debug(f"Waiting for bot protection (max {max_wait}s)...")
         
         # 다양한 봇 방어 시스템 감지 키워드
         protection_indicators = [
@@ -247,7 +250,7 @@ class PlaywrightManager:
                 
                 # URL이 변경되었으면 리다이렉트 완료
                 if current_url != initial_url and i > 2:
-                    print(f"[Playwright] Redirected to: {current_url}")
+                    logger.debug(f"Redirected to: {current_url}")
                     await page.wait_for_timeout(1000)
                     return True
                 
@@ -259,7 +262,7 @@ class PlaywrightManager:
                 
                 # Protection이 해제되고 실제 콘텐츠가 있는지 확인
                 if not is_protection_active and len(text_content.strip()) > 50:
-                    print(f"[Playwright] Bot protection passed after {i+1}s")
+                    logger.debug(f"Bot protection passed after {i+1}s")
                     return True
                 
                 # Human-like 행동 중간중간 수행
@@ -268,17 +271,17 @@ class PlaywrightManager:
                 
                 # 페이지 새로고침 시도 (일부 봇 방어는 새로고침으로 해결)
                 if i == 7:
-                    print("[Playwright] Attempting page reload...")
+                    logger.debug("Attempting page reload...")
                     await page.reload(wait_until="domcontentloaded")
                     await page.wait_for_timeout(2000)
                 
                 await page.wait_for_timeout(1000)
                 
             except Exception as e:
-                print(f"[Playwright] Protection wait error: {e}")
+                logger.debug(f"Protection wait error: {e}")
                 await page.wait_for_timeout(1000)
         
-        print(f"[Playwright] Bot protection timeout after {max_wait}s")
+        logger.debug(f"Bot protection timeout after {max_wait}s")
         return False
 
     async def wait_for_cloudflare_challenge(self, page: Page, max_wait: int = 15) -> bool:
@@ -286,7 +289,7 @@ class PlaywrightManager:
         Cloudflare JS Challenge가 자동으로 해결될 때까지 대기 (Legacy - wait_for_bot_protection으로 대체)
         Returns: True if challenge passed, False otherwise
         """
-        print(f"[Playwright] Waiting for Cloudflare challenge (max {max_wait}s)...")
+        logger.debug(f"Waiting for Cloudflare challenge (max {max_wait}s)...")
         
         challenge_indicators = [
             "Verifying you are human",
@@ -309,7 +312,7 @@ class PlaywrightManager:
                 )
                 
                 if not is_challenge_active:
-                    print(f"[Playwright] Cloudflare challenge passed after {i+1}s")
+                    logger.debug(f"Cloudflare challenge passed after {i+1}s")
                     return True
                 
                 # Human-like 행동 중간중간 수행
@@ -319,10 +322,10 @@ class PlaywrightManager:
                 await page.wait_for_timeout(1000)
                 
             except Exception as e:
-                print(f"[Playwright] Challenge wait error: {e}")
+                logger.debug(f"Challenge wait error: {e}")
                 await page.wait_for_timeout(1000)
         
-        print(f"[Playwright] Cloudflare challenge timeout after {max_wait}s")
+        logger.debug(f"Cloudflare challenge timeout after {max_wait}s")
         return False
 
     async def attempt_captcha_bypass(self, page: Page) -> bool:
@@ -337,7 +340,7 @@ class PlaywrightManager:
             turnstile_frames = page.frames
             for frame in turnstile_frames:
                 if 'turnstile' in frame.url or 'challenges.cloudflare.com' in frame.url:
-                    print(f"[Playwright] Found Turnstile frame: {frame.url}")
+                    logger.debug(f"Found Turnstile frame: {frame.url}")
                     try:
                         # Turnstile 체크박스 클릭 시도
                         checkbox = frame.locator("input[type='checkbox']")
@@ -355,11 +358,11 @@ class PlaywrightManager:
                                     box['x'] + box['width'] / 2,
                                     box['y'] + box['height'] / 2
                                 )
-                                print("[Playwright] Turnstile checkbox clicked")
+                                logger.debug("Turnstile checkbox clicked")
                                 await page.wait_for_timeout(3000)
                                 return True
                     except Exception as frame_err:
-                        print(f"[Playwright] Turnstile frame interaction error: {frame_err}")
+                        logger.debug(f"Turnstile frame interaction error: {frame_err}")
             
             # 3. 일반적인 봇 확인 버튼 선택자들
             candidates = [
@@ -382,7 +385,7 @@ class PlaywrightManager:
                     elements = await page.locator(selector).all()
                     for el in elements:
                         if await el.is_visible():
-                            print(f"[Playwright] Clicking candidate: {selector}")
+                            logger.debug(f"Clicking candidate: {selector}")
                             # 마우스로 자연스럽게 이동 후 클릭
                             box = await el.bounding_box()
                             if box:
@@ -413,15 +416,15 @@ class PlaywrightManager:
                     await page.mouse.move(click_x, click_y, steps=15)
                     await page.wait_for_timeout(200)
                     await page.mouse.click(click_x, click_y)
-                    print(f"[Playwright] Coordinate click at ({click_x}, {click_y})")
+                    logger.debug(f"Coordinate click at ({click_x}, {click_y})")
                     await page.wait_for_timeout(3000)
             except Exception as coord_err:
-                print(f"[Playwright] Coordinate click error: {coord_err}")
+                logger.debug(f"Coordinate click error: {coord_err}")
             
             return False
             
         except Exception as e:
-            print(f"[Playwright] Bypass error: {e}")
+            logger.debug(f"Bypass error: {e}")
             return False
 
     async def scrape_url(self, url: str) -> dict:
@@ -442,15 +445,15 @@ class PlaywrightManager:
         # Retry logic for browser connection
         for attempt in range(2):
             try:
-                print(f"[Playwright] Attempt {attempt+1} for {url}. Loop: {id(asyncio.get_running_loop())}")
+                logger.debug(f"Attempt {attempt+1} for {url}. Loop: {id(asyncio.get_running_loop())}")
                 
                 # Always call start() to ensure loop compatibility
                 # start() internal logic handles the "already started in same loop" case efficiently
-                print(f"[Playwright] Checking browser state... (Headless: {self.headless})")
+                logger.debug(f"Checking browser state... (Headless: {self.headless})")
                 await self.start()
                 
                 # 새 컨텍스트 생성 (모바일 에뮬레이션 - SMS는 모바일에서 클릭되므로)
-                print("[Playwright] Creating mobile context (iPhone emulation)...")
+                logger.debug("Creating mobile context (iPhone emulation)...")
                 context = await self.browser.new_context(
                     user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
                     viewport={"width": 390, "height": 844},
@@ -459,10 +462,10 @@ class PlaywrightManager:
                     has_touch=True,
                     ignore_https_errors=True  # SSL 인증서 오류 무시 (스팸 사이트 분석용)
                 )
-                print("[Playwright] Mobile context created (iPhone 14 Pro emulation).")
+                logger.debug("Mobile context created (iPhone 14 Pro emulation).")
                 break # Success
             except Exception as e:
-                print(f"Browser connection failed (Attempt {attempt+1}): {e}")
+                logger.warning(f"Browser connection failed (Attempt {attempt+1}): {e}")
                 # Force reset
                 self.browser = None
                 self.playwright = None
@@ -481,11 +484,11 @@ class PlaywrightManager:
             # 강화된 봇 감지 우회 Stealth 스크립트 적용
             await page.add_init_script(ENHANCED_STEALTH_SCRIPT)
             
-            print(f"[Playwright] Page created with enhanced stealth. Navigating to {url}...")
+            logger.debug(f"Page created with enhanced stealth. Navigating to {url}...")
             
             # 1. 페이지 로드 (타임아웃 20초로 증가)
             response = await page.goto(url, wait_until="domcontentloaded", timeout=20000)
-            print(f"[Playwright] Navigation complete. Status: {response.status if response else 'None'}")
+            logger.debug(f"Navigation complete. Status: {response.status if response else 'None'}")
             
             # 리디렉션 최종 URL 업데이트
             final_url = page.url
@@ -498,7 +501,7 @@ class PlaywrightManager:
             await self.simulate_human_behavior(page)
             
             # 3. 렌더링 대기 (동적 콘텐츠) - 시간 증가
-            print("[Playwright] Waiting for content...")
+            logger.debug("Waiting for content...")
             await page.wait_for_timeout(2000)
             
             # 4. 봇 방어 시스템 감지 및 대기 (Cloudflare, 부정클릭방지 등)
@@ -514,11 +517,11 @@ class PlaywrightManager:
             is_bot_protected = any(ind in text_content_initial.lower() for ind in bot_protection_indicators)
             
             if is_bot_protected:
-                print("[Playwright] Bot protection detected. Waiting for auto-resolution...")
+                logger.info("Bot protection detected. Waiting for auto-resolution...")
                 # 봇 방어 자동 해결 대기 (최대 25초)
                 protection_passed = await self.wait_for_bot_protection(page, max_wait=25)
                 if not protection_passed:
-                    print("[Playwright] Protection not auto-resolved. Attempting manual bypass...")
+                    logger.info("Protection not auto-resolved. Attempting manual bypass...")
                     await self.attempt_captcha_bypass(page)
                     await page.wait_for_timeout(3000)
                     
@@ -528,7 +531,7 @@ class PlaywrightManager:
                     # 여전히 보호 중이면 플래그 설정
                     if any(ind in text_content_initial.lower() for ind in bot_protection_indicators):
                         result["bot_protection_active"] = True
-                        print("[Playwright] Bot protection still active after bypass attempts.")
+                        logger.info("Bot protection still active after bypass attempts.")
 
             # 2.5 팝업 닫기 시도 (Heuristic)
             popup_count = 0
@@ -554,7 +557,7 @@ class PlaywrightManager:
                                 pass # 클릭 실패해도 무시하고 계속
             except Exception as e_popup:
                 # 팝업 닫기 중 에러가 나도 메인 로직은 진행
-                print(f"Popup close warning: {e_popup}")
+                logger.debug(f"Popup close warning: {e_popup}")
             
             result["popup_count"] = popup_count
 
@@ -571,11 +574,11 @@ class PlaywrightManager:
             lower_text = text_content.lower()
             if any(k in lower_text for k in captcha_keywords):
                 result["captcha_detected"] = True
-                print(f"[Playwright] Captcha/Interstitial detected. Attempting bypass...")
+                logger.info(f"Captcha/Interstitial detected. Attempting bypass...")
                 # Bypass 시도
                 if await self.attempt_captcha_bypass(page):
                     # 우회 성공 가능성 있으므로 텍스트/타이틀 다시 추출
-                    print("[Playwright] Bypass action performed. Refreshing content...")
+                    logger.debug("Bypass action performed. Refreshing content...")
                     result["title"] = await page.title()
                     text_content = await page.evaluate("document.body.innerText")
                     # 재검사
@@ -587,20 +590,26 @@ class PlaywrightManager:
             result["text"] = text_content[:5000] # 너무 길면 자름
             
             # 4. 스크린샷 캡처
-            print("[Playwright] capturing screenshot...")
+            logger.debug("Capturing screenshot...")
             screenshot_bytes = await page.screenshot(type="jpeg", quality=60, full_page=False)
             result["screenshot_b64"] = base64.b64encode(screenshot_bytes).decode('utf-8')
             
             result["status"] = "success"
-            print(f"[Playwright] Success. Title: {result['title']}")
+            logger.info(f"Scraping success: {result['title'][:50]}")
 
         except Exception as e:
-            print(f"[Playwright] Scraping Error: {e}")
-            result["error"] = str(e)
-            result["status"] = "error"
+            # Check for Playwright TimeoutError specifically
+            if "Timeout" in str(e) and "Page.goto" in str(e):
+                logger.warning(f"Scraping Timeout (likely bot protection): {e}")
+                result["error"] = "Timeout (Bot Protection?)"
+                result["status"] = "timeout"
+            else:
+                logger.exception("Scraping error")
+                result["error"] = str(e)
+                result["status"] = "error"
         
         finally:
-            print("[Playwright] Closing context.")
+            logger.debug("Closing context.")
             await context.close()
             
         return result

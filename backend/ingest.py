@@ -11,7 +11,7 @@ load_dotenv(dotenv_path=".env", override=True)
 
 def ingest_data():
     file_path = "data/spam_guide.md"
-    db_path = "data/chroma_db"
+    db_path = "../data/chroma_db"
     
     # Check API Key
     if not os.getenv("OPENAI_API_KEY"):
@@ -23,10 +23,28 @@ def ingest_data():
         print(f"Error: Guide file not found at {file_path}")
         return
 
-    # 1. Clear existing DB to prevent duplicates
-    if os.path.exists(db_path):
-        print(f"Cleaning persistent directory: {db_path}...")
-        shutil.rmtree(db_path)
+    # 1. Safer Reset: Only delete 'spam_guide' collection
+    # Do NOT delete the entire directory, as it deletes 'fn_examples' too.
+    print(f"Connecting to ChromaDB at {db_path}...")
+    # Initialize Persistent Client
+    import chromadb
+    client = chromadb.PersistentClient(path=db_path)
+    
+    try:
+        # Check if collection exists and delete it
+        collections = client.list_collections()
+        collection_names = [c.name for c in collections]
+        
+        if "spam_guide" in collection_names:
+            print("Deleting existing 'spam_guide' collection...")
+            client.delete_collection("spam_guide")
+        else:
+            print("'spam_guide' collection does not exist, creating new...")
+            
+    except Exception as e:
+        print(f"Error resetting collection: {e}")
+        # Fallback (safety): If completely broken, maybe warn user?
+        # But we continue to try creating it.
 
     print(f"Loading data from {file_path}...")
     loader = TextLoader(file_path, encoding='utf-8')

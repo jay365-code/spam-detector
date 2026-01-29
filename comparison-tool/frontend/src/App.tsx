@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Upload, FileSpreadsheet, RefreshCw, AlertCircle, ChevronRight, BarChart3, Search, Download, Database, Check, X } from 'lucide-react';
+import { RagRegistrationModal } from './RagRegistrationModal';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -100,7 +101,7 @@ const StatCard = ({ title, value, subValue, description, type = 'neutral' }: { t
   );
 };
 
-const FileInput = ({ label, onChange, file, colorClass }: { label: string, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void, file: File | null, colorClass: string }) => (
+const FileInput = ({ label, onChange, file }: { label: string, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void, file: File | null }) => (
   <div className="space-y-2">
     <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
       <FileSpreadsheet size={16} /> {label}
@@ -139,31 +140,44 @@ export default function App() {
   const [selectedDiff, setSelectedDiff] = useState<DiffItem | null>(null);
   const [filter, setFilter] = useState<'ALL' | 'FN' | 'FP'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   // RAG Save State
   const [ragSaveStatus, setRagSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [ragSaveMessage, setRagSaveMessage] = useState('');
+  const [isRagModalOpen, setIsRagModalOpen] = useState(false);
+  const [ragModalData, setRagModalData] = useState<{
+    message: string;
+    label: string;
+    code: string;
+    diffType: 'FN' | 'FP';
+    reason: string;
+  } | null>(null);
 
-  // RAG 저장 함수
-  const handleSaveToRag = async (diff: DiffItem) => {
-    setRagSaveStatus('saving');
+  // RAG 등록 모달 열기
+  const handleOpenRagModal = (diff: DiffItem) => {
+    setRagModalData({
+      message: diff.message_full,
+      label: diff.human_is_spam ? 'SPAM' : 'HAM',
+      code: diff.human_code || '',
+      diffType: diff.diff_type,
+      reason: diff.human_reason || ''
+    });
+    setIsRagModalOpen(true);
+  };
+
+  // RAG 최종 저장 함수 (모달에서 호출)
+  const handleSaveToRag = async (payload: any) => {
     try {
-      const payload = {
-        message: diff.message_full,
-        label: diff.human_is_spam ? 'SPAM' : 'HAM',
-        code: diff.human_code || '',
-        category: diff.diff_type === 'FN' ? 'FN 스팸 (AI 미탐지)' : 'FP 정상 (AI 오탐)',
-        reason: diff.human_reason || `${diff.diff_type}: Human=${diff.human_is_spam ? 'SPAM' : 'HAM'}, AI=${diff.llm_is_spam ? 'SPAM' : 'HAM'}`
-      };
-      
-      await axios.post('http://localhost:8000/api/fn-examples', payload);
+      await axios.post('http://localhost:8000/api/spam-rag', payload);
       setRagSaveStatus('success');
       setRagSaveMessage('RAG에 저장되었습니다');
-      setTimeout(() => setRagSaveStatus('idle'), 2000);
-    } catch (err) {
-      setRagSaveStatus('error');
-      setRagSaveMessage('저장 실패');
-      setTimeout(() => setRagSaveStatus('idle'), 2000);
+      setTimeout(() => setRagSaveStatus('idle'), 3000);
+    } catch (err: any) {
+      if (err.response && err.response.status === 409) {
+        throw new Error('이미 등록된 메시지입니다.');
+      } else {
+        throw new Error('RAG 서버 저장 중 오류가 발생했습니다.');
+      }
     }
   };
 
@@ -297,13 +311,11 @@ export default function App() {
                 label="Human (Ground Truth)"
                 file={humanFile}
                 onChange={(e) => handleFileChange(e, setHumanFile)}
-                colorClass="indigo"
               />
               <FileInput
                 label="AI (Prediction)"
                 file={llmFile}
                 onChange={(e) => handleFileChange(e, setLlmFile)}
-                colorClass="violet"
               />
             </div>
 
@@ -458,7 +470,7 @@ export default function App() {
                       '🔴 개선 필요'}
                 </div>
               </div>
-              
+
               <p className="text-sm text-slate-600 leading-relaxed">
                 {data.summary.primary_description}
               </p>
@@ -466,7 +478,7 @@ export default function App() {
               {/* Tooltip */}
               <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-[420px] p-4 bg-slate-900 text-white text-xs rounded-2xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none border border-slate-700">
                 <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900 rotate-45 border-t border-l border-slate-700"></div>
-                
+
                 {/* Why these metrics */}
                 <div className="mb-4">
                   <p className="text-[10px] uppercase font-bold text-indigo-400 mb-2">왜 Accuracy + Kappa인가?</p>
@@ -621,8 +633,8 @@ export default function App() {
                     <div className={cn(
                       "px-2 py-1 rounded-md text-xs font-bold",
                       filter === 'ALL' ? "bg-slate-200 text-slate-600" :
-                      filter === 'FN' ? "bg-rose-100 text-rose-700" :
-                      "bg-amber-100 text-amber-700"
+                        filter === 'FN' ? "bg-rose-100 text-rose-700" :
+                          "bg-amber-100 text-amber-700"
                     )}>
                       {filter} {diffCounts[filter]}
                     </div>
@@ -656,10 +668,10 @@ export default function App() {
                         {f}
                         <span className={cn(
                           "text-[10px] px-1.5 py-0.5 rounded-full",
-                          filter === f 
-                            ? f === 'FN' ? "bg-rose-100 text-rose-700" 
-                              : f === 'FP' ? "bg-amber-100 text-amber-700" 
-                              : "bg-slate-200 text-slate-600"
+                          filter === f
+                            ? f === 'FN' ? "bg-rose-100 text-rose-700"
+                              : f === 'FP' ? "bg-amber-100 text-amber-700"
+                                : "bg-slate-200 text-slate-600"
                             : "bg-slate-200/50 text-slate-400"
                         )}>
                           {diffCounts[f]}
@@ -676,11 +688,11 @@ export default function App() {
                         onClick={() => handleDownloadText(f)}
                         className={cn(
                           "flex-1 py-1.5 px-2 rounded-lg text-[10px] font-bold transition-all flex items-center justify-center gap-1 border",
-                          f === 'ALL' 
+                          f === 'ALL'
                             ? "bg-slate-700 text-white hover:bg-slate-800 border-slate-700"
                             : f === 'FN'
-                            ? "bg-rose-50 text-rose-700 hover:bg-rose-100 border-rose-200"
-                            : "bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200"
+                              ? "bg-rose-50 text-rose-700 hover:bg-rose-100 border-rose-200"
+                              : "bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200"
                         )}
                         title={`${f} 항목 텍스트 다운로드`}
                       >
@@ -770,7 +782,7 @@ export default function App() {
                               <span className="w-2 h-2 rounded-full bg-indigo-500"></span> Human Label
                               {/* RAG 저장 버튼 */}
                               <button
-                                onClick={() => handleSaveToRag(selectedDiff)}
+                                onClick={() => handleOpenRagModal(selectedDiff)}
                                 disabled={ragSaveStatus === 'saving'}
                                 className={cn(
                                   "ml-1 p-1 rounded-md transition-all",
@@ -878,6 +890,12 @@ export default function App() {
           </div>
         )}
       </main>
+      <RagRegistrationModal
+        isOpen={isRagModalOpen}
+        onClose={() => setIsRagModalOpen(false)}
+        data={ragModalData}
+        onSave={handleSaveToRag}
+      />
     </div>
   );
 }
