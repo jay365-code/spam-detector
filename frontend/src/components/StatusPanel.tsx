@@ -6,10 +6,10 @@ interface StatusPanelProps {
     total: number;
     isProcessing: boolean;
     downloadUrl: string | null;
-    filename: string | null;
+    onDownload?: () => void;
 }
 
-export const StatusPanel: React.FC<StatusPanelProps> = ({ current, total, isProcessing, downloadUrl, filename }) => {
+export const StatusPanel: React.FC<StatusPanelProps> = ({ current, total, isProcessing, downloadUrl, onDownload }) => {
     if ((!isProcessing && !downloadUrl) || total === 0) return null;
 
     const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
@@ -42,17 +42,17 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({ current, total, isProc
                 </div>
             </div>
 
-            {/* Download Button (Inline) */}
+            {/* Download Button (Inline) - Using custom handler for Save As */}
             {downloadUrl && (
-                <a
-                    href={downloadUrl}
-                    download={filename || "result.xlsx"}
+                <button
+                    onClick={() => onDownload ? onDownload() : window.open(downloadUrl, '_blank')}
                     className="flex items-center justify-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-green-500/20 whitespace-nowrap"
                 >
                     <Download className="w-4 h-4" />
                     Download
-                </a>
+                </button>
             )}
         </div>
     );
 };
+

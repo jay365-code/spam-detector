@@ -296,8 +296,84 @@ app.add_middleware(
 # Directories
 UPLOAD_DIR = "../data/uploads"
 OUTPUT_DIR = "../data/outputs"
+REPORTS_DIR = "../data/reports"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(REPORTS_DIR, exist_ok=True)
+
+# ========== Report Management API ==========
+class ReportSaveRequest(BaseModel):
+    report_name: str
+    source_filename: str
+    logs: List[dict]
+
+@app.post("/api/reports/save")
+async def save_report(request: ReportSaveRequest):
+    """현재 로그를 리포트 파일로 저장"""
+    import json
+    from datetime import datetime
+    try:
+        timestamp = datetime.now().isoformat()
+        report_data = {
+            "report_name": request.report_name,
+            "source_filename": request.source_filename,
+            "timestamp": timestamp,
+            "logs": request.logs
+        }
+        
+        # 파일명 생성: report_name_timestamp.json
+        safe_name = "".join([c for c in request.report_name if c.isalnum() or c in (' ', '_', '-')]).strip()
+        if not safe_name: safe_name = "report"
+        filename = f"{safe_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        filepath = os.path.join(REPORTS_DIR, filename)
+        
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(report_data, f, ensure_ascii=False, indent=2)
+            
+        logger.info(f"Report saved: {filename}")
+        return {"success": True, "filename": filename}
+    except Exception as e:
+        logger.error(f"Report Save Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/reports")
+async def list_reports():
+    """저장된 리포트 목록 조회"""
+    try:
+        if not os.path.exists(REPORTS_DIR):
+            return {"success": True, "reports": []}
+        files = [f for f in os.listdir(REPORTS_DIR) if f.endswith(".json")]
+        reports = []
+        for f in files:
+             filepath = os.path.join(REPORTS_DIR, f)
+             reports.append({
+                 "filename": f,
+                 "mtime": os.path.getmtime(filepath)
+             })
+        # 최신 수정순 정렬
+        reports.sort(key=lambda x: x["mtime"], reverse=True)
+        return {"success": True, "reports": reports}
+    except Exception as e:
+        logger.error(f"List Reports Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/reports/{filename}")
+async def get_report(filename: str):
+    """특정 리포트 내용 로드"""
+    import json
+    try:
+        filepath = os.path.join(REPORTS_DIR, filename)
+        if not os.path.exists(filepath):
+            raise HTTPException(status_code=404, detail="Report not found")
+            
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return {"success": True, "data": data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get Report Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Initialize Services & Agents
 from app.agents.ibse_agent.service import IBSEAgentService
@@ -1192,20 +1268,26 @@ async def update_excel_row(update: ExcelRowUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/download/{filename}")
-async def download_file(filename: str):
+async def download_file(filename: str, suggested_name: str = None):
     file_path = os.path.join(OUTPUT_DIR, filename)
     
     if os.path.exists(file_path):
         from urllib.parse import quote
-        # Encode all special characters including parentheses
-        encoded_filename = quote(filename, safe='')
+        # Use suggested_name if provided, otherwise use original filename
+        download_name = suggested_name if suggested_name else filename
+        # Ensure it has the correct extension if suggested_name forgot it
+        if download_name and not download_name.lower().endswith('.xlsx') and filename.lower().endswith('.xlsx'):
+             download_name += '.xlsx'
+             
+        encoded_filename = quote(download_name, safe='')
         headers = {
             "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
         }
         return FileResponse(file_path, filename=None, headers=headers)
     raise HTTPException(status_code=404, detail="File not found")
 
+
 if __name__ == "__main__":
     import uvicorn
     # Use generic run config; reload might still be tricky in script but let's try without reload first or with simple config
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
