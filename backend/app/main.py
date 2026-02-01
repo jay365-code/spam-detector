@@ -38,6 +38,11 @@ from app.agents.url_agent.agent import UrlAnalysisAgent
 from app.utils.excel_handler import ExcelHandler
 from app.core.constants import SPAM_CODE_MAP
 
+# Custom Exception for Cancellation
+class CancellationException(Exception):
+    """처리 취소 예외"""
+    pass
+
 app = FastAPI()
 
 # WebSocket Connection Manager
@@ -47,6 +52,8 @@ class ConnectionManager:
         self.active_connections: Dict[str, WebSocket] = {}
         # Map client_id to list of buffered messages (offline queue)
         self.message_queue: Dict[str, List[dict]] = {}
+        # Cancellation flags for processing
+        self.cancellation_flags: Dict[str, bool] = {}
         # HITL Events
         import threading
         self.hitl_events: Dict[str, threading.Event] = {}
@@ -111,10 +118,20 @@ class ConnectionManager:
             self.message_queue[client_id] = []
         
         self.message_queue[client_id].append(message)
-        
-        # Limit buffer size (e.g., keep last 500 messages to prevent memory overflow)
-        if len(self.message_queue[client_id]) > 500:
-            self.message_queue[client_id].pop(0)
+    
+    # Cancellation Methods
+    def request_cancellation(self, client_id: str):
+        """클라이언트의 처리 취소 요청"""
+        self.cancellation_flags[client_id] = True
+        logger.info(f"Cancellation requested for client {client_id}")
+    
+    def is_cancelled(self, client_id: str) -> bool:
+        """취소 요청 확인"""
+        return self.cancellation_flags.get(client_id, False)
+    
+    def clear_cancellation(self, client_id: str):
+        """취소 플래그 초기화"""
+        self.cancellation_flags.pop(client_id, None)
 
 manager = ConnectionManager()
 
@@ -197,11 +214,35 @@ async def get_spam_rag_stats():
 
 @app.get("/api/spam-rag/search")
 async def search_spam_rag_examples(query: str, k: int = 3):
-    """유사 참조 예시 검색"""
+    """유사 참조 예시 검색 (Intent-based, Threshold-filtered)"""
     try:
+        # 1. Generate Intent Summary for the query (to align with stored vectors)
+        # Run sync method in thread pool to avoid blocking
+        agent = ContentAnalysisAgent()
+        loop = asyncio.get_event_loop()
+        intent_summary = await loop.run_in_executor(None, agent.generate_intent_summary, query)
+        
+        logger.info(f"RAG Search Query: '{query}' -> Intent: '{intent_summary}'")
+
+        # 2. Search using the Intent Summary
         service = get_spam_rag_service()
-        results = service.search_similar(query, k=k)
-        return {"success": True, "data": results, "total": len(results)}
+        results = service.search_similar(intent_summary, k=k)
+        
+        # 3. Filter by RAG_DISTANCE_THRESHOLD (align with LLM prompt injection logic)
+        distance_threshold = float(os.getenv("RAG_DISTANCE_THRESHOLD", "0.35"))
+        hits = results.get("hits", [])
+        filtered_hits = [
+            hit for hit in hits 
+            if hit.get("distance", 999) <= distance_threshold
+        ]
+        
+        logger.info(f"RAG Search: {len(hits)} raw results, {len(filtered_hits)} within threshold ({distance_threshold})")
+        
+        return {
+            "success": True, 
+            "data": {"hits": filtered_hits, "stats": results.get("stats", {})}, 
+            "total": len(filtered_hits)
+        }
     except Exception as e:
         logger.error(f"Spam RAG Search Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -223,11 +264,24 @@ async def get_spam_rag_example(example_id: str):
 
 @app.post("/api/spam-rag")
 async def create_spam_rag_example(example: SpamRagCreate):
-    """새 참조 예시 추가"""
+    """
+    Spam RAG: 새로운 참조 예시 추가 (Intent-based)
+    1. ContentAnalysisAgent를 통해 의도 요약 생성
+    2. Intent Summary를 임베딩 저장, 원본은 메타데이터 저장
+    """
     try:
+        # 1. Generate Intent Summary
+        # Import inside to ensure availability or avoid circular deps if any (though unlikely here)
+        from app.agents.content_agent.agent import ContentAnalysisAgent
+        agent = ContentAnalysisAgent()
+        intent_summary = agent.generate_intent_summary(example.message) # No await
+        logger.info(f"Generated Intent Summary for RAG: '{intent_summary}' (Original: {example.message[:20]}...)")
+
+        # 2. Save to RAG (Intent Summary based)
         service = get_spam_rag_service()
         result = service.add_example(
-            message=example.message,
+            intent_summary=intent_summary,  # Embedding Target
+            original_message=example.message, # Metadata
             label=example.label,
             code=example.code,
             category=example.category,
@@ -780,10 +834,22 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
     except WebSocketDisconnect:
         manager.disconnect(client_id)
 
+@app.post("/cancel/{client_id}")
+async def cancel_processing(client_id: str):
+    """파일 처리 취소 요청"""
+    manager.request_cancellation(client_id)
+       
+    logger.info(f"Cancellation requested for client {client_id}")
+    return {"message": f"Cancellation requested for {client_id}"}
+
+
 @app.post("/upload")
 async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
     logger.info(f"DEBUG: Receive file upload request from Client {client_id}: {file.filename}")
     try:
+        # Clear any previous cancellation flags
+        manager.clear_cancellation(client_id)
+        
         # Save uploaded file
         file_id = str(uuid.uuid4())
         file_ext = os.path.splitext(file.filename)[1]
@@ -871,6 +937,18 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                         verdict = "SPAM" if final_is_spam else ("HITL" if final_is_spam is None else "HAM")
                         
                         logger.info(f"[Batch {index+1}] 완료 | {verdict} | code={final_code} | prob={final_prob}")
+                        
+                        # [User Request] Generate Final Summary for Logging (Batch Mode)
+                        # graph output contains content/url results needed for summary
+                        content_res = graph_output.get("content_result")
+                        url_res = graph_output.get("url_result")
+                        
+                        if content_res:
+                            # We fire and forget (audit log) - ensuring it logs to console
+                            try:
+                                await rag_filter.generate_final_summary(message, content_res, url_res)
+                            except Exception as ex:
+                                logger.warning(f"Batch Summary Gen Error: {ex}")
                         
                         return index, final_res
                         
@@ -981,7 +1059,11 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
             # Process TXT (Blocking call -> Run in ThreadPool)
             result = await loop.run_in_executor(
                 None, 
-                lambda: excel_handler.process_kisa_txt(input_path, OUTPUT_DIR, process_message_with_hitl, progress_callback, batch_size=batch_size_env, original_filename=file.filename)
+                lambda: excel_handler.process_kisa_txt(
+                    input_path, OUTPUT_DIR, process_message_with_hitl, progress_callback, 
+                    batch_size=batch_size_env, original_filename=file.filename,
+                    manager=manager, client_id=client_id
+                )
             )
             if isinstance(result, dict) and "filename" in result:
                 output_filename = result["filename"]
@@ -993,6 +1075,27 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
             )
         
         return {"id": file_id, "filename": output_filename, "message": "Processing complete"}
+    
+    except CancellationException as e:
+        logger.info(f"Processing cancelled: {e}")
+        try:
+            await manager.send_personal_message({
+                "type": "cancellation_confirmed",
+                "message": "처리가 중지되었습니다."
+            }, client_id)
+        except Exception as ws_error:
+            logger.warning(f"Failed to send cancellation confirmation: {ws_error}")
+            
+        # Safe variable access
+        safe_file_id = locals().get('file_id', 'unknown')
+        safe_filename = locals().get('output_filename', None)
+        
+        return {
+            "id": safe_file_id, 
+            "filename": safe_filename,
+            "message": "Processing cancelled by user",
+            "status": "cancelled"
+        }
         
     except Exception as e:
         logger.error(f"Error during upload/processing: {e}")
@@ -1001,7 +1104,8 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
 class ExcelRowUpdate(BaseModel):
     """엑셀 행 업데이트 요청"""
     filename: str
-    message: str  # 메시지로 행 찾기
+    excel_row_number: int  # Required: Direct row number for update
+    message: str  # For validation only
     is_spam: bool
     classification_code: str
     reason: str
@@ -1075,25 +1179,34 @@ async def update_excel_row(update: ExcelRowUpdate):
         if not msg_col:
             raise HTTPException(status_code=400, detail="'메시지' column not found in Excel")
         
-        # 메시지로 행 찾기 + 현재 상태 저장
-        found_row = None
+        # 행 번호로 직접 접근 + 검증
+        found_row = update.excel_row_number
+        
+        # 검증 1: 행 번호 범위 확인
+        if found_row < 2 or found_row > ws.max_row:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid row number: {found_row} (valid range: 2-{ws.max_row})"
+            )
+        
+        # 검증 2: 메시지 일치 확인
+        cell_value = ws.cell(row=found_row, column=msg_col).value
+        if not cell_value or str(cell_value).strip() != update.message.strip():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Row {found_row} message mismatch. Expected: '{update.message[:50]}...', Found: '{str(cell_value)[:50] if cell_value else 'None'}...'"
+            )
+        
+        logger.info(f"Updating Excel row {found_row}: {update.message[:50]}...")
+        
+        # 현재 상태 저장
         was_spam = False
         old_code = ""
-        
-        for row_idx in range(2, ws.max_row + 1):
-            cell_value = ws.cell(row=row_idx, column=msg_col).value
-            if cell_value and str(cell_value).strip() == update.message.strip():
-                found_row = row_idx
-                # 현재 상태 저장
-                if gubun_col:
-                    gubun_val = ws.cell(row=row_idx, column=gubun_col).value
-                    was_spam = (gubun_val == "o")
-                if code_col:
-                    old_code = str(ws.cell(row=row_idx, column=code_col).value or "")
-                break
-        
-        if not found_row:
-            raise HTTPException(status_code=404, detail="Message not found in Excel")
+        if gubun_col:
+            gubun_val = ws.cell(row=found_row, column=gubun_col).value
+            was_spam = (gubun_val == "o")
+        if code_col:
+            old_code = str(ws.cell(row=found_row, column=code_col).value or "")
         
         # 새 코드 값 계산
         if update.is_spam:

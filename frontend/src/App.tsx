@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { CheckCircle, AlertCircle, User, Database, Pencil, X, Save, Loader2, Search, FileText, FolderOpen } from 'lucide-react';
 import { FileUpload } from './components/FileUpload';
 import { StatusPanel } from './components/StatusPanel';
@@ -104,6 +104,10 @@ function App() {
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadFilename, setDownloadFilename] = useState<string | null>(null);
 
+  // Cancellation State
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancellationMessage, setCancellationMessage] = useState('');
+
   // RAG Manager State
   const [isRagManagerOpen, setIsRagManagerOpen] = useState(false);
   const [ragInitialData, setRagInitialData] = useState<{
@@ -124,13 +128,34 @@ function App() {
     setIsRagManagerOpen(true);
   };
 
+  // Constants for Category (Duplicated from RagManager for now)
+  const SPAM_CATEGORY_PRESETS = [
+    '도박 / 게임', '성인 / 유흥', '유흥업소', '통신 / 휴대폰 스팸', '대리운전',
+    '불법 의약품', '금융 / 대출 사기', '구인 / 부업 (불법·어뷰즈)', '나이트클럽',
+    '주식 리딩 / 사기', '로또 사기', '피싱 / 스미싱',
+  ];
+
+  const HAM_CATEGORY_PRESETS = [
+    '정상 광고/마케팅', '배송/택배 알림', '결제/승인 알림', '예약/일정 안내',
+    '공공/행정 안내', '개인 메시지', '기타 정상',
+  ];
+
+  const CATEGORY_CODE_MAP: Record<string, string> = {
+    '도박 / 게임': '3', '성인 / 유흥': '1', '유흥업소': '1', '통신 / 휴대폰 스팸': '0',
+    '대리운전': '0', '불법 의약품': '1', '금융 / 대출 사기': '3',
+    '구인 / 부업 (불법·어뷰즈)': '0', '나이트클럽': '1', '주식 리딩 / 사기': '2',
+    '로또 사기': '2', '피싱 / 스미싱': '2',
+  };
+
   // 결과 수정 모달 State
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<{
     index: number;
+    excel_row_number?: number; // Add optional property
     message: string;
     is_spam: boolean;
     classification_code: string;
+    category: string;
     reason: string;
     spam_probability: number;
   } | null>(null);
@@ -140,18 +165,36 @@ function App() {
   const openEditModal = (logIndex: number, log: any) => {
     setEditingLog({
       index: logIndex,
+      excel_row_number: log.excel_row_number,  // Add row number
       message: log.message,
       is_spam: log.result.is_spam,
       classification_code: log.result.classification_code || '',
+      category: '', // Report usually doesn't have category, default to empty
       reason: log.result.reason || '',
       spam_probability: log.result.spam_probability || 0.95
     });
     setEditModalOpen(true);
   };
 
+  const handleEditCategoryClick = (cat: string) => {
+    if (!editingLog) return;
+    const newCode = CATEGORY_CODE_MAP[cat] || editingLog.classification_code;
+    setEditingLog({
+      ...editingLog,
+      category: cat,
+      classification_code: newCode
+    });
+  };
+
   // 수정 저장
   const saveEdit = async () => {
     if (!editingLog || !downloadFilename) return;
+
+    // Validate excel_row_number exists
+    if (!editingLog.excel_row_number) {
+      alert('Excel 행 번호 정보가 없습니다. JSON 리포트를 다시 생성해주세요.');
+      return;
+    }
 
     setEditSaving(true);
     try {
@@ -161,6 +204,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filename: downloadFilename,
+          excel_row_number: editingLog.excel_row_number,  // Add row number
           message: editingLog.message,
           is_spam: editingLog.is_spam,
           classification_code: editingLog.classification_code,
@@ -199,6 +243,37 @@ function App() {
       alert(`저장 실패: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setEditSaving(false);
+    }
+  };
+
+  // Cancel Processing Handler
+  const handleCancelProcessing = async () => {
+    if (isCancelling) {
+      alert('이미 중지 요청이 진행 중입니다.');
+      return;
+    }
+
+    const confirmed = confirm(
+      '⚠️ 주의: 즉시 중지되지 않습니다\n\n' +
+      '현재 처리 중인 배치(최대 20개 메시지)가 완료된 후 중지됩니다.\n' +
+      '계속하시겠습니까?'
+    );
+
+    if (!confirmed) return;
+
+    setIsCancelling(true);
+    setCancellationMessage('중지 요청 중...');
+
+    try {
+      await fetch(`http://localhost:8000/cancel/${clientId}`, {
+        method: 'POST'
+      });
+      setCancellationMessage('현재 배치 완료 대기 중...');
+    } catch (error) {
+      console.error('Cancel failed:', error);
+      alert('중지 요청 실패: ' + error);
+      setIsCancelling(false);
+      setCancellationMessage('');
     }
   };
 
@@ -468,6 +543,16 @@ function App() {
           setHitlRequest(data);
           setIsProcessing(true);
         }
+
+        // Handle Cancellation Confirmation
+        if (data.type === 'cancellation_confirmed') {
+          console.log('Cancellation confirmed:', data.message);
+          setIsProcessing(false);
+          // 상태를 유지하여 UI에 메시지가 계속 보이게 함
+          setIsCancelling(true);
+          setCancellationMessage('🚫 중간에 강제 중지 되었습니다.');
+          // 로그 출력 제거
+        }
       };
 
       ws.onclose = () => {
@@ -538,6 +623,9 @@ function App() {
     setHitlRequest(null);
     setActiveReportName(null); // 분석 시작 시 보고서 모드 해제
     setActiveReportFileName(null);
+    // Reset cancellation state
+    setIsCancelling(false);
+    setCancellationMessage('');
   };
 
   const handleUploadComplete = (filename: string) => {
@@ -633,10 +721,13 @@ function App() {
                 onFileSelect={() => {
                   setProgress({ current: 0, total: 0 });
                   setDownloadUrl(null);
+                  setLogs([]);
+                  setIsCancelling(false);
+                  setCancellationMessage('');
                 }}
               />
             </div>
-            {((isProcessing || downloadUrl) && progress.total > 0) && (
+            {(isProcessing || (downloadUrl && progress.total > 0)) && (
               <div className="flex-1 max-w-sm min-w-[300px]">
                 <StatusPanel
                   current={progress.current}
@@ -644,6 +735,9 @@ function App() {
                   isProcessing={isProcessing}
                   downloadUrl={downloadUrl}
                   onDownload={handleExcelSaveAs}
+                  isCancelling={isCancelling}
+                  cancellationMessage={cancellationMessage}
+                  onCancel={handleCancelProcessing}
                 />
               </div>
             )}
@@ -880,110 +974,143 @@ function App() {
         initialData={ragInitialData}
       />
 
-      {/* 결과 수정 Modal */}
+      {/* 결과 수정 Modal (Premium Dark Style) */}
       {editModalOpen && editingLog && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg mx-4 shadow-2xl">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl mx-4 shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
-              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Pencil className="w-5 h-5 text-yellow-400" />
-                결과 수정
-              </h2>
+            <div className="flex items-center justify-between px-8 py-5 border-b border-slate-800 bg-slate-900">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
+                  <Pencil size={20} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">결과 수정</h2>
+                  <p className="text-xs text-slate-400 font-medium">리포트 데이터 및 분석 결과 보정</p>
+                </div>
+              </div>
               <button
                 onClick={() => { setEditModalOpen(false); setEditingLog(null); }}
-                className="p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-white"
+                className="p-2 hover:bg-slate-800 rounded-xl transition-colors"
               >
-                <X className="w-5 h-5" />
+                <X size={20} className="text-slate-400 hover:text-white" />
               </button>
             </div>
 
             {/* Content */}
-            <div className="p-4 space-y-4">
-              {/* 메시지 (읽기 전용) */}
+            <div className="flex-1 overflow-y-auto p-8 space-y-6 max-h-[75vh] custom-scrollbar">
+              {/* Message (Readonly) */}
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">메시지</label>
-                <div className="p-2 bg-slate-800 rounded border border-slate-700 text-sm text-slate-400 max-h-20 overflow-auto">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">메시지 원문</label>
+                <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl text-slate-300 text-sm leading-relaxed max-h-32 overflow-y-auto whitespace-pre-wrap">
                   {editingLog.message}
                 </div>
               </div>
 
-              {/* 판정 */}
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">판정</label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setEditingLog({ ...editingLog, is_spam: true, classification_code: editingLog.classification_code || '1' })}
-                    className={`flex-1 py-2 rounded-lg font-medium transition-colors ${editingLog.is_spam
-                      ? 'bg-red-500 text-white'
-                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                      }`}
-                  >
-                    SPAM
-                  </button>
-                  <button
-                    onClick={() => setEditingLog({ ...editingLog, is_spam: false, classification_code: '' })}
-                    className={`flex-1 py-2 rounded-lg font-medium transition-colors ${!editingLog.is_spam
-                      ? 'bg-green-500 text-white'
-                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                      }`}
-                  >
-                    HAM
-                  </button>
+              {/* Status Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">판정</label>
+                  <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                    <button
+                      onClick={() => setEditingLog({ ...editingLog, is_spam: true, classification_code: editingLog.classification_code || '1' })}
+                      className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${editingLog.is_spam
+                        ? 'bg-rose-500/20 text-rose-400 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-300'
+                        }`}
+                    >
+                      SPAM
+                    </button>
+                    <button
+                      onClick={() => setEditingLog({ ...editingLog, is_spam: false, classification_code: '' })}
+                      className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${!editingLog.is_spam
+                        ? 'bg-emerald-500/20 text-emerald-400 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-300'
+                        }`}
+                    >
+                      HAM
+                    </button>
+                  </div>
                 </div>
+
+                {editingLog.is_spam && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">분류 코드</label>
+                    <select
+                      value={editingLog.classification_code}
+                      onChange={(e) => setEditingLog({ ...editingLog, classification_code: e.target.value })}
+                      className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all appearance-none"
+                    >
+                      <option value="0">0 - 기타 스팸</option>
+                      <option value="1">1 - 유해성 스팸</option>
+                      <option value="2">2 - 사기/투자 스팸</option>
+                      <option value="3">3 - 불법 도박/대출</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
-              {/* 분류 코드 (SPAM일 때만) */}
-              {editingLog.is_spam && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">분류 코드</label>
-                  <select
-                    value={editingLog.classification_code}
-                    onChange={(e) => setEditingLog({ ...editingLog, classification_code: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="0">0 - 기타 스팸</option>
-                    <option value="1">1 - 유해성 스팸</option>
-                    <option value="2">2 - 사기/투자 스팸</option>
-                    <option value="3">3 - 불법 도박/대출</option>
-                  </select>
-                </div>
-              )}
-
-              {/* 판단 근거 */}
+              {/* Category */}
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">판단 근거</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">카테고리</label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {(editingLog.is_spam ? SPAM_CATEGORY_PRESETS : HAM_CATEGORY_PRESETS).map(cat => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => handleEditCategoryClick(cat)}
+                      className={`px-3 py-1.5 text-xs rounded-xl border transition-all ${editingLog.category === cat
+                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-500/30'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                        }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={editingLog.category}
+                  onChange={(e) => setEditingLog({ ...editingLog, category: e.target.value })}
+                  placeholder="직접 입력..."
+                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder-slate-600"
+                />
+              </div>
+
+              {/* Reason */}
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">판단 근거</label>
                 <textarea
                   value={editingLog.reason}
                   onChange={(e) => setEditingLog({ ...editingLog, reason: e.target.value })}
-                  rows={3}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500 resize-none"
-                  placeholder="수정된 판단 근거..."
+                  rows={4}
+                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-2xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all resize-none placeholder-slate-600"
+                  placeholder="Intent / Tactics / Action (의도 / 전술 / 행동)"
                 />
               </div>
             </div>
 
             {/* Footer */}
-            <div className="flex justify-end gap-2 px-4 py-3 border-t border-slate-700">
+            <div className="flex gap-3 px-8 py-5 border-t border-slate-800 bg-slate-900">
               <button
                 onClick={() => { setEditModalOpen(false); setEditingLog(null); }}
-                className="px-4 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors"
+                className="flex-1 py-3.5 rounded-2xl bg-slate-800 text-slate-300 font-bold hover:bg-slate-700 transition-all"
               >
                 취소
               </button>
               <button
                 onClick={saveEdit}
                 disabled={editSaving}
-                className="px-4 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors flex items-center gap-2 disabled:opacity-50"
+                className="flex-[2] py-3.5 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {editSaving ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-5 h-5 animate-spin" />
                     저장 중...
                   </>
                 ) : (
                   <>
-                    <Save className="w-4 h-4" />
+                    <Save className="w-5 h-5" />
                     저장
                   </>
                 )}

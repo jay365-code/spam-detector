@@ -44,8 +44,8 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             logger.warning(f"RAG Guide Search Error: {e}")
             return []
     
-    def _search_spam_rag(self, message: str, k: int = 2) -> list:
-        """스팸 참조 예시 검색 (Spam RAG)"""
+    def _search_spam_rag(self, intent_summary: str, k: int = 2) -> list:
+        """스팸 참조 예시 검색 (Spam RAG) - Intent Summary 기반"""
         # 환경변수로 검색 비활성화 가능 (비용 절감)
         rag_enabled = os.getenv("SPAM_RAG_ENABLED", "1")
         if rag_enabled != "1":
@@ -55,19 +55,20 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         try:
             from app.services.spam_rag_service import get_spam_rag_service
             rag_service = get_spam_rag_service()
-            results = rag_service.search_similar(message, k=k)
-            return results
+            # Intent Summary로 검색
+            results = rag_service.search_similar(intent_summary, k=k)
+            return results.get("hits", []) # Contract: returns dict with 'hits'
         except Exception as e:
-            logger.warning(f"FN Search Error: {e}")
+            logger.warning(f"RAG Search Error: {e}")
             return []
 
-    def _retrieve_context(self, message: str) -> dict:
+    def _retrieve_context(self, message: str, intent_summary: str = None) -> dict:
         """
         Retrieves context from Vector DB or loads full spam guide.
-        Also retrieves similar FN examples.
+        Also retrieves similar FN examples using Intent Summary.
         
         Returns:
-            dict with 'guide_context' and 'fn_examples'
+            dict with 'guide_context' and 'rag_examples'
         """
         # [Deprecated] RAG 기능 비활성화 (항상 Full Context 사용)
         # rag_on = os.getenv("RAG_ON", "1")
@@ -87,16 +88,20 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         logger.debug("Using Full Spam Guide Text (RAG Disabled)")
         guide_context = self._load_full_guide()
         
-        # FN 예시 검색 (유사 스팸 사례) - 실패해도 분석 계속 진행
-        fn_examples = self._search_spam_rag(message, k=2)
-        if fn_examples:
-            logger.info(f"Spam RAG: {len(fn_examples)}건 검색됨")
+        # RAG 예시 검색 (유사 스팸 사례) - Intent Summary 필수
+        rag_examples = []
+        if intent_summary:
+            rag_examples = self._search_spam_rag(intent_summary, k=2)
+            if rag_examples:
+                logger.info(f"Spam RAG: {len(rag_examples)}건 검색됨")
+            else:
+                logger.debug("Spam RAG: 유사 사례 없음")
         else:
-            logger.debug("Spam RAG: 유사 사례 없음")
+             logger.warning("Spam RAG: Intent Summary missing, skipping search.")
         
         return {
             "guide_context": guide_context,
-            "fn_examples": fn_examples
+            "rag_examples": rag_examples
         }
     
     def _load_full_guide(self) -> str:
@@ -173,37 +178,47 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
 
     def _build_prompt(self, message: str, detected_pattern: str, context_data: dict) -> str:
         guide_context = context_data.get("guide_context", "")
-        fn_examples = context_data.get("fn_examples", [])
+        rag_examples = context_data.get("rag_examples", [])
         
-        # FN 예시 섹션 구성
-        # ChromaDB L2 distance: 0에 가까울수록 유사, 일반적으로 1.0 이하면 관련성 있음
-        # 임계값은 환경변수로 조정 가능 (기본값 1.5)
-        similarity_threshold = float(os.getenv("FN_SIMILARITY_THRESHOLD", "1.5"))
+        # RAG 예시 섹션 구성
+        # ChromaDB L2 distance: 0에 가까울수록 유사
+        # [Intent-based RAG] 문장 유사도가 아닌 '의도 유사도'를 보기 위해 임계값을 0.35로 완화
+        # 0.15 (문장 일치) -> 0.35 (의도 일치: 단어 달라도 맥락 유사하면 허용)
+        distance_threshold = float(os.getenv("RAG_DISTANCE_THRESHOLD", "0.35"))
         
-        fn_section = ""
+        rag_section = ""
         valid_examples = []
         
-        if fn_examples:
-            logger.info(f"    [FN Examples] Filtering with threshold: {similarity_threshold}")
-            for ex in fn_examples:
-                score = ex.get('score', 999)  # 기본값을 높게 설정 (유사하지 않음)
-                logger.info(f"    [FN Examples]   - score: {score:.3f}, included: {score <= similarity_threshold}")
+        if rag_examples:
+            logger.info(f"    [RAG Examples] Filtering with threshold: {distance_threshold}")
+            for ex in rag_examples:
+                # [Fix] Map 'distance' from RAG service to 'score'
+                score = ex.get('score', ex.get('distance', 999))
+                
                 # 유사도 점수가 임계값 이하인 경우만 포함
-                if score <= similarity_threshold:
-                    valid_examples.append(ex)
+                if score <= distance_threshold:
+                    valid_examples.append({**ex, 'score': score}) 
+                else:
+                    logger.debug(f"    [RAG Examples]   - score: {score:.3f}, excluded (threshold: {distance_threshold})")
             
             if valid_examples:
-                fn_section = "\n[Similar SPAM Examples - IMPORTANT REFERENCE]\n"
-                fn_section += "아래는 과거 유사 메시지의 판정 결과입니다. 참고하여 판단하세요:\n"
+                rag_section = "\n[Reference Context - Similar Intent Examples]\n"
+                rag_section += "아래는 유사한 의도(Intent)를 가진 과거 메시지 판정 결과입니다. 참고 자료로만 활용하세요.\n"
                 for i, ex in enumerate(valid_examples, 1):
                     msg_preview = ex.get('message', '')[:100]
-                    fn_section += f"\n예시 {i} (유사도: {ex.get('score', 0):.3f}):\n"
-                    fn_section += f"  메시지: \"{msg_preview}{'...' if len(ex.get('message', '')) > 100 else ''}\"\n"
-                    fn_section += f"  판정: {ex.get('label', 'SPAM')} (code: {ex.get('code', '')})\n"
-                    fn_section += f"  카테고리: {ex.get('category', '')}\n"
-                    fn_section += f"  근거: {ex.get('reason', '')}\n"
-                logger.info(f"    [FN Examples] {len(valid_examples)} examples included in prompt (threshold: {similarity_threshold})")
-                logger.debug(f"    [FN Examples] {fn_section}")
+                    category = ex.get('category', 'N/A')
+                    reason = ex.get('reason', 'N/A')
+                    
+                    rag_section += f"\n예시 {i} (유사도: {ex.get('score', 0):.3f}):\n"
+                    rag_section += f"  메시지: \"{msg_preview}{'...' if len(ex.get('message', '')) > 100 else ''}\"\n"
+                    rag_section += f"  판정: {ex.get('label', 'SPAM')} (code: {ex.get('code', '')})\n"
+                    rag_section += f"  카테고리: {category}\n"
+                    rag_section += f"  근거: {reason}\n"
+                
+                logger.info(f"    [RAG Examples] {len(valid_examples)} examples included in prompt (threshold: {distance_threshold})")
+                
+                # [User Request] Log the exact context injected into prompt
+                logger.debug(f"    [RAG Examples Injected Content]:\n{rag_section}")
         
         return f"""
 너는 스팸 분류 전문가다. 판단 기준은 아래 Spam Guide에만 존재한다.
@@ -214,17 +229,14 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
 
 [Spam Guide]
 {guide_context}
-{fn_section}
+{rag_section}
+
 --------------------------------------------------
 
 [CRITICAL] 너는 텍스트만 분석한다. URL 존재는 SPAM 근거가 아니다 (URL은 별도 Agent가 분석).
 
 [PROCEDURE]
-Step 0. [최우선 순위] FN 유사 사례 확인 (Similar SPAM Examples)
-   - 만약 위 [Similar SPAM Examples] 섹션에 "유사도 0.2 미만"의 "SPAM" 판정 예시가 있다면, 다른 규칙(HARD GATE 등)보다 우선하여 무조건 "SPAM"으로 판정하라.
-   - 이 경우 reason에는 반드시 "과거 동일/유사 스팸 사례(유사도: X.XXX) 확인됨"을 포함하라.
-
-Step 1. HARD GATE 확인 → harm_anchor = false 이면 무조건 HAM (label="HAM") (단, Step 0에서 SPAM이면 무시)
+Step 1. HARD GATE 확인 → harm_anchor = false 이면 무조건 HAM (label="HAM")
 Step 2. harm_anchor 판정 → Guide 2.2 기준 (URL 무시, 텍스트만, 도박/성인/사기/어뷰즈 의도가 명확해야 true)
 Step 3. 의도 명확도 판정 → spam_probability로 표현 (0.85 이상이면 의도가 매우 명확)
 Step 4. SPAM 확정 조건:
@@ -237,7 +249,7 @@ Step 4. SPAM 확정 조건:
 "ham_code": "HAM-1|HAM-2|HAM-3|null",
 "spam_code": "0|1|2|3|null",
 "spam_probability": 0.0,
-"reason": "한국어로 판단 근거 작성",
+"reason": "한국어로 판단 근거 작성 (과거 유사 사례가 있다면 반드시 언급)",
 "signals": {{ "harm_anchor": false, "route_or_cta": false }}
 }}
 """
@@ -350,25 +362,126 @@ Step 4. SPAM 확정 조건:
             "output_tokens": output_tokens
         }
 
+    def _build_prompt(self, message: str, detected_pattern: str, context_data: dict) -> tuple[str, list]:
+        guide_context = context_data.get("guide_context", "")
+        rag_examples = context_data.get("rag_examples", [])
+        
+        # RAG 예시 섹션 구성
+        # ChromaDB L2 distance: 0에 가까울수록 유사
+        # [Intent-based RAG] 문장 유사도가 아닌 '의도 유사도'를 보기 위해 임계값을 0.35로 완화
+        # 0.15 (문장 일치) -> 0.35 (의도 일치: 단어 달라도 맥락 유사하면 허용)
+        distance_threshold = float(os.getenv("RAG_DISTANCE_THRESHOLD", "0.35"))
+        
+        rag_section = ""
+        valid_examples = []
+        
+        if rag_examples:
+            logger.info(f"    [RAG Examples] Filtering with threshold: {distance_threshold}")
+            for ex in rag_examples:
+                # [Fix] Map 'distance' from RAG service to 'score'
+                score = ex.get('score', ex.get('distance', 999))
+                
+                # 유사도 점수가 임계값 이하인 경우만 포함
+                if score <= distance_threshold:
+                    valid_examples.append({**ex, 'score': score}) 
+                else:
+                    logger.debug(f"    [RAG Examples]   - score: {score:.3f}, excluded (threshold: {distance_threshold})")
+            
+            if valid_examples:
+                rag_section = "\n[Reference Context - Similar Intent Examples]\n"
+                rag_section += "아래는 유사한 의도(Intent)를 가진 과거 메시지 판정 결과입니다. 참고 자료로만 활용하세요.\n"
+                for i, ex in enumerate(valid_examples, 1):
+                    msg_preview = ex.get('message', '')[:100]
+                    category = ex.get('category', 'N/A')
+                    reason = ex.get('reason', 'N/A')
+                    
+                    rag_section += f"\n예시 {i} (유사도: {ex.get('score', 0):.3f}):\n"
+                    rag_section += f"  메시지: \"{msg_preview}{'...' if len(ex.get('message', '')) > 100 else ''}\"\n"
+                    rag_section += f"  판정: {ex.get('label', 'SPAM')} (code: {ex.get('code', '')})\n"
+                    rag_section += f"  카테고리: {category}\n"
+                    rag_section += f"  근거: {reason}\n"
+                
+                logger.info(f"    [RAG Examples] {len(valid_examples)} examples included in prompt (threshold: {distance_threshold})")
+                
+                # [User Request] Log the exact context injected into prompt
+                logger.debug(f"    [RAG Examples Injected Content]:\n{rag_section}")
+        
+        prompt_text = f"""
+너는 스팸 분류 전문가다. 판단 기준은 아래 Spam Guide에만 존재한다.
+
+--------------------------------------------------
+[Message]
+\"\"\"{message}\"\"\"
+
+[Spam Guide]
+{guide_context}
+{rag_section}
+
+--------------------------------------------------
+
+[CRITICAL] 너는 텍스트만 분석한다. URL 존재는 SPAM 근거가 아니다 (URL은 별도 Agent가 분석).
+
+[PROCEDURE]
+Step 1. HARD GATE 확인 → harm_anchor = false 이면 무조건 HAM (label="HAM")
+Step 2. harm_anchor 판정 → Guide 2.2 기준 (URL 무시, 텍스트만, 도박/성인/사기/어뷰즈 의도가 명확해야 true)
+Step 3. 의도 명확도 판정 → spam_probability로 표현 (0.85 이상이면 의도가 매우 명확)
+Step 4. SPAM 확정 조건:
+   - 의도가 매우 명확 (spam_probability >= 0.85): harm_anchor=true면 SPAM (route_or_cta 무시)
+   - 의도가 애매 (spam_probability < 0.85): harm_anchor=true AND route_or_cta=true 일 때만 SPAM
+
+[OUTPUT — JSON ONLY]
+{{
+"label": "HAM|SPAM",
+"ham_code": "HAM-1|HAM-2|HAM-3|null",
+"spam_code": "0|1|2|3|null",
+"spam_probability": 0.0,
+"reason": "한국어로 판단 근거 작성 (과거 유사 사례가 있다면 반드시 언급)",
+"signals": {{ "harm_anchor": false, "route_or_cta": false }}
+}}
+"""
+        return prompt_text, valid_examples
+
     def check(self, message: str, stage1_result: dict) -> dict:
         """
         Stage 2: RAG + LLM (Sync Version)
         """
-        # 메시지 원문 로그 (DEBUG로 변경하여 main.py와 중복 최소화)
+        # 메시지 원문 로그
         logger.debug(f"분석 시작 | msg={message[:80]}{'...' if len(message) > 80 else ''}")
         
         try:
-            # 1. RAG Retrieval (guide + FN examples)
-            context_data = self._retrieve_context(message)
+            # 1. Intent Summary Generation
+            intent_summary = self.generate_intent_summary(message)
+            logger.info(f"Intent Summary: {intent_summary[:120]}...")
+
+            # 2. RAG Retrieval (guide + FN examples)
+            context_data = self._retrieve_context(message, intent_summary)
             
+            # [Telemetry] Calculate Distance Metrics (Top 1/2 + Gap)
+            rag_examples = context_data.get('rag_examples', [])
+            d1, d2, gap = 9.9, 9.9, 0.0
+            if len(rag_examples) >= 1:
+                d1 = rag_examples[0].get('score', rag_examples[0].get('distance', 9.9))
+                if len(rag_examples) >= 2:
+                    d2 = rag_examples[1].get('score', rag_examples[1].get('distance', 9.9))
+                    gap = d2 - d1
+            logger.info(f"RAG Metrics | Top1={d1:.4f} | Top2={d2:.4f} | Gap={gap:.4f}")
+
             # 2. LLM Inference
             detected_pattern = stage1_result.get("detected_pattern", "None")
-            prompt = self._build_prompt(message, detected_pattern, context_data)
+            prompt, valid_examples = self._build_prompt(message, detected_pattern, context_data)
             
-            # RAG 프롬프트 적용 확인 로그
-            fn_count = len(context_data.get('fn_examples', []))
+            # [Telemetry] RAG Injection Stats
+            rag_retrieved = len(rag_examples)
+            rag_injected = len(valid_examples)
             has_guide = bool(context_data.get('guide_context'))
-            logger.info(f"프롬프트 생성 완료 | RAG Guide={'O' if has_guide else 'X'} | FN Examples={fn_count}건 포함")
+            
+            # Label Distribution & IDs
+            spam_hits = sum(1 for ex in valid_examples if ex.get('label') == 'SPAM')
+            ham_hits = sum(1 for ex in valid_examples if ex.get('label') == 'HAM')
+            injected_ids = [ex.get('id', 'unk') for ex in valid_examples]
+            
+            logger.info(f"프롬프트 생성 완료 | RAG Guide={'O' if has_guide else 'X'} | rag_retrieved={rag_retrieved}, rag_injected={rag_injected}")
+            logger.info(f"RAG Details | injected_labels=SPAM:{spam_hits}/HAM:{ham_hits} | injected_ids={injected_ids}")
             
             content = self._query_llm(prompt)
             
@@ -381,6 +494,7 @@ Step 4. SPAM 확정 조건:
             is_spam = result.get('is_spam')
             verdict = "SPAM" if is_spam else ("HITL" if is_spam is None else "HAM")
             logger.info(f"판정완료 | {verdict} | code={result.get('classification_code')} | prob={result.get('spam_probability')}")
+            logger.info(f"  - Reason: {result.get('reason')}")
             
             return result
             
@@ -403,9 +517,27 @@ Step 4. SPAM 확정 조건:
         try:
             # 1. RAG Retrieval (guide + FN examples, Run in thread to avoid blocking)
             if status_callback:
+                await status_callback("🧠 의도 파악 중...")
+            
+            # 0. Generate Intent Summary (Blocking LLM call in executor)
+            intent_summary = await loop.run_in_executor(None, lambda: self.generate_intent_summary(message))
+            logger.info(f"Intent Summary: {intent_summary[:120]}...")
+
+            # 1. RAG Retrieval (guide + FN examples, Run in thread to avoid blocking)
+            if status_callback:
                 await status_callback("🔍 문맥 검색 중... (RAG + FN Examples)")
             
-            context_data = await loop.run_in_executor(None, lambda: self._retrieve_context(message))
+            context_data = await loop.run_in_executor(None, lambda: self._retrieve_context(message, intent_summary))
+            
+            # [Telemetry] Calculate Distance Metrics (Top 1/2 + Gap)
+            rag_examples = context_data.get('rag_examples', [])
+            d1, d2, gap = 9.9, 9.9, 0.0
+            if len(rag_examples) >= 1:
+                d1 = rag_examples[0].get('score', rag_examples[0].get('distance', 9.9))
+                if len(rag_examples) >= 2:
+                    d2 = rag_examples[1].get('score', rag_examples[1].get('distance', 9.9))
+                    gap = d2 - d1
+            logger.info(f"RAG Metrics | Top1={d1:.4f} | Top2={d2:.4f} | Gap={gap:.4f}")
             
             # 2. LLM Inference
             if status_callback:
@@ -413,12 +545,20 @@ Step 4. SPAM 확정 조건:
             
             logger.debug("Building prompt...")
             detected_pattern = stage1_result.get("detected_pattern", "None")
-            prompt = self._build_prompt(message, detected_pattern, context_data)
+            prompt, valid_examples = self._build_prompt(message, detected_pattern, context_data)
             
-            # RAG 프롬프트 적용 확인 로그
-            fn_count = len(context_data.get('fn_examples', []))
+            # [Telemetry] RAG Injection Stats
+            rag_retrieved = len(rag_examples)
+            rag_injected = len(valid_examples)
             has_guide = bool(context_data.get('guide_context'))
-            logger.info(f"프롬프트 생성 완료 | RAG Guide={'O' if has_guide else 'X'} | FN Examples={fn_count}건 포함")
+
+            # Label Distribution & IDs
+            spam_hits = sum(1 for ex in valid_examples if ex.get('label') == 'SPAM')
+            ham_hits = sum(1 for ex in valid_examples if ex.get('label') == 'HAM')
+            injected_ids = [ex.get('id', 'unk') for ex in valid_examples]
+
+            logger.info(f"프롬프트 생성 완료 | RAG Guide={'O' if has_guide else 'X'} | rag_retrieved={rag_retrieved}, rag_injected={rag_injected}")
+            logger.info(f"RAG Details | injected_labels=SPAM:{spam_hits}/HAM:{ham_hits} | injected_ids={injected_ids}")
             
             logger.debug(f"Prompt built, length: {len(prompt)} chars")
             
@@ -435,6 +575,7 @@ Step 4. SPAM 확정 조건:
             is_spam = result.get('is_spam')
             verdict = "SPAM" if is_spam else ("HITL" if is_spam is None else "HAM")
             logger.info(f"판정완료 | {verdict} | code={result.get('classification_code')} | prob={result.get('spam_probability')}")
+            logger.info(f"  - Reason: {result.get('reason')}")
             
             if status_callback:
                 await status_callback(f"✅ 분석 완료 (판정: {verdict})")
@@ -545,25 +686,70 @@ Step 4. SPAM 확정 조건:
             response = await llm.ainvoke([HumanMessage(content=prompt)])
             
             # Extract content robustly
+            final_content = ""
             if hasattr(response, 'content'):
                 content = response.content
                 if isinstance(content, list) and len(content) > 0:
                      # Handle list of blocks (e.g. Anthropic)
                      if isinstance(content[0], dict) and 'text' in content[0]:
-                         return content[0]['text']
-                     return str(content) # Fallback if structure unknown
-                return content # Valid string
+                         final_content = content[0]['text']
+                     else:
+                         final_content = str(content) # Fallback if structure unknown
+                else:
+                    final_content = str(content) # Valid string
                 
             elif isinstance(response, list) and len(response) > 0:
                  if isinstance(response[0], dict) and 'text' in response[0]:
-                     return response[0]['text']
+                     final_content = response[0]['text']
                  elif hasattr(response[0], 'content'):
-                     return response[0].content
+                     final_content = response[0].content
+            else:
+                 final_content = str(response)
             
-            return str(response)
-            
-            return str(response)
+            logger.info(f"Final Summary: {final_content}")
+            return final_content
 
         except Exception as e:
             logger.error(f"Summary Generation Error: {e}")
             return "종합 결과 요약 생성 중 오류가 발생했습니다."
+
+    def generate_intent_summary(self, message: str) -> str:
+        """
+        Public method to generate 'Judgement Semantic Unit' (Intent Summary).
+        Used by main.py for saving RAG examples and internally for analysis.
+        (Synchronous version for compatibility)
+        """
+        prompt = f"""
+        [GOAL]
+        Understand the input message and summarize its "Core Intent" in 1-2 sentences.
+        Remove all variable values (amounts, phone numbers, URLs, specifics) and focus on the *Pattern* and *Action*.
+        
+        [INPUT]
+        {message}
+        
+        [OUTPUT GUIDELINES]
+        - Format: "Principal Intent / Tactics / Action Request"
+        - Do NOT include any PII (Person Identifiable Information) or specific numbers.
+        - Example: 
+            Input: "Deposit 300 today, contact 010-1234-5678" 
+            Output: "Illegal Loan Advertisement / Immediate Deposit Promise / Request for contact via personal number"
+        """
+        
+        try:
+            llm = self._get_chat_model()
+            from langchain_core.messages import HumanMessage
+            # Use invoke instead of ainvoke for synchronous execution
+            response = llm.invoke([HumanMessage(content=prompt)])
+            
+            if hasattr(response, 'content'):
+                content = response.content
+                if isinstance(content, list) and len(content) > 0:
+                     if isinstance(content[0], dict) and 'text' in content[0]:
+                         return content[0]['text']
+                     return str(content)
+                return str(content)
+            return str(response)
+
+        except Exception as e:
+            logger.error(f"Intent Summary Generation Error: {e}")
+            return "Error generating intent summary"

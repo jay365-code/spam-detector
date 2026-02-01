@@ -1,7 +1,0 @@
-[광고] 이것은 테스트 메시지 1번입니다.	http://example.com/1
-스팸 아님 정상 메시지	http://example.com/2
-[Web발신] 무료 수신 거부 080-123-4567	http://spam.com/clickme
-안녕하세요, 테스트용입니다.	
-탭 없이 그냥 메시지만 있는 경우
-https://naver.me/only_url_message
-(광고) 대출 상담 1544-0000	http://loan.co.kr

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Edit2, Trash2, Search, Database, RefreshCw, Save, AlertCircle, Copy, Check } from 'lucide-react';
+﻿import React, { useState, useEffect } from 'react';
+import { X, Edit2, Trash2, Search, Database, RefreshCw, Save, AlertCircle, Copy, Check, PenSquare } from 'lucide-react';
 
 interface FnExample {
     id: string;
@@ -27,22 +27,37 @@ interface RagManagerProps {
 const API_BASE = 'http://localhost:8000';
 
 // 스팸 코드 매핑
-const CODE_OPTIONS = [
-    { value: '0', label: '0 - 기타 스팸 (통신, 대리운전 등)' },
-    { value: '1', label: '1 - 유해성 스팸 (성인, 유흥업소 등)' },
-    { value: '2', label: '2 - 사기/투자 스팸 (주식 리딩 등)' },
-    { value: '3', label: '3 - 불법 도박/대출' },
-];
+
 
 const SPAM_CATEGORY_PRESETS = [
-    '술집/유흥업소 광고',
-    '성인용품/서비스 광고',
-    '불법 도박 홍보',
-    '주식/코인 리딩방',
-    '불법 대출 광고',
-    '피싱/사기 메시지',
-    '기타 스팸',
+    '도박 / 게임',
+    '성인 / 유흥',
+    '유흥업소',
+    '통신 / 휴대폰 스팸',
+    '대리운전',
+    '불법 의약품',
+    '금융 / 대출 사기',
+    '구인 / 부업 (불법·어뷰즈)',
+    '나이트클럽',
+    '주식 리딩 / 사기',
+    '로또 사기',
+    '피싱 / 스미싱',
 ];
+
+const CATEGORY_CODE_MAP: Record<string, string> = {
+    '도박 / 게임': '3',
+    '성인 / 유흥': '1',
+    '유흥업소': '1',
+    '통신 / 휴대폰 스팸': '0',
+    '대리운전': '0',
+    '불법 의약품': '1',
+    '금융 / 대출 사기': '3',
+    '구인 / 부업 (불법·어뷰즈)': '0',
+    '나이트클럽': '1',
+    '주식 리딩 / 사기': '2',
+    '로또 사기': '2',
+    '피싱 / 스미싱': '2',
+};
 
 const HAM_CATEGORY_PRESETS = [
     '정상 광고/마케팅',
@@ -80,6 +95,8 @@ export const RagManager: React.FC<RagManagerProps> = ({ isOpen, onClose, initial
     const [filterLabel, setFilterLabel] = useState<'ALL' | 'SPAM' | 'HAM'>('ALL');
     const [sortOption, setSortOption] = useState<'LATEST' | 'OLDEST' | 'MESSAGE'>('LATEST');
     const [copiedId, setCopiedId] = useState<string | null>(null);
+
+    const [listSearchQuery, setListSearchQuery] = useState('');
 
     // Fetch all examples
     const fetchExamples = async () => {
@@ -124,6 +141,15 @@ export const RagManager: React.FC<RagManagerProps> = ({ isOpen, onClose, initial
             setEditingId(null);
         }
     }, [isOpen, initialData]);
+
+    const handleCategoryClick = (cat: string) => {
+        const newCode = CATEGORY_CODE_MAP[cat] || formData.code;
+        setFormData({
+            ...formData,
+            category: cat,
+            code: formData.label === 'SPAM' ? newCode : ''
+        });
+    };
 
     // Handle form submit (Create/Update)
     const handleSubmit = async (e: React.FormEvent) => {
@@ -206,7 +232,7 @@ export const RagManager: React.FC<RagManagerProps> = ({ isOpen, onClose, initial
         setEditingId(example.id);
         setFormData({
             message: example.message,
-            label: example.label,
+            label: example.label as 'SPAM' | 'HAM',
             code: example.code,
             category: example.category,
             reason: example.reason
@@ -225,14 +251,15 @@ export const RagManager: React.FC<RagManagerProps> = ({ isOpen, onClose, initial
         });
     };
 
-    // Handle search
+    // Handle search (Vector Search)
     const handleSearch = async () => {
         if (!searchQuery.trim()) return;
 
         setIsSearching(true);
         setHasSearched(true);
         try {
-            const response = await fetch(`${API_BASE}/api/spam-rag/search?query=${encodeURIComponent(searchQuery)}&k=5`);
+            // k=2: Match the Agent's Prompt Context logic (Top 2 references)
+            const response = await fetch(`${API_BASE}/api/spam-rag/search?query=${encodeURIComponent(searchQuery)}&k=2`);
 
             if (!response.ok) {
                 if (response.status === 404) {
@@ -246,7 +273,8 @@ export const RagManager: React.FC<RagManagerProps> = ({ isOpen, onClose, initial
 
             const data = await response.json();
             if (data.success) {
-                setSearchResults(data.data);
+                // Backend returns { hits: [], stats: {} }
+                setSearchResults(data.data.hits || []);
             }
         } catch (err) {
             console.error(err);
@@ -261,169 +289,256 @@ export const RagManager: React.FC<RagManagerProps> = ({ isOpen, onClose, initial
         setHasSearched(false);
     };
 
-    const handleCopy = async (id: string, text: string) => {
+    const handleCopy = async (id: string | null, text: string) => {
         try {
             await navigator.clipboard.writeText(text);
-            setCopiedId(id);
-            setTimeout(() => setCopiedId(null), 2000);
+            if (id) {
+                setCopiedId(id);
+                setTimeout(() => setCopiedId(null), 2000);
+            }
         } catch (err) {
             console.error('Failed to copy:', err);
         }
     };
 
-    // Filter & Sort Logic
+    // Filter & Sort Logic for List
     const filteredAndSortedExamples = [...examples]
         .filter(ex => filterLabel === 'ALL' || ex.label === filterLabel)
+        .filter(ex => listSearchQuery ? ex.message.includes(listSearchQuery) : true)
         .sort((a, b) => {
+            if (sortOption === 'LATEST') return (b.created_at || '').localeCompare(a.created_at || '');
+            if (sortOption === 'OLDEST') return (a.created_at || '').localeCompare(b.created_at || '');
             if (sortOption === 'MESSAGE') return a.message.localeCompare(b.message);
-
-            const getTime = (dateStr?: string) => {
-                if (!dateStr) return 0;
-                const t = new Date(dateStr).getTime();
-                return isNaN(t) ? 0 : t;
-            };
-
-            const dateA = getTime(a.created_at);
-            const dateB = getTime(b.created_at);
-
-            if (dateA !== dateB) {
-                return sortOption === 'LATEST' ? dateB - dateA : dateA - dateB;
-            }
-
-            // 날짜가 같거나 없으면 메시지 순서로 정렬
-            // LATEST(최신순)일 때는 가나다순, OLDEST(오래된순)일 때는 역순으로 하여 변화를 줌
-            const comparison = a.message.localeCompare(b.message);
-            return sortOption === 'OLDEST' ? -comparison : comparison;
+            return 0;
         });
 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-slate-900 rounded-xl border border-slate-700 w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+            <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-6xl h-[85vh] mx-4 shadow-2xl flex overflow-hidden animate-in zoom-in-95 duration-200 relative">
 
-                {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700">
-                    <div className="flex items-center gap-3">
-                        <Database className="w-6 h-6 text-blue-400" />
-                        <h2 className="text-xl font-bold text-white">스팸 RAG 관리</h2>
-                        <span className="text-sm text-slate-400">FN 예시 등록/조회</span>
+                {/* Global Close Button (Top Right) */}
+                <button
+                    onClick={onClose}
+                    className="absolute top-4 right-4 p-2 hover:bg-slate-800 rounded-xl transition-colors z-50 group"
+                >
+                    <X size={24} className="text-slate-400 group-hover:text-white" />
+                </button>
+
+                {/* Left Panel: Form & Search */}
+                <div className="w-1/2 flex flex-col border-r border-slate-800 relative bg-slate-900/50">
+
+                    {/* Header (Fixed) */}
+                    <div className="p-6 pb-2">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
+                                    <Database size={20} />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold text-white">RAG 데이터 관리</h2>
+                                    <p className="text-xs text-slate-400 font-medium">Spam/Ham 예시 데이터 등록 및 관리</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={resetForm}
+                                className="px-3 py-1.5 text-xs font-bold text-indigo-400 border border-indigo-500/30 rounded-lg hover:bg-indigo-500/10 transition-colors"
+                            >
+                                + 신규 등록
+                            </button>
+                        </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
-                    >
-                        <X className="w-5 h-5 text-slate-400" />
-                    </button>
-                </div>
 
-                {/* Error Display */}
-                {error && (
-                    <div className="mx-6 mt-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg flex items-center gap-2 text-red-400">
-                        <AlertCircle className="w-4 h-4" />
-                        <span className="text-sm">{error}</span>
-                        <button onClick={() => setError(null)} className="ml-auto">
-                            <X className="w-4 h-4" />
-                        </button>
-                    </div>
-                )}
-
-                {/* Content */}
-                <div className="flex-1 overflow-hidden flex">
-
-                    {/* Left Panel: Form */}
-                    <div className="w-1/2 p-6 border-r border-slate-700 overflow-y-auto">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold text-white">
-                                {editingId ? '예시 수정' : '새 예시 등록'}
+                    {/* Vector Search Section (Fixed at Top) */}
+                    <div className="px-6 pb-4 border-b-2 border-slate-700/50 bg-slate-900/30 z-10">
+                        <div>
+                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                <Search className="w-3 h-3 text-indigo-400" />
+                                VECTOR SEARCH
                             </h3>
-                            {editingId && (
+                            <div className="flex gap-2">
+                                <div className="relative flex-1">
+                                    <input
+                                        type="text"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                                        placeholder="등록 전 유사 메시지 검색..."
+                                        className="w-full pl-9 pr-8 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-sm placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                                    {searchQuery && (
+                                        <button
+                                            onClick={handleClearSearch}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    )}
+                                </div>
                                 <button
-                                    onClick={resetForm}
-                                    className="text-sm text-slate-400 hover:text-white"
+                                    onClick={handleSearch}
+                                    disabled={isSearching}
+                                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 font-medium transition-colors border border-slate-700 text-sm whitespace-nowrap flex items-center gap-2"
                                 >
-                                    + 새로 등록
+                                    {isSearching ? (
+                                        <>
+                                            <RefreshCw className="w-4 h-4 animate-spin" />
+                                            <span>검색중...</span>
+                                        </>
+                                    ) : (
+                                        "검색"
+                                    )}
                                 </button>
+                            </div>
+
+                            {/* Loading State */}
+                            {isSearching && (
+                                <div className="mt-4 p-8 text-center text-slate-500 bg-slate-800/20 rounded-lg border border-slate-800 border-dashed animate-pulse">
+                                    <div className="flex flex-col items-center gap-2">
+                                        <RefreshCw className="w-5 h-5 animate-spin text-indigo-500" />
+                                        <p className="text-xs">유사한 예시를 분석하고 있습니다...</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {hasSearched && searchResults.length === 0 && !isSearching && (
+                                <div className="mt-4 p-4 text-center text-slate-500 bg-slate-800/30 rounded-lg border border-slate-700 border-dashed">
+                                    <p className="text-xs">유사한 예시가 없습니다.</p>
+                                </div>
+                            )}
+
+                            {searchResults.length > 0 && (
+                                <div className="mt-4 space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+                                    {searchResults.map((result, idx) => (
+                                        <div key={idx} className="p-3 bg-slate-950 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors">
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                                        <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${result.label === 'SPAM' ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'
+                                                            }`}>
+                                                            {result.label}
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-500">
+                                                            유사도: {result.distance !== undefined ? ((1 - result.distance) * 100).toFixed(1) : '0.0'}%
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-400 line-clamp-1">{result.message}</p>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleEdit({
+                                                        id: result.id,
+                                                        message: result.message,
+                                                        label: result.label,
+                                                        code: result.code,
+                                                        category: result.category || '',
+                                                        reason: result.reason || ''
+                                                    })}
+                                                    className="p-1 hover:bg-indigo-500/20 rounded text-slate-500 hover:text-indigo-400"
+                                                    title="이 내용으로 채우기"
+                                                >
+                                                    <Edit2 className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             )}
                         </div>
+                    </div>
 
+                    <div className="p-6 flex flex-col flex-1 h-full min-h-0 overflow-y-auto custom-scrollbar bg-slate-950/20">
+                        {/* Section Header */}
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                            <PenSquare className="w-3 h-3 text-indigo-400" />
+                            EXAMPLE REGISTRATION
+                        </h3>
+
+                        {/* Error Display */}
+                        {error && (
+                            <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center gap-2 text-rose-400">
+                                <AlertCircle className="w-4 h-4 shrink-0" />
+                                <span className="text-xs font-medium">{error}</span>
+                                <button onClick={() => setError(null)} className="ml-auto">
+                                    <X className="w-3 h-3" />
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Input Form */}
                         <form onSubmit={handleSubmit} className="space-y-4">
                             {/* Message */}
                             <div>
-                                <label className="block text-sm font-medium text-slate-300 mb-1">
-                                    메시지 *
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
+                                    메시지 원문 *
                                 </label>
                                 <textarea
                                     value={formData.message}
                                     onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                                    placeholder="메시지 원문을 입력하세요..."
-                                    className="w-full h-24 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                                    className="w-full h-24 px-4 py-3 bg-slate-950 border border-slate-800 rounded-2xl text-white text-sm placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all resize-y custom-scrollbar"
+                                    placeholder="등록할 메시지 내용을 입력하세요..."
                                     required
                                 />
                             </div>
 
-                            {/* Label & Code */}
-                            <div className="flex gap-4">
-                                <div className="w-32">
-                                    <label className="block text-sm font-medium text-slate-300 mb-1">
-                                        판정 *
-                                    </label>
-                                    <select
-                                        value={formData.label}
-                                        onChange={(e) => {
-                                            const newLabel = e.target.value;
-                                            setFormData({
-                                                ...formData,
-                                                label: newLabel,
-                                                // HAM 선택 시 코드 비움, 카테고리도 초기화
-                                                code: newLabel === 'HAM' ? '' : (formData.code || '1'),
-                                                category: ''  // 라벨 변경 시 카테고리 초기화
-                                            });
-                                        }}
-                                        className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    >
-                                        <option value="SPAM">SPAM</option>
-                                        <option value="HAM">HAM</option>
-                                    </select>
+                            {/* Status Grid */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">판정</label>
+                                    <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData({ ...formData, label: 'SPAM', code: '1' })}
+                                            className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${formData.label === 'SPAM'
+                                                ? 'bg-rose-500/20 text-rose-400 shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-300'
+                                                }`}
+                                        >
+                                            SPAM
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData({ ...formData, label: 'HAM', code: '' })}
+                                            className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${formData.label === 'HAM'
+                                                ? 'bg-emerald-500/20 text-emerald-400 shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-300'
+                                                }`}
+                                        >
+                                            HAM
+                                        </button>
+                                    </div>
                                 </div>
-                                <div className="flex-1">
-                                    <label className="block text-sm font-medium text-slate-300 mb-1">
-                                        분류 코드 {formData.label === 'SPAM' ? '*' : '(해당없음)'}
-                                    </label>
-                                    <select
-                                        value={formData.code}
-                                        onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                                        disabled={formData.label === 'HAM'}
-                                        className={`w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${formData.label === 'HAM' ? 'opacity-50 cursor-not-allowed' : ''
-                                            }`}
-                                    >
-                                        {formData.label === 'HAM' ? (
-                                            <option value="">해당없음</option>
-                                        ) : (
-                                            CODE_OPTIONS.map(opt => (
-                                                <option key={opt.value} value={opt.value}>
-                                                    {opt.label}
-                                                </option>
-                                            ))
-                                        )}
-                                    </select>
-                                </div>
+
+                                {formData.label === 'SPAM' && (
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">분류 코드</label>
+                                        <select
+                                            value={formData.code}
+                                            onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                                            className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all appearance-none"
+                                        >
+                                            <option value="0">0 - 기타 스팸</option>
+                                            <option value="1">1 - 유해성 스팸</option>
+                                            <option value="2">2 - 사기/투자 스팸</option>
+                                            <option value="3">3 - 불법 도박/대출</option>
+                                        </select>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Category */}
                             <div>
-                                <label className="block text-sm font-medium text-slate-300 mb-1">
-                                    카테고리 *
-                                </label>
-                                <div className="flex gap-2 flex-wrap mb-2">
-                                    {(formData.label === 'HAM' ? HAM_CATEGORY_PRESETS : SPAM_CATEGORY_PRESETS).map(cat => (
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">카테고리</label>
+                                <div className="flex flex-wrap gap-2 mb-3">
+                                    {(formData.label === 'SPAM' ? SPAM_CATEGORY_PRESETS : HAM_CATEGORY_PRESETS).map(cat => (
                                         <button
                                             key={cat}
                                             type="button"
-                                            onClick={() => setFormData({ ...formData, category: cat })}
-                                            className={`px-2 py-1 text-xs rounded-full border transition-colors ${formData.category === cat
-                                                ? (formData.label === 'HAM' ? 'bg-green-500 border-green-500' : 'bg-blue-500 border-blue-500') + ' text-white'
-                                                : 'border-slate-600 text-slate-400 hover:border-slate-500'
+                                            onClick={() => handleCategoryClick(cat)}
+                                            className={`px-3 py-1.5 text-xs rounded-xl border transition-all ${formData.category === cat
+                                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-500/30'
+                                                : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200'
                                                 }`}
                                         >
                                             {cat}
@@ -435,21 +550,21 @@ export const RagManager: React.FC<RagManagerProps> = ({ isOpen, onClose, initial
                                     value={formData.category}
                                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                                     placeholder="직접 입력..."
-                                    className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder-slate-600"
                                     required
                                 />
                             </div>
 
                             {/* Reason */}
                             <div>
-                                <label className="block text-sm font-medium text-slate-300 mb-1">
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
                                     판단 근거 *
                                 </label>
                                 <textarea
                                     value={formData.reason}
                                     onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                                    placeholder="왜 이 메시지가 스팸인지 근거를 작성하세요..."
-                                    className="w-full h-20 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                                    placeholder="Intent / Tactics / Action (의도 / 전술 / 행동)"
+                                    className="w-full h-20 px-4 py-3 bg-slate-950 border border-slate-800 rounded-2xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all resize-y placeholder-slate-600 custom-scrollbar"
                                     required
                                 />
                             </div>
@@ -458,247 +573,163 @@ export const RagManager: React.FC<RagManagerProps> = ({ isOpen, onClose, initial
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="w-full py-2.5 bg-gradient-to-r from-blue-500 to-purple-500 text-white font-medium rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                className="w-full py-3.5 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
                             >
                                 {loading ? (
-                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                    <RefreshCw className="w-5 h-5 animate-spin" />
                                 ) : (
-                                    <Save className="w-4 h-4" />
+                                    <Save className="w-5 h-5" />
                                 )}
-                                {editingId ? '수정 저장' : '저장'}
+                                {editingId ? '수정 내용 저장' : '새로운 예시 등록'}
                             </button>
                         </form>
+                    </div>
+                </div>
 
-                        {/* Search Section */}
-                        <div className="mt-6 pt-6 border-t border-slate-700">
-                            <h3 className="text-lg font-semibold text-white mb-4">유사 예시 검색</h3>
+                {/* Right Panel: List */}
+                <div className="w-1/2 flex flex-col bg-slate-950/30">
+                    {/* List Header */}
+                    <div className="p-6 pb-4 border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-10 pt-12">
+                        {/* Added pt-12 to avoid overlap with absolute Close button if narrow, though panel is w-1/2. 
+                            Actually, Close button is global top right. 
+                        */}
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                등록된 예시
+                                <span className="px-2 py-0.5 bg-slate-800 text-slate-400 rounded-lg text-xs font-mono">
+                                    {filteredAndSortedExamples.length}
+                                </span>
+                            </h3>
                             <div className="flex gap-2">
-                                <div className="relative flex-1">
+                                {/* List Search Input */}
+                                <div className="relative">
                                     <input
                                         type="text"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                                        placeholder="메시지를 입력하여 유사 예시 검색..."
-                                        className="w-full pl-3 pr-8 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        value={listSearchQuery}
+                                        onChange={(e) => setListSearchQuery(e.target.value)}
+                                        placeholder="목록 검색..."
+                                        className="w-40 pl-8 pr-3 py-1.5 bg-slate-800 border-none rounded-lg text-xs text-white focus:ring-1 focus:ring-indigo-500 placeholder-slate-500 transition-all focus:w-52"
                                     />
-                                    {searchQuery && (
-                                        <button
-                                            onClick={handleClearSearch}
-                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                                        >
-                                            <X className="w-4 h-4" />
-                                        </button>
-                                    )}
+                                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
                                 </div>
-                                <button
-                                    onClick={handleSearch}
-                                    disabled={isSearching}
-                                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors flex items-center gap-2"
-                                >
-                                    {isSearching ? (
-                                        <RefreshCw className="w-4 h-4 animate-spin text-slate-300" />
-                                    ) : (
-                                        <Search className="w-4 h-4 text-slate-300" />
-                                    )}
-                                </button>
-                            </div>
-
-                            {hasSearched && searchResults.length === 0 && !isSearching && (
-                                <div className="mt-4 p-4 text-center text-slate-500 bg-slate-800/30 rounded-lg border border-slate-700 border-dashed">
-                                    <p>검색 결과가 없습니다.</p>
-                                </div>
-                            )}
-
-                            {searchResults.length > 0 && (
-                                <div className="mt-4 space-y-2">
-                                    {searchResults.map((result, idx) => (
-                                        <div key={idx} className="p-3 bg-slate-800/50 rounded-lg border border-slate-700 hover:border-slate-600 transition-colors">
-                                            <div className="flex items-start justify-between gap-2">
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                                        <span className={`px-1.5 py-0.5 text-xs rounded ${result.label === 'SPAM' ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'
-                                                            }`}>
-                                                            {result.label}
-                                                        </span>
-                                                        <span className="text-xs text-slate-500">code: {result.code}</span>
-                                                        <span className="text-xs text-slate-500">
-                                                            유사도: {((1 - result.score) * 100).toFixed(1)}%
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-sm text-slate-300 line-clamp-2">{result.message}</p>
-                                                </div>
-                                                <div className="flex gap-1 shrink-0">
-                                                    <button
-                                                        onClick={() => handleCopy(result.id, result.message)}
-                                                        className="p-1.5 hover:bg-slate-700 rounded transition-colors"
-                                                        title="메시지 복사"
-                                                    >
-                                                        {copiedId === result.id ? (
-                                                            <Check className="w-4 h-4 text-green-400" />
-                                                        ) : (
-                                                            <Copy className="w-4 h-4 text-slate-400 hover:text-white" />
-                                                        )}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleEdit({
-                                                            id: result.id,
-                                                            message: result.message,
-                                                            label: result.label,
-                                                            code: result.code,
-                                                            category: result.category || '',
-                                                            reason: result.reason || ''
-                                                        })}
-                                                        className="p-1.5 hover:bg-slate-700 rounded transition-colors"
-                                                        title="수정"
-                                                    >
-                                                        <Edit2 className="w-4 h-4 text-slate-400 hover:text-blue-400" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDelete(result.id)}
-                                                        className="p-1.5 hover:bg-red-500/20 rounded transition-colors"
-                                                        title="삭제"
-                                                    >
-                                                        <Trash2 className="w-4 h-4 text-red-400" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Right Panel: List */}
-                    <div className="w-1/2 flex flex-col overflow-hidden relative">
-                        {/* Sticky Header */}
-                        <div className="p-6 pb-2 bg-slate-900 border-b border-slate-800 shrink-0 z-10">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-lg font-semibold text-white">
-                                    등록된 예시 ({filteredAndSortedExamples.length} / {examples.length}건)
-                                </h3>
                                 <button
                                     onClick={fetchExamples}
                                     disabled={loading}
-                                    className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+                                    className="p-1.5 hover:bg-slate-800 rounded-lg transition-colors text-slate-400 hover:text-white"
+                                    title="새로고침"
                                 >
-                                    <RefreshCw className={`w-4 h-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
+                                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                                 </button>
-                            </div>
-
-                            {/* Filter & Sort Controls */}
-                            <div className="flex gap-2">
-                                <select
-                                    value={filterLabel}
-                                    onChange={(e) => setFilterLabel(e.target.value as any)}
-                                    className="bg-slate-800 border border-slate-700 text-xs text-slate-300 rounded px-2 py-1.5 focus:outline-none"
-                                >
-                                    <option value="ALL">전체 보기</option>
-                                    <option value="SPAM">SPAM 만</option>
-                                    <option value="HAM">HAM 만</option>
-                                </select>
-                                <select
-                                    value={sortOption}
-                                    onChange={(e) => setSortOption(e.target.value as any)}
-                                    className="bg-slate-800 border border-slate-700 text-xs text-slate-300 rounded px-2 py-1.5 focus:outline-none ml-auto"
-                                >
-                                    <option value="LATEST">최신등록 순</option>
-                                    <option value="OLDEST">오래된 순</option>
-                                    <option value="MESSAGE">메시지 가나다순</option>
-                                </select>
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-6 pt-2">
-                            {loading && examples.length === 0 ? (
-                                <div className="text-center py-8 text-slate-500">
-                                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
-                                    <p>불러오는 중...</p>
-                                </div>
-                            ) : filteredAndSortedExamples.length === 0 ? (
-                                <div className="text-center py-8 text-slate-500">
-                                    <Database className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                                    <p>{examples.length === 0 ? "등록된 예시가 없습니다." : "조건에 맞는 예시가 없습니다."}</p>
-                                    {examples.length === 0 && <p className="text-sm mt-1">왼쪽에서 새 예시를 등록해주세요.</p>}
-                                </div>
-                            ) : (
-                                <div className="space-y-3">
-                                    {filteredAndSortedExamples.map((example) => (
-                                        <div
-                                            key={example.id}
-                                            className={`p-4 rounded-lg border transition-all ${editingId === example.id
-                                                ? 'bg-blue-500/10 border-blue-500/50'
-                                                : 'bg-slate-800/50 border-slate-700 hover:border-slate-600'
-                                                }`}
-                                        >
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                                        <span className={`px-2 py-0.5 text-xs font-medium rounded ${example.label === 'SPAM'
-                                                            ? 'bg-red-500/20 text-red-400'
-                                                            : 'bg-green-500/20 text-green-400'
-                                                            }`}>
-                                                            {example.label}
-                                                        </span>
-                                                        <span className="px-2 py-0.5 text-xs bg-slate-700 text-slate-300 rounded">
-                                                            Code: {example.code}
-                                                        </span>
-                                                        <span className="px-2 py-0.5 text-xs bg-purple-500/20 text-purple-400 rounded">
-                                                            {example.category}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-sm text-slate-300 break-all line-clamp-2 mb-2">
-                                                        {example.message}
-                                                    </p>
-                                                    {example.created_at && (
-                                                        <p className="text-[10px] text-slate-600 mt-1">
-                                                            등록일: {new Date(example.created_at).toLocaleString()}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                                <div className="flex gap-1 shrink-0">
-                                                    <button
-                                                        onClick={() => handleCopy(example.id, example.message)}
-                                                        className="p-1.5 hover:bg-slate-700 rounded transition-colors"
-                                                        title="메시지 복사"
-                                                    >
-                                                        {copiedId === example.id ? (
-                                                            <Check className="w-4 h-4 text-green-400" />
-                                                        ) : (
-                                                            <Copy className="w-4 h-4 text-slate-400 hover:text-white" />
-                                                        )}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleEdit(example)}
-                                                        className="p-1.5 hover:bg-slate-700 rounded transition-colors"
-                                                        title="수정"
-                                                    >
-                                                        <Edit2 className="w-4 h-4 text-slate-400" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDelete(example.id)}
-                                                        className="p-1.5 hover:bg-red-500/20 rounded transition-colors"
-                                                        title="삭제"
-                                                    >
-                                                        <Trash2 className="w-4 h-4 text-red-400" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                        {/* Filter & Sort */}
+                        <div className="flex gap-2">
+                            <select
+                                value={filterLabel}
+                                onChange={(e) => setFilterLabel(e.target.value as any)}
+                                className="bg-slate-800 border-none text-xs text-slate-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium cursor-pointer"
+                            >
+                                <option value="ALL">전체 보기</option>
+                                <option value="SPAM">SPAM 만</option>
+                                <option value="HAM">HAM 만</option>
+                            </select>
+                            <select
+                                value={sortOption}
+                                onChange={(e) => setSortOption(e.target.value as any)}
+                                className="bg-slate-800 border-none text-xs text-slate-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 ml-auto font-medium cursor-pointer"
+                            >
+                                <option value="LATEST">최신등록 순</option>
+                                <option value="OLDEST">오래된 순</option>
+                                <option value="MESSAGE">메시지 가나다순</option>
+                            </select>
                         </div>
                     </div>
 
+                    {/* List Content */}
+                    <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+                        {loading && examples.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+                                <RefreshCw className="w-8 h-8 animate-spin mb-4 text-indigo-500" />
+                                <p className="text-sm font-medium">데이터를 불러오는 중입니다...</p>
+                            </div>
+                        ) : filteredAndSortedExamples.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-20 text-slate-600">
+                                <Database className="w-12 h-12 mb-4 opacity-20" />
+                                <p className="font-medium">검색 결과가 없습니다.</p>
+                                <p className="text-xs mt-2 opacity-70">
+                                    {listSearchQuery ? '검색어와 일치하는 항목이 없습니다.' : '등록된 데이터가 없습니다.'}
+                                </p>
+                            </div>
+                        ) : (
+                            filteredAndSortedExamples.map((example) => (
+                                <div
+                                    key={example.id}
+                                    className={`group p-5 rounded-2xl border transition-all ${editingId === example.id
+                                        ? 'bg-indigo-600/10 border-indigo-500/50 shadow-lg shadow-indigo-500/10'
+                                        : 'bg-slate-900 border-slate-800 hover:border-slate-700 hover:shadow-md'
+                                        }`}
+                                >
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-3 flex-wrap">
+                                                <span className={`px-2 py-1 text-[10px] font-bold rounded-lg tracking-wide ${example.label === 'SPAM'
+                                                    ? 'bg-rose-500/20 text-rose-400'
+                                                    : 'bg-emerald-500/20 text-emerald-400'
+                                                    }`}>
+                                                    {example.label}
+                                                </span>
+                                                {example.code && (
+                                                    <span className="px-2 py-1 text-[10px] font-medium bg-slate-800 text-slate-400 rounded-lg border border-slate-700">
+                                                        Code: {example.code}
+                                                    </span>
+                                                )}
+                                                {example.category && (
+                                                    <span className="px-2 py-1 text-[10px] font-medium bg-indigo-500/20 text-indigo-300 rounded-lg border border-indigo-500/30">
+                                                        {example.category}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-sm text-slate-300 break-all line-clamp-3 mb-3 leading-relaxed group-hover:text-white transition-colors">
+                                                {example.message}
+                                            </p>
+                                            <div className="flex items-center gap-4 text-[10px] text-slate-500 font-medium">
+                                                <span>{new Date(example.created_at || '').toLocaleDateString()}</span>
+                                            </div>
+                                        </div>
 
-                </div>
-                {/* Footer */}
-                <div className="px-6 py-3 border-t border-slate-700 bg-slate-800/50">
-                    <p className="text-xs text-slate-500 text-center">
-                        등록된 FN 예시는 Content Agent 분석 시 자동으로 검색되어 프롬프트에 포함됩니다.
-                    </p>
+                                        <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                                onClick={() => handleCopy(example.id, example.message)}
+                                                className="p-1.5 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white transition-colors"
+                                                title="복사"
+                                            >
+                                                {copiedId === example.id ? (
+                                                    <Check className="w-4 h-4 text-emerald-400" />
+                                                ) : (
+                                                    <Copy className="w-4 h-4" />
+                                                )}
+                                            </button>
+                                            <button
+                                                onClick={() => handleEdit(example)}
+                                                className="p-1.5 hover:bg-indigo-500/20 rounded-lg text-slate-400 hover:text-indigo-400 transition-colors"
+                                                title="수정"
+                                            >
+                                                <Edit2 className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(example.id)}
+                                                className="p-1.5 hover:bg-rose-500/20 rounded-lg text-slate-400 hover:text-rose-400 transition-colors"
+                                                title="삭제"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

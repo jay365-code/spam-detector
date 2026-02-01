@@ -224,6 +224,7 @@ class ExcelHandler:
                             "current": row_idx - 1, # approx
                             "total": total_rows,
                             "message": batch_buffer[idx][1],
+                            "excel_row_number": row_idx,  # Actual Excel row number
                             "result": result
                         })
 
@@ -488,6 +489,7 @@ class ExcelHandler:
                             "current": row_idx - 1, # approx
                             "total": total_rows,
                             "message": batch_buffer[idx][1],
+                            "excel_row_number": row_idx,  # Actual Excel row number
                             "result": result
                         })
 
@@ -542,7 +544,7 @@ class ExcelHandler:
             logger.error(f"Error processing Excel: {e}")
             raise e
 
-    def process_kisa_txt(self, file_path: str, output_dir: str, processing_function, progress_callback=None, batch_size: int = 1, original_filename: str = None):
+    def process_kisa_txt(self, file_path: str, output_dir: str, processing_function, progress_callback=None, batch_size: int = 1, original_filename: str = None, manager=None, client_id: str = None):
         """
         Process KISA format TXT file: [Body] <TAB> [URL]
         """
@@ -638,6 +640,11 @@ class ExcelHandler:
                 if not batch_buffer:
                     return
 
+                # ✅ 취소 확인
+                if manager and client_id and manager.is_cancelled(client_id):
+                    from ..main import CancellationException
+                    raise CancellationException("Processing cancelled by user")
+                
                 messages = [item["message"] for item in batch_buffer]
                 
                 try:
@@ -743,6 +750,7 @@ class ExcelHandler:
                             "current": start_idx + i + 1, 
                             "total": total_rows,
                             "message": msg_val,
+                            "excel_row_number": start_idx + i + 2,  # +2 for header row
                             "result": result
                         })
 

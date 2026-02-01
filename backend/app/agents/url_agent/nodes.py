@@ -1,4 +1,5 @@
 import re
+import unicodedata
 import os
 import json
 import asyncio
@@ -289,7 +290,19 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
     # 한글 유니코드 범위: \uac00-\ud7a3 (가-힣), \u3131-\u3163 (ㄱ-ㅣ)
     url_pattern = r'(?:http[s]?://)?(?:[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.)+[a-zA-Z가-힣]{2,}(?:/[^\s]*)?'
     
+    # 1. 원본 텍스트에서 추출
     found_urls = re.findall(url_pattern, message)
+    
+    # 2. 정규화(NFKC)된 텍스트에서 추출 (난독화 대응)
+    # 예: "dⓢlp①③7⑤.cc" -> "dslp1375.cc"
+    try:
+        normalized_message = unicodedata.normalize('NFKC', message)
+        if normalized_message != message:
+            logger.info(f"[URL Agent] Normalized text: {normalized_message}")
+            found_urls_normalized = re.findall(url_pattern, normalized_message)
+            found_urls.extend(found_urls_normalized)
+    except Exception as e:
+        logger.warning(f"[URL Agent] Normalization failed: {e}")
     
     urls = []
     for url in found_urls:

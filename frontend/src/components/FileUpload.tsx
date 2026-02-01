@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useRef } from 'react';
+﻿import React, { useCallback, useState, useRef } from 'react';
 import { UploadCloud, FileSpreadsheet, Loader2, CheckCircle } from 'lucide-react';
 
 interface FileUploadProps {

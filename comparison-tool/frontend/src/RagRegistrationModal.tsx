@@ -15,14 +15,34 @@ interface RagRegistrationModalProps {
 }
 
 const SPAM_CATEGORY_PRESETS = [
-    '술집/유흥업소 광고',
-    '성인용품/서비스 광고',
-    '불법 도박 홍보',
-    '주식/코인 리딩방',
-    '불법 대출 광고',
-    '피싱/사기 메시지',
-    '기타 스팸',
+    '도박 / 게임',
+    '성인 / 유흥',
+    '유흥업소',
+    '통신 / 휴대폰 스팸',
+    '대리운전',
+    '불법 의약품',
+    '금융 / 대출 사기',
+    '구인 / 부업 (불법·어뷰즈)',
+    '나이트클럽',
+    '주식 리딩 / 사기',
+    '로또 사기',
+    '피싱 / 스미싱',
 ];
+
+const CATEGORY_CODE_MAP: Record<string, string> = {
+    '도박 / 게임': '3',
+    '성인 / 유흥': '1',
+    '유흥업소': '1',
+    '통신 / 휴대폰 스팸': '0',
+    '대리운전': '0',
+    '불법 의약품': '1',
+    '금융 / 대출 사기': '3',
+    '구인 / 부업 (불법·어뷰즈)': '0',
+    '나이트클럽': '1',
+    '주식 리딩 / 사기': '2',
+    '로또 사기': '2',
+    '피싱 / 스미싱': '2',
+};
 
 const HAM_CATEGORY_PRESETS = [
     '정상 광고/마케팅',
@@ -57,6 +77,15 @@ export const RagRegistrationModal: React.FC<RagRegistrationModalProps> = ({ isOp
             setError(null);
         }
     }, [isOpen, data]);
+
+    const handleCategoryClick = (cat: string) => {
+        const newCode = CATEGORY_CODE_MAP[cat] || formData.code;
+        setFormData({
+            ...formData,
+            category: cat,
+            code: newCode
+        });
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -138,7 +167,7 @@ export const RagRegistrationModal: React.FC<RagRegistrationModalProps> = ({ isOp
                                     <button
                                         key={cat}
                                         type="button"
-                                        onClick={() => setFormData({ ...formData, category: cat })}
+                                        onClick={() => handleCategoryClick(cat)}
                                         className={`px-3 py-1.5 text-xs rounded-xl border transition-all ${formData.category === cat
                                             ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-100'
                                             : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
@@ -164,7 +193,7 @@ export const RagRegistrationModal: React.FC<RagRegistrationModalProps> = ({ isOp
                             <textarea
                                 value={formData.reason}
                                 onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                                placeholder="예: 일반 광고로 판단되어 햄으로 처리"
+                                placeholder="Intent / Tactics / Action (의도 / 전술 / 행동)"
                                 className="w-full h-32 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all resize-none"
                                 required
                             />

@@ -1,0 +1,209 @@
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_begin with no data
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[42:61]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[63:136]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[138:150]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[152:217]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_headers_finished with no data
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[221:65536]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:81920]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:131072]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:98304]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:20977]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_end with no data
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_begin with no data
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[21021:21040]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[21042:21113]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[21115:21127]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[21129:21194]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_headers_finished with no data
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[21198:32768]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:81920]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:131072]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:102555]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_end with no data
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_begin with no data
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[102599:102618]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[102620:102648]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_headers_finished with no data
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[102652:102684]
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_part_end with no data
+2026-01-31 01:18:19 | DEBUG    | python_multipart.multipart | Calling on_end with no data
+2026-01-31 01:18:19 | INFO     | __main__ | 비교 요청 | Human: MMSC스팸추출_20260105_A.xlsx | LLM: MMSC스팸추출_20260105_A.xlsx | Sheet: 육안분석(시뮬결과35_150)
+2026-01-31 01:18:19 | INFO     | __main__ | 비교 완료 | Matched: 1073 | TP: 153 | FP: 56 | FN: 37 | TN: 827 | Accuracy: 0.9133
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_begin with no data
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[42:61]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[63:136]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[138:150]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[152:217]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_headers_finished with no data
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[221:32768]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:81920]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:49152]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:32768]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:15901]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_end with no data
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_begin with no data
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[15945:15964]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[15966:16037]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[16039:16051]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[16053:16118]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_headers_finished with no data
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[16122:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:81920]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:32768]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:32768]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:32768]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:16384]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:11605]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_end with no data
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_begin with no data
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[11649:11668]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[11670:11698]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_headers_finished with no data
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[11702:11734]
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_part_end with no data
+2026-01-31 13:59:27 | DEBUG    | python_multipart.multipart | Calling on_end with no data
+2026-01-31 13:59:27 | INFO     | __main__ | 비교 요청 | Human: MMSC스팸추출_20260103_A.xlsx | LLM: MMSC스팸추출_20260103_A.xlsx | Sheet: 육안분석(시뮬결과35_150)
+2026-01-31 13:59:28 | INFO     | __main__ | 비교 완료 | Matched: 821 | TP: 39 | FP: 62 | FN: 11 | TN: 709 | Accuracy: 0.9111
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_part_begin with no data
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[42:61]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[63:136]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[138:150]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[152:217]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_headers_finished with no data
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[221:65536]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:114688]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:131072]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:130589]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_part_end with no data
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_part_begin with no data
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[130633:130652]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[130654:130729]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[130731:130743]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[130745:130810]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_headers_finished with no data
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[130814:131072]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:131072]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:131072]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:7079]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_part_end with no data
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_part_begin with no data
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[7123:7142]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[7144:7172]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_headers_finished with no data
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[7176:7208]
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_part_end with no data
+2026-01-31 15:52:12 | DEBUG    | python_multipart.multipart | Calling on_end with no data
+2026-01-31 15:52:12 | INFO     | __main__ | 비교 요청 | Human: MMSC스팸추출_20260103_A.xlsx | LLM: MMSC스팸추출_20260103_A (1).xlsx | Sheet: 육안분석(시뮬결과35_150)
+2026-01-31 15:52:13 | INFO     | __main__ | 비교 완료 | Matched: 821 | TP: 44 | FP: 54 | FN: 6 | TN: 717 | Accuracy: 0.9269
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_part_begin with no data
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[42:61]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[63:136]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[138:150]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[152:217]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_headers_finished with no data
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[221:130395]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:131072]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:131072]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:61682]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_part_end with no data
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_part_begin with no data
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[61726:61745]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[61747:61818]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[61820:61832]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[61834:61899]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_headers_finished with no data
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[61903:131072]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:131072]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:80612]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_part_end with no data
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_part_begin with no data
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[80656:80675]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[80677:80705]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_headers_finished with no data
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[80709:80741]
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_part_end with no data
+2026-01-31 20:59:11 | DEBUG    | python_multipart.multipart | Calling on_end with no data
+2026-01-31 20:59:11 | INFO     | __main__ | 비교 요청 | Human: MMSC스팸추출_20260103_C.xlsx | LLM: MMSC스팸추출_20260103_C.xlsx | Sheet: 육안분석(시뮬결과35_150)
+2026-01-31 20:59:13 | INFO     | __main__ | 비교 완료 | Matched: 928 | TP: 117 | FP: 21 | FN: 31 | TN: 759 | Accuracy: 0.944
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_part_begin with no data
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[42:61]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[63:136]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[138:150]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[152:217]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_headers_finished with no data
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[221:16384]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:131072]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:131072]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:131072]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:44621]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_part_end with no data
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_part_begin with no data
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[44665:44684]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[44686:44757]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[44759:44771]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[44773:44838]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_headers_finished with no data
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[44842:131072]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:131072]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[0:63551]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_part_end with no data
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_part_begin with no data
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_header_field with data[63595:63614]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_header_value with data[63616:63644]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_header_end with no data
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_headers_finished with no data
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_part_data with data[63648:63680]
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_part_end with no data
+2026-01-31 23:13:20 | DEBUG    | python_multipart.multipart | Calling on_end with no data
+2026-01-31 23:13:20 | INFO     | __main__ | 비교 요청 | Human: MMSC스팸추출_20260103_C.xlsx | LLM: MMSC스팸추출_20260103_C.xlsx | Sheet: 육안분석(시뮬결과35_150)
+2026-01-31 23:13:22 | INFO     | __main__ | 비교 완료 | Matched: 928 | TP: 117 | FP: 21 | FN: 31 | TN: 759 | Accuracy: 0.944
