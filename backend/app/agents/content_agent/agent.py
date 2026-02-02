@@ -139,8 +139,30 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 model = genai.GenerativeModel(model_name)
                 # Sync call with temperature=0.2 for classification tasks
                 generation_config = genai.GenerationConfig(temperature=0.2)
-                response = model.generate_content(prompt, generation_config=generation_config)
-                content = response.text
+                # [Safety Settings] Disable safety filters to allow analysis of spam/harmful content
+                safety_settings = [
+                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                ]
+                
+                response = model.generate_content(prompt, generation_config=generation_config, safety_settings=safety_settings)
+                
+                try:
+                    content = response.text
+                except ValueError:
+                    # Handle blocked content (Safety Filters)
+                    # Even with BLOCK_NONE, some content (CSAM, extreme hate) is blocked at the system level.
+                    # We return a fallback SPAM verdict to prevent system crash and ensure pipeline continuity.
+                    logger.warning("[Gemini] Response blocked by safety filters. Returning fallback SPAM verdict.")
+                    content = json.dumps({
+                        "label": "SPAM",
+                        "spam_probability": 0.99,
+                        "classification_code": "3",
+                        "reason": "Security Filter Blocked: Content was flagged as prohibited (likely highly offensive or explicit), which strongly indicates SPAM.",
+                        "signals": {"harm_anchor": true}
+                    })
                 
             elif provider == "CLAUDE":
                 import anthropic
@@ -419,11 +441,14 @@ Step 4. SPAM 확정 조건:
 
 --------------------------------------------------
 
-[CRITICAL] 너는 텍스트만 분석한다. URL 존재는 SPAM 근거가 아니다 (URL은 별도 Agent가 분석).
+[CRITICAL] 너는 텍스트만 분석한다. URL의 '존재 여부'나 '이동 경로'는 판단 근거가 아니다.
+단, 텍스트로서의 **URL 난독화 패턴**(특수문자 삽입, 기이한 도메인 형태, 띄어쓰기 등)은 **강력한 스팸 회피 시그널(Textual Signal)**로 간주해야 한다.
 
 [PROCEDURE]
 Step 1. HARD GATE 확인 → harm_anchor = false 이면 무조건 HAM (label="HAM")
-Step 2. harm_anchor 판정 → Guide 2.2 기준 (URL 무시, 텍스트만, 도박/성인/사기/어뷰즈 의도가 명확해야 true)
+Step 2. harm_anchor 판정 → Guide 2.2 기준
+   - 텍스트 의도가 도박/성인/사기/어뷰즈면 true
+   - **난독화된 URL 문자열 자체**도 회피 의도(harm_anchor=true)의 근거가 된다.
 Step 3. 의도 명확도 판정 → spam_probability로 표현 (0.85 이상이면 의도가 매우 명확)
 Step 4. SPAM 확정 조건:
    - 의도가 매우 명확 (spam_probability >= 0.85): harm_anchor=true면 SPAM (route_or_cta 무시)
@@ -450,6 +475,7 @@ Step 4. SPAM 확정 조건:
         
         try:
             # 1. Intent Summary Generation
+            # [Revert] Restore Intent Summary for Accuracy
             intent_summary = self.generate_intent_summary(message)
             logger.info(f"Intent Summary: {intent_summary[:120]}...")
 
@@ -504,9 +530,10 @@ Step 4. SPAM 확정 조건:
 
     from typing import Callable, Awaitable, Optional
 
-    async def acheck(self, message: str, stage1_result: dict, status_callback: Optional[Callable[[str], Awaitable[None]]] = None) -> dict:
+    async def acheck(self, message: str, stage1_result: dict, status_callback: Optional[Callable[[str], Awaitable[None]]] = None, content_context: dict = None) -> dict:
         """
         Stage 2: RAG + LLM (Async Version with Callbacks)
+        Optional: content_context (If provided, skips internal RAG retrieval)
         """
         import asyncio
         loop = asyncio.get_running_loop()
@@ -515,19 +542,28 @@ Step 4. SPAM 확정 조건:
         logger.debug(f"분석 시작 (async) | msg={message[:80]}{'...' if len(message) > 80 else ''}")
         
         try:
-            # 1. RAG Retrieval (guide + FN examples, Run in thread to avoid blocking)
-            if status_callback:
-                await status_callback("🧠 의도 파악 중...")
+            context_data = {}
             
-            # 0. Generate Intent Summary (Blocking LLM call in executor)
-            intent_summary = await loop.run_in_executor(None, lambda: self.generate_intent_summary(message))
-            logger.info(f"Intent Summary: {intent_summary[:120]}...")
+            # [Optimization] Use injected context if available (Batch Mode)
+            if content_context:
+                logger.debug("Using injected batch context (Skipping RAG retrieval)")
+                context_data = content_context
+                
+            else:
+                # 1. RAG Retrieval (guide + FN examples)
+                if status_callback:
+                    await status_callback("🧠 의도 파악 중...")
+                
+                # 0. Generate Intent Summary (Blocking LLM call in executor)
+                # [Revert] Restore Intent Summary
+                intent_summary = await loop.run_in_executor(None, lambda: self.generate_intent_summary(message))
+                logger.info(f"Intent Summary: {intent_summary[:120]}...")
 
-            # 1. RAG Retrieval (guide + FN examples, Run in thread to avoid blocking)
-            if status_callback:
-                await status_callback("🔍 문맥 검색 중... (RAG + FN Examples)")
-            
-            context_data = await loop.run_in_executor(None, lambda: self._retrieve_context(message, intent_summary))
+                # 1. RAG Retrieval (guide + FN examples, Run in thread to avoid blocking)
+                if status_callback:
+                    await status_callback("🔍 문맥 검색 중... (RAG + FN Examples)")
+                
+                context_data = await loop.run_in_executor(None, lambda: self._retrieve_context(message, intent_summary))
             
             # [Telemetry] Calculate Distance Metrics (Top 1/2 + Gap)
             rag_examples = context_data.get('rag_examples', [])
@@ -585,7 +621,7 @@ Step 4. SPAM 확정 조건:
         except Exception as e:
             logger.exception("Async LLM 분석 중 오류 발생")
             if status_callback:
-                 await status_callback(f"⚠️ 오류 발생: {str(e)}")
+                await status_callback(f"⚠️ 오류 발생: {str(e)}")
             return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": f"Error: {e}"}
 
     async def check_batch(self, messages: list[str], stage1_results: list[dict]) -> list[dict]:
@@ -616,6 +652,63 @@ Step 4. SPAM 확정 조건:
                 })
         
         return results
+
+    def _get_rag_service(self):
+        """Helper to get RAG service instance"""
+        from app.services.spam_rag_service import get_spam_rag_service
+        return get_spam_rag_service()
+
+    async def prepare_batch_contexts(self, messages: list[str]) -> list[dict]:
+        """
+        [Batch Optimization]
+        1. Generate Intent Summaries for all messages in parallel (Restored).
+        2. Perform Batch RAG Search using Intent Summaries.
+        3. Retrieve generic spam guide (Once).
+        
+        Returns:
+            List of context data dicts corresponding to messages.
+        """
+        import asyncio
+        loop = asyncio.get_running_loop()
+        
+        # 1. Intent Summary Generation (Parallel)
+        # generate_intent_summary is sync/blocking, run in executor
+        summary_tasks = [
+            loop.run_in_executor(None, lambda m=msg: self.generate_intent_summary(m))
+            for msg in messages
+        ]
+        intent_summaries = await asyncio.gather(*summary_tasks)
+        logger.info(f"Generated {len(intent_summaries)} intent summaries for batch.")
+        
+        # 2. Batch RAG Search
+        rag_results_list = []
+        try:
+            service = self._get_rag_service()
+            # [Optimization] Batch Embedding + Query using Intent Summaries
+            rag_results_list = await loop.run_in_executor(
+                None, 
+                lambda: service.search_similar_batch(intent_summaries, k=3)
+            )
+        except Exception as e:
+            logger.error(f"Batch RAG Search Error: {e}")
+            # Fallback to empty results
+            rag_results_list = [{"hits": []}] * len(messages)
+        
+        # 3. Load Generic Guide (Once)
+        full_guide = self._load_full_guide()
+        
+        # 4. Assemble Contexts
+        contexts = []
+        for i, rag_res in enumerate(rag_results_list):
+            hits = rag_res.get("hits", [])
+            
+            contexts.append({
+                "guide_context": full_guide,
+                "rag_examples": hits,
+                "intent_summary": intent_summaries[i] 
+            })
+            
+        return contexts
 
     def _get_chat_model(self):
         """

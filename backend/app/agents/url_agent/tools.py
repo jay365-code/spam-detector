@@ -159,6 +159,7 @@ class PlaywrightManager:
         self.browser = None
         self.playwright = None
         self.loop = None
+        self._lock = None # Lock for atomic browser launch
 
     async def start(self):
         current_loop = asyncio.get_running_loop()
@@ -168,17 +169,25 @@ class PlaywrightManager:
             # Old loop is closed or different, discard stale objects
             self.browser = None
             self.playwright = None
+            self._lock = None # Discard lock from old loop
             
         self.loop = current_loop
 
-        if not self.playwright:
-            self.playwright = await async_playwright().start()
-        
-        if not self.browser:
-            self.browser = await self.playwright.chromium.launch(
-                headless=self.headless,
-                args=['--no-sandbox', '--disable-setuid-sandbox']
-            )
+        # Initialize lock if needed (Lazy init to bind to current loop)
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+
+        # Atomic Browser Launch
+        async with self._lock:
+            if not self.playwright:
+                self.playwright = await async_playwright().start()
+            
+            if not self.browser:
+                logger.debug(f"Launching new browser instance (Headless: {self.headless})...")
+                self.browser = await self.playwright.chromium.launch(
+                    headless=self.headless,
+                    args=['--no-sandbox', '--disable-setuid-sandbox']
+                )
 
     async def stop(self):
         if self.browser:

@@ -893,12 +893,21 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
             
             # Async Batch Orchestrator
             async def run_batch_pipeline():
+                # [Batch Optimization] Pre-fetch contexts for all messages
+                try:
+                    logger.info(f"Preparing batch contexts for {len(messages)} messages...")
+                    batch_contexts = await rag_filter.prepare_batch_contexts(messages)
+                except Exception as e:
+                    logger.error(f"Batch Context Prep Error: {e}")
+                    # Fallback to empty contexts (will trigger individual retrieval fallback in graph if handled, or just empty)
+                    batch_contexts = [None] * len(messages)
+
                 # A. Define Single Item Processing Function (Wraps Content + URL Logic per item)
                 from app.graphs.batch_flow import create_batch_graph
                 # Use global agents (Thread-safe/Async-safe assumed)
                 batch_graph = create_batch_graph(rag_filter, url_filter, ibse_service)
 
-                async def process_single_item(index, message, s1_res):
+                async def process_single_item(index, message, s1_res, context_data):
                     # 배치 Item 시작 로그
                     logger.info(f"[Batch {index+1}] 분석 시작 | msg={message[:80]}{'...' if len(message) > 80 else ''}")
                     
@@ -918,6 +927,7 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                     input_state = {
                         "message": message,
                         "s1_result": s1_res,
+                        "prefetched_context": context_data, # [Batch Optimization] Inject Context
                         "content_result": None,
                         "url_result": None,
                         "ibse_result": None,
@@ -957,7 +967,7 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                         return index, {"is_spam": None, "reason": f"Graph Error: {e}"}
 
                 # Create Tasks
-                tasks = [process_single_item(i, messages[i], s1_results[i]) for i in range(len(messages))]
+                tasks = [process_single_item(i, messages[i], s1_results[i], batch_contexts[i]) for i in range(len(messages))]
                 
                 # Run All
                 # Note: Logging happens inside process_single_item immediately upon completion.
@@ -1192,10 +1202,32 @@ async def update_excel_row(update: ExcelRowUpdate):
         # 검증 2: 메시지 일치 확인
         cell_value = ws.cell(row=found_row, column=msg_col).value
         if not cell_value or str(cell_value).strip() != update.message.strip():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Row {found_row} message mismatch. Expected: '{update.message[:50]}...', Found: '{str(cell_value)[:50] if cell_value else 'None'}...'"
-            )
+            logger.warning(f"Row {found_row} mismatch. Verification failed. Expected: '{update.message[:30]}...', Found: '{str(cell_value)[:30] if cell_value else 'None'}...'")
+            logger.info("Attempting to find the correct row by message content scan...")
+            
+            # [Smart Recovery] Scan entire file for ALL matches and pick the CLOSEST one
+            candidates = []
+            for r in range(2, ws.max_row + 1):
+                r_msg = ws.cell(row=r, column=msg_col).value
+                if r_msg and str(r_msg).strip() == update.message.strip():
+                    candidates.append(r)
+            
+            if candidates:
+                # Find the candidate row closest to the requested row (handling slight shifts/duplicates)
+                best_match = min(candidates, key=lambda r: abs(r - found_row))
+                dist = abs(best_match - found_row)
+                
+                # Safety Check: If deviation is too large, it might be a different instance (ambiguous)
+                # But since content is identical, "closest" is the best logical guess for "the row the user clicked"
+                logger.info(f"Recovered! Found {len(candidates)} matches. Closest is {best_match} (dist: {dist})")
+                found_row = best_match
+            else:
+                # Still not found -> Fatal Error
+                logger.error("Recovery failed. Message not found in any row.")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Row {found_row} message mismatch AND message not found in file. Expected: '{update.message[:50]}...', Found: '{str(cell_value)[:50] if cell_value else 'None'}...'"
+                )
         
         logger.info(f"Updating Excel row {found_row}: {update.message[:50]}...")
         

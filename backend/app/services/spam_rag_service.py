@@ -140,75 +140,125 @@ class SpamRagService:
             if count == 0:
                 return response
             
+            # [Logic Explanation]
+            # ChromaDB cosine distance: 0.0 (exact match) ~ 1.0 (uncorrelated)
+            # RAG Threshold (default 0.45) is applied in the API layer (main.py) not here,
+            # to allow flexible filtering based on env vars.
+            
             actual_k = min(k, count)
             
-            # 1. 의도 요약 임베딩
-            embedding_func = self._get_embedding_function()
-            query_vector = embedding_func.embed_query(query_intent_summary)
-            
-            # 2. 검색
-            query_results = collection.query(
-                query_embeddings=[query_vector],
-                n_results=actual_k,
-                include=["documents", "metadatas", "distances"]
-            )
-            
-            hits = []
-            distances_list = []
-            spam_count = 0
-            
-            if query_results and query_results.get("ids") and query_results["ids"][0]:
-                ids = query_results["ids"][0]
-                docs = query_results.get("documents", [[]])[0]
-                metas = query_results.get("metadatas", [[]])[0]
-                dists = query_results.get("distances", [[]])[0]
-                
-                for i, id_ in enumerate(ids):
-                    summary_text = docs[i] if docs else ""
-                    dist = float(dists[i]) if dists else 0.0
-                    meta = metas[i] if metas else {}
-                    
-                    distances_list.append(dist)
-                    
-                    # Count SPAM labels
-                    if meta.get("label") == "SPAM":
-                        spam_count += 1
-                    
-                    # Frontend Compat: Ensure 'message' field exists (prefer original_message)
-                    original_msg = meta.get("original_message", "")
-                    display_msg = original_msg if original_msg else summary_text
-
-                    hits.append({
-                        "id": id_,
-                        "message": display_msg,       # For frontend display
-                        "summary": summary_text,      # Intent summary
-                        "distance": dist,
-                        **meta
-                    })
-                    
-                    logger.debug(f"  - Found Intent: '{summary_text[:20]}...' (Dist: {dist:.4f})")
-
-            # 3. Calculate Stats
-            if distances_list:
-                d1 = distances_list[0]
-                d2 = distances_list[1] if len(distances_list) > 1 else d1
-                gap = d2 - d1
-            else:
-                d1, d2, gap = 9.9, 9.9, 0.0
-            
-            response["hits"] = hits
-            response["stats"] = {
-                "d1": d1,
-                "d2": d2,
-                "gap": gap,
-                "spam_count": spam_count
-            }
-            
+            # [Refactor] Use Batch Implementation for Single Item as well
+            batch_results = self.search_similar_batch([query_intent_summary], k=actual_k)
+            if batch_results:
+                return batch_results[0]
             return response
 
         except Exception as e:
             logger.error(f"[SpamRagService] Search error: {e}")
             return response
+
+    def search_similar_batch(self, query_intent_summaries: List[str], k: int = 3) -> List[Dict[str, Any]]:
+        """
+        [Batch Optimization] 여러 의도 요약에 대해 일괄 검색 수행
+        Embedding API 호출을 1회로 최소화함.
+        """
+        results = []
+        if not query_intent_summaries:
+            return results
+
+        try:
+            db = self._get_db()
+            collection = db._collection
+            count = collection.count()
+            
+            # 1. 일괄 임베딩 (Batch Embedding) - API 호출 1회 발생
+            embedding_func = self._get_embedding_function()
+            # embed_documents is explicitly for batch
+            query_vectors = embedding_func.embed_documents(query_intent_summaries)
+            
+            actual_k = min(k, count) if count > 0 else 0
+            if actual_k == 0:
+                 # Return empty results structure for each query
+                 return [
+                     {"hits": [], "query_summary": q, "stats": {"d1": 9.9, "d2": 9.9, "gap": 0.0}} 
+                     for q in query_intent_summaries
+                 ]
+
+            # 2. 개별 쿼리 수행
+            # ChromaDB는 query_embeddings에 리스트를 넣으면 배치 쿼리를 수행함
+            batch_query_results = collection.query(
+                query_embeddings=query_vectors,
+                n_results=actual_k,
+                include=["documents", "metadatas", "distances"]
+            )
+            
+            # 3. 결과 파싱 (각 쿼리에 대해)
+            ids_list = batch_query_results.get("ids", [])
+            docs_list = batch_query_results.get("documents", [])
+            metas_list = batch_query_results.get("metadatas", [])
+            dists_list = batch_query_results.get("distances", [])
+            
+            for i, query_text in enumerate(query_intent_summaries):
+                response = {
+                    "metric": "cosine_distance",
+                    "query_summary": query_text,
+                    "hits": [],
+                    "stats": {"d1": 9.9, "d2": 9.9, "gap": 0.0, "spam_count": 0}
+                }
+                
+                # 해당 쿼리의 검색 결과
+                ids = ids_list[i] if i < len(ids_list) else []
+                docs = docs_list[i] if i < len(docs_list) else []
+                metas = metas_list[i] if i < len(metas_list) else []
+                dists = dists_list[i] if i < len(dists_list) else []
+                
+                hits = []
+                distances_list = []
+                spam_count = 0
+                
+                for j, id_ in enumerate(ids):
+                    summary_text = docs[j] if j < len(docs) else ""
+                    dist = float(dists[j]) if j < len(dists) else 0.0
+                    meta = metas[j] if j < len(metas) else {}
+                    
+                    distances_list.append(dist)
+                    
+                    if meta.get("label") == "SPAM":
+                        spam_count += 1
+                        
+                    original_msg = meta.get("original_message", "")
+                    display_msg = original_msg if original_msg else summary_text
+
+                    hits.append({
+                        "id": id_,
+                        "message": display_msg,
+                        "summary": summary_text,
+                        "distance": dist,
+                        **meta
+                    })
+
+                if distances_list:
+                    d1 = distances_list[0]
+                    d2 = distances_list[1] if len(distances_list) > 1 else d1
+                    gap = d2 - d1
+                else:
+                    d1, d2, gap = 9.9, 9.9, 0.0
+                
+                response["hits"] = hits
+                response["stats"] = {
+                    "d1": d1, "d2": d2, "gap": gap, "spam_count": spam_count
+                }
+                results.append(response)
+                
+            return results
+
+        except Exception as e:
+            logger.error(f"[SpamRagService] Batch search error: {e}")
+            # Fallback for all items
+            return [
+                 {"hits": [], "query_summary": q, "stats": {"d1": 9.9, "d2": 9.9, "gap": 0.0}} 
+                 for q in query_intent_summaries
+            ]
     
     
     def update_example(self, example_id: str, message: str = None, label: str = None, code: str = None, category: str = None, reason: str = None) -> Dict[str, Any]:

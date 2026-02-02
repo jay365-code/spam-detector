@@ -8,6 +8,7 @@ from langgraph.graph import StateGraph, END
 class BatchState(TypedDict):
     message: str
     s1_result: Dict[str, Any] # Rule check result
+    prefetched_context: Optional[Dict[str, Any]] # [Batch Optimization] Injected Context
     
     # Results
     content_result: Optional[Dict[str, Any]]
@@ -29,9 +30,23 @@ def create_batch_graph(content_agent, url_agent, ibse_service):
     async def content_node(state: BatchState):
         msg = state["message"]
         s1 = state["s1_result"]
-        # Offload sync Content Agent to executor to prevent blocking
+        prefetched = state.get("prefetched_context")
+        
         loop = asyncio.get_running_loop()
-        res = await loop.run_in_executor(None, lambda: content_agent.check(msg, s1))
+        
+        if prefetched:
+            # [Batch Optimization] Use prefetched context directly
+            # check()와 유사하지만, context retrieval 단계를 건너뛰고 바로 _build_prompt -> _query_llm 호출
+            # 하지만 check() 메서드는 내부적으로 _retrieve_context를 호출함.
+            # 따라서 acheck의 로직을 본따서 context-aware execution을 해야 함.
+            # 가장 깔끔한 방법: acheck/check에 'content_context' 인자를 추가하여 retrieval bypass 지원
+            # (UrlAgent는 이미 지원함). 
+            # ContentAnalysisAgent.acheck에 'content_context'(이름이 헷갈리지만 context_data임) 지원 추가 필요.
+            res = await content_agent.acheck(msg, s1, content_context=prefetched)
+        else:
+            # Legacy/Fallback Mode
+            res = await loop.run_in_executor(None, lambda: content_agent.check(msg, s1))
+            
         return {"content_result": res}
 
     async def url_node(state: BatchState):
