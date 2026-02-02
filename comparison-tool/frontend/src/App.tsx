@@ -111,7 +111,7 @@ const FileInput = ({ label, onChange, file }: { label: string, onChange: (e: Rea
         type="file"
         onChange={onChange}
         accept=".xlsx"
-        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
       />
       {file ? (
         <div className="text-sm text-gray-800 font-medium truncate w-full px-2">
