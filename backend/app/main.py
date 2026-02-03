@@ -13,7 +13,7 @@ import warnings
 from dotenv import load_dotenv
 load_dotenv(override=True)  # .env 파일 로드
 
-from app.core.logging_config import setup_logging, get_logger
+from app.core.logging_config import setup_logging, get_logger, batch_id_context
 
 # 로깅 시스템 초기화 (앱 모듈 import 전에 반드시 호출!)
 # 환경변수: LOG_LEVEL_CONSOLE, LOG_LEVEL_FILE, LOG_JSON_ENABLED
@@ -21,8 +21,10 @@ setup_logging()
 
 logger = get_logger(__name__)
 
-# Suppress noisy warnings
+# Suppress noisy warnings and verbose SDK logs
 warnings.filterwarnings("ignore")
+logging.getLogger("google_genai").setLevel(logging.WARNING)
+logging.getLogger("google.generativeai").setLevel(logging.WARNING)
 
 # **CRITICAL FIX**: Force ProactorEventLoop on Windows for Playwright/Subprocess support
 if sys.platform == 'win32':
@@ -497,7 +499,8 @@ def process_message(message: str) -> dict:
     # Step 3: URL Deep Dive (Conditional)
     # Check URL if Content is Spam OR if Content is Safe but URL exists
     import re
-    url_pattern = re.compile(r'(https?://\S+|www\.\S+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})')
+    # url_pattern = re.compile(r'(https?://\S+|www\.\S+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})')
+    url_pattern = re.compile(r'(?:https?://|www\.)\S+|[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.[a-zA-Z가-힣]{2,}')
     
     # 원본 메시지에서 URL 체크
     has_url = bool(url_pattern.search(message))
@@ -744,7 +747,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                             # Step B: Conditional URL Check
                             # Check URL if Content is Spam OR if Content is Safe but URL exists
                             import re
-                            url_pattern = re.compile(r'(https?://\S+|www\.\S+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})')
+                            # url_pattern = re.compile(r'(https?://\S+|www\.\S+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})')
+                            url_pattern = re.compile(r'(?:https?://|www\.)\S+|[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.[a-zA-Z가-힣]{2,}')
                             has_url = bool(url_pattern.search(user_msg))
                             
                             # 난독화 디코딩된 텍스트에서도 URL 체크
@@ -777,10 +781,20 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 elif url_is_spam:
                                      # Case 4: Content(HAM) -> URL(SPAM) : SPAM Confirmed
                                      final_is_spam = True
-                                     # URL Agent의 classification_code로 업데이트 (Content가 "0" 기타이거나 없을 때)
+                                     
+                                     # Update Probability
+                                     final_prob = isaa_result.get("spam_probability", 0.95)
+                                     
+                                     # Update Reason
+                                     url_reason = isaa_result.get("reason", "Malicious URL detected")
+                                     content_reason += f" | [URL SPAM: {url_reason}]"
+
+                                     # URL Agent의 classification_code로 업데이트 (URL 분석이 Ground Truth)
                                      url_code = isaa_result.get('classification_code')
                                      original_code = code
-                                     if url_code and (not code or code == "0" or code == "Unk"):
+                                     
+                                     # URL 코드가 존재하고 '0'(기타)이 아니면 업데이트
+                                     if url_code and str(url_code) != "0":
                                           code = url_code
                                           logger.info(f"[URL Override] Updated code from '{original_code}' to '{code}' based on URL analysis")
                                           # 코드 변경 알림 출력
@@ -872,7 +886,7 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
             )
 
         # Wrapper for process_message to inject HITL logic (Batch Compatible)
-        def process_message_with_hitl(messages: list) -> list:
+        def process_message_with_hitl(messages: list, start_index: int = 0, total_count: int = 0) -> list:
             """
             Processes a batch of messages.
             1. Rule Filter (Stage 1) - Individual
@@ -893,93 +907,165 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
             
             # Async Batch Orchestrator
             async def run_batch_pipeline():
-                # [Batch Optimization] Pre-fetch contexts for all messages
+                from concurrent.futures import ThreadPoolExecutor
                 try:
-                    logger.info(f"Preparing batch contexts for {len(messages)} messages...")
-                    batch_contexts = await rag_filter.prepare_batch_contexts(messages)
-                except Exception as e:
-                    logger.error(f"Batch Context Prep Error: {e}")
-                    # Fallback to empty contexts (will trigger individual retrieval fallback in graph if handled, or just empty)
-                    batch_contexts = [None] * len(messages)
-
-                # A. Define Single Item Processing Function (Wraps Content + URL Logic per item)
-                from app.graphs.batch_flow import create_batch_graph
-                # Use global agents (Thread-safe/Async-safe assumed)
-                batch_graph = create_batch_graph(rag_filter, url_filter, ibse_service)
-
-                async def process_single_item(index, message, s1_res, context_data):
-                    # 배치 Item 시작 로그
-                    logger.info(f"[Batch {index+1}] 분석 시작 | msg={message[:80]}{'...' if len(message) > 80 else ''}")
+                    # [Concurrency Optimization] 
+                    # Python default executor is often limited to 40 threads (cpu+4).
+                    # For high batch sizes, we need more workers for sync LLM calls/summaries.
+                    batch_size = int(os.getenv("LLM_BATCH_SIZE", 10))
+                    loop = asyncio.get_running_loop()
+                    loop.set_default_executor(ThreadPoolExecutor(max_workers=batch_size + 10))
                     
-                    # Rule-based HAM (e.g., Non-Korean message) - Skip Graph
-                    if s1_res.get("is_spam") is False:
-                        s1_code = s1_res.get("classification_code")
-                        s1_reason = s1_res.get("reason", "Rule-based HAM")
-                        logger.info(f"[Batch {index+1}] Rule-based HAM | code={s1_code}")
-                        return index, {
-                            "is_spam": False,
-                            "classification_code": s1_code,
-                            "spam_probability": 0.0,
-                            "reason": s1_reason
+                    # [JIT Optimization] Global pre-processing removed to eliminate startup delay.
+                    # Context will be prepared individually within process_single_item.
+
+                    # A. Define Single Item Processing Function (Wraps Content + URL Logic per item)
+                    from app.graphs.batch_flow import create_batch_graph
+                    from app.agents.url_agent.nodes import close_playwright # Import cleanup
+                    # Use global agents (Thread-safe/Async-safe assumed)
+                    batch_graph = create_batch_graph(rag_filter, url_filter, ibse_service)
+
+                    async def process_single_item(index, message, s1_res):
+                        # Set Batch ID for this context (automatically prefixes all logs in this task)
+                        batch_id_context.set(f"Batch {index+1}")
+                        
+                        # Construct context Just-In-Time (JIT)
+                        try:
+                            # Use list wrap [message] to reuse batch logic for single item
+                            jit_contexts = await rag_filter.prepare_batch_contexts([message])
+                            context_data = jit_contexts[0] if jit_contexts else None
+                        except Exception as e:
+                            logger.error(f"Context Prep Error: {e}")
+                            context_data = None
+
+                        # 배치 Item 시작 로그
+                        logger.info(f"분석 시작 | msg={message[:80]}{'...' if len(message) > 80 else ''}")
+                        
+                        # Rule-based HAM (e.g., Non-Korean message) - Skip Graph
+                        if s1_res.get("is_spam") is False:
+                            s1_code = s1_res.get("classification_code")
+                            s1_reason = s1_res.get("reason", "Rule-based HAM")
+                            logger.info(f"Rule-based HAM | code={s1_code}")
+                            return index, {
+                                "is_spam": False,
+                                "classification_code": s1_code,
+                                "spam_probability": 0.0,
+                                "reason": s1_reason
+                            }
+                        
+                        # Construct Input State
+                        input_state = {
+                            "message": message,
+                            "s1_result": s1_res,
+                            "prefetched_context": context_data, # [Batch Optimization] Inject Context
+                            "content_result": None,
+                            "url_result": None,
+                            "ibse_result": None,
+                            "final_result": None
                         }
-                    
-                    # Construct Input State
-                    input_state = {
-                        "message": message,
-                        "s1_result": s1_res,
-                        "prefetched_context": context_data, # [Batch Optimization] Inject Context
-                        "content_result": None,
-                        "url_result": None,
-                        "ibse_result": None,
-                        "final_result": None
-                    }
-                    
-                    try:
-                        # Invoke Graph
-                        # ainvoke is async
-                        graph_output = await batch_graph.ainvoke(input_state)
-                        final_res = graph_output.get("final_result", {})
                         
-                        # Logging
-                        final_is_spam = final_res.get("is_spam")
-                        final_code = final_res.get("classification_code")
-                        final_prob = final_res.get("spam_probability", 0.0)
-                        verdict = "SPAM" if final_is_spam else ("HITL" if final_is_spam is None else "HAM")
-                        
-                        logger.info(f"[Batch {index+1}] 완료 | {verdict} | code={final_code} | prob={final_prob}")
-                        
-                        # [User Request] Generate Final Summary for Logging (Batch Mode)
-                        # graph output contains content/url results needed for summary
-                        content_res = graph_output.get("content_result")
-                        url_res = graph_output.get("url_result")
-                        
-                        if content_res:
-                            # We fire and forget (audit log) - ensuring it logs to console
-                            try:
-                                await rag_filter.generate_final_summary(message, content_res, url_res)
-                            except Exception as ex:
-                                logger.warning(f"Batch Summary Gen Error: {ex}")
-                        
-                        return index, final_res
-                        
-                    except Exception as e:
-                        logger.error(f"Graph Execution Error for Item {index}: {e}")
-                        return index, {"is_spam": None, "reason": f"Graph Error: {e}"}
+                        try:
+                            # Invoke Graph
+                            # ainvoke is async
+                            graph_output = await batch_graph.ainvoke(input_state)
+                            final_res = graph_output.get("final_result", {})
+                            
+                            # Logging
+                            final_is_spam = final_res.get("is_spam")
+                            final_code = final_res.get("classification_code")
+                            final_prob = final_res.get("spam_probability", 0.0)
+                            verdict = "SPAM" if final_is_spam else ("HITL" if final_is_spam is None else "HAM")
+                            
+                            logger.info(f"완료 | {verdict} | code={final_code} | prob={final_prob}")
+                            
+                            # [User Request] Generate Final Summary for Logging (Batch Mode)
+                            # graph output contains content/url results needed for summary
+                            content_res = graph_output.get("content_result")
+                            url_res = graph_output.get("url_result")
+                            
+                            if content_res:
+                                # We fire and forget (audit log) - ensuring it logs to console
+                                try:
+                                    await rag_filter.generate_final_summary(message, content_res, url_res)
+                                except Exception as ex:
+                                    logger.warning(f"Batch Summary Gen Error: {ex}")
+                            
+                            return index, final_res
+                            
+                        except Exception as e:
+                            logger.error(f"Graph Execution Error: {e}")
+                            return index, {"is_spam": None, "reason": f"Graph Error: {e}"}
 
-                # Create Tasks
-                tasks = [process_single_item(i, messages[i], s1_results[i], batch_contexts[i]) for i in range(len(messages))]
-                
-                # Run All
-                # Note: Logging happens inside process_single_item immediately upon completion.
-                # asyncio.gather preserves the order of results corresponding to the order of awaitables.
-                results_with_idx = await asyncio.gather(*tasks)
-                
-                # Sort just in case (though gather guarantees order) and extract
-                # results_with_idx is list of (index, result)
-                sorted_results = sorted(results_with_idx, key=lambda x: x[0])
-                completed_results = [r[1] for r in sorted_results]
+                    # Create Tasks with Semaphore (LLM_BATCH_SIZE)
+                    # We use a large pool (Sliding Window) but limit concurrency via Semaphore
+                    batch_size = int(os.getenv("LLM_BATCH_SIZE", 10))
+                    sem = asyncio.Semaphore(batch_size)
                     
-                return completed_results
+                    # Monotonic counter for progress
+                    completed_count = 0
+                    
+                    async def sem_task(index, msg, s1):
+                        # Set Batch ID for this context task
+                        batch_id_context.set(f"Batch {index+1}")
+                        if manager.is_cancelled(client_id):
+                            logger.info(f"Cancelled before start.")
+                            return index, {"is_spam": None, "reason": "Cancelled"}
+                            
+                        # Terminology: 'Queued' means created and waiting for worker slot
+                        logger.debug(f"Queued (Waiting for semaphore...)")
+                        async with sem:
+                            if manager.is_cancelled(client_id):
+                                logger.info(f"Cancelled after semaphore acquisition.")
+                                return index, {"is_spam": None, "reason": "Cancelled"}
+                                
+                            logger.debug(f"Acquired semaphore. Starting process...")
+                            idx, res = await process_single_item(index, msg, s1)
+                            # [Real-time Streaming] Send result to client immediately
+                            try:
+                                # Send partial result via WebSocket
+                                
+                                nonlocal completed_count
+                                completed_count += 1
+                                
+                                # [UI Fix] Use run_coroutine_threadsafe to send to main event loop
+                                asyncio.run_coroutine_threadsafe(
+                                    manager.send_personal_message({
+                                        "type": "BATCH_PROCESS_UPDATE",
+                                        "index": idx + start_index,  # Use Global Index for updating specific row
+                                        "message": msg,
+                                        "status": "done",
+                                        "result": res,
+                                        "current": start_index + completed_count, # Monotonic progress
+                                        "total": total_count # Total rows in file
+                                    }, client_id), loop
+                                )
+                            except Exception as ws_ex:
+                                logger.warning(f"WS Streaming Failed: {ws_ex}")
+                            return idx, res
+
+                    # Create all tasks (they will wait on semaphore)
+                    tasks = [sem_task(i, messages[i], s1_results[i]) for i in range(len(messages))]
+                    
+                    # Run All and Wait (Still need to collect all for Excel save)
+                    logger.info(f"Starting asyncio.gather for {len(tasks)} tasks...")
+                    results_with_idx = await asyncio.gather(*tasks)
+                    logger.info("asyncio.gather finished.")
+                    
+                    # Sort just in case (though gather guarantees order) and extract
+                    # results_with_idx is list of (index, result)
+                    sorted_results = sorted(results_with_idx, key=lambda x: x[0])
+                    completed_results = [r[1] for r in sorted_results]
+                        
+                    return completed_results
+
+                finally:
+                    # Cleanup Playwright after batch loop finishes
+                    try:
+                        from app.agents.url_agent.nodes import close_playwright
+                        await close_playwright()
+                        logger.info("PlaywrightManager cleaned up.")
+                    except Exception as cleanup_err:
+                        logger.warning(f"Cleanup warning: {cleanup_err}")
 
             # Run Async Pipeline
             try:
@@ -1065,23 +1151,29 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
         batch_size_env = int(os.getenv("LLM_BATCH_SIZE", 10))
         
         if file_ext.lower() == '.txt':
-            # Process TXT (Blocking call -> Run in ThreadPool)
-            # Process TXT (Blocking call -> Run in ThreadPool)
+            # Process TXT
+            # [Optimization] Pass a large batch_chunk_size (e.g. 1000) to ExcelHandler
+            # so it feeds many items to process_message_with_hitl at once.
+            # Then process_message_with_hitl uses Semaphore(LLM_BATCH_SIZE) to throttle concurrency.
+            # This enables "Sliding Window" instead of blocking after every 10 items.
+            batch_chunk_size = 1000 
+            
             result = await loop.run_in_executor(
                 None, 
                 lambda: excel_handler.process_kisa_txt(
                     input_path, OUTPUT_DIR, process_message_with_hitl, progress_callback, 
-                    batch_size=batch_size_env, original_filename=file.filename,
+                    batch_size=batch_chunk_size, original_filename=file.filename,
                     manager=manager, client_id=client_id
                 )
             )
             if isinstance(result, dict) and "filename" in result:
                 output_filename = result["filename"]
         else:
-            # Process Excel (Blocking call -> Run in ThreadPool)
+            # Process Excel
+            batch_chunk_size = 1000
             await loop.run_in_executor(
                 None, 
-                lambda: excel_handler.process_file(input_path, output_path, process_message_with_hitl, progress_callback, batch_size=batch_size_env)
+                lambda: excel_handler.process_file(input_path, output_path, process_message_with_hitl, progress_callback, batch_size=batch_chunk_size)
             )
         
         return {"id": file_id, "filename": output_filename, "message": "Processing complete"}

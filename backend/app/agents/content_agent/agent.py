@@ -5,6 +5,8 @@ load_dotenv(override=True) # Load .env file (override system variables)
 
 import json
 import logging
+import time
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
 from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -16,6 +18,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         self.model_name = os.getenv("LLM_MODEL", "gpt-5-mini")
         self.api_key = os.getenv("OPENAI_API_KEY")
         self.vector_db = None
+        self._full_guide_cache = None
 
     def _get_vector_db(self):
         if self.vector_db is None:
@@ -105,17 +108,22 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         }
     
     def _load_full_guide(self) -> str:
-        """전체 spam_guide.md 로드 (Fallback용)"""
+        """전체 spam_guide.md 로드 (Caching 적용)"""
+        if self._full_guide_cache:
+            return self._full_guide_cache
+            
         try:
             guide_path = os.path.join(os.path.dirname(__file__), "../../../data/spam_guide.md")
             with open(guide_path, "r", encoding="utf-8") as f:
-                return f.read()
+                self._full_guide_cache = f.read()
+                return self._full_guide_cache
         except Exception as e:
             try: 
                 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
                 guide_path = os.path.join(base_dir, "data/spam_guide.md")
                 with open(guide_path, "r", encoding="utf-8") as f:
-                    return f.read()
+                    self._full_guide_cache = f.read()
+                    return self._full_guide_cache
             except Exception as e2:
                 logger.error(f"    [Error] Failed to load spam_guide.md: {e2}")
                 return "스팸 판단 기준: 도박, 성인, 사기, 불법 대출 의도가 명확하면 SPAM, 그렇지 않으면 HAM."
@@ -161,7 +169,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                         "spam_probability": 0.99,
                         "classification_code": "3",
                         "reason": "Security Filter Blocked: Content was flagged as prohibited (likely highly offensive or explicit), which strongly indicates SPAM.",
-                        "signals": {"harm_anchor": true}
+                        "signals": {"harm_anchor": True}
                     })
                 
             elif provider == "CLAUDE":
@@ -184,19 +192,34 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 content = response.content[0].text
 
             else: # Default to OPENAI
+                from openai import OpenAI # Local import
                 local_client = OpenAI(api_key=self.api_key)
-                response = local_client.responses.create(
+                response = local_client.chat.completions.create( # Changed from local_client.responses.create
                     model=self.model_name,
-                    input=prompt,
+                    messages=[{"role": "user", "content": prompt}], # Changed from input=prompt
                     temperature=0.2  # 분류 작업에 적합한 낮은 temperature
                 )
-                content = response.output_text.strip()
+                content = response.choices[0].message.content.strip() # Changed from response.output_text.strip()
                 
         except Exception as e:
             logger.exception(f"{provider} API Error")
             raise e
         
         return content
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(Exception),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True
+    )
+    def _query_llm_with_retry(self, prompt: str) -> str:
+        """
+        Helper method to wrap _query_llm with tenacity retry logic.
+        Handles transient network errors like 'Server disconnected'.
+        """
+        return self._query_llm(prompt)
 
     def _build_prompt(self, message: str, detected_pattern: str, context_data: dict) -> str:
         guide_context = context_data.get("guide_context", "")
@@ -509,7 +532,7 @@ Step 4. SPAM 확정 조건:
             logger.info(f"프롬프트 생성 완료 | RAG Guide={'O' if has_guide else 'X'} | rag_retrieved={rag_retrieved}, rag_injected={rag_injected}")
             logger.info(f"RAG Details | injected_labels=SPAM:{spam_hits}/HAM:{ham_hits} | injected_ids={injected_ids}")
             
-            content = self._query_llm(prompt)
+            content = self._query_llm_with_retry(prompt)
             
             # LLM 응답 로그
             logger.debug(f"LLM 응답: {content[:300]}{'...' if len(content) > 300 else ''}")
@@ -600,7 +623,13 @@ Step 4. SPAM 확정 조건:
             
             logger.debug("Calling LLM...")
             # Run blocking LLM call in executor
-            content = await loop.run_in_executor(None, lambda: self._query_llm(prompt))
+            try:
+                content = await loop.run_in_executor(None, lambda: self._query_llm_with_retry(prompt))
+            except RuntimeError as e:
+                if "after shutdown" in str(e):
+                    logger.info("LLM query cancelled due to executor shutdown.")
+                    return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": "Stopped (System Shutdown)"}
+                raise e
             
             # LLM 응답 로그
             logger.debug(f"LLM 응답: {content[:300]}{'...' if len(content) > 300 else ''}")
@@ -678,7 +707,10 @@ Step 4. SPAM 확정 조건:
             for msg in messages
         ]
         intent_summaries = await asyncio.gather(*summary_tasks)
-        logger.info(f"Generated {len(intent_summaries)} intent summaries for batch.")
+        if len(intent_summaries) > 1:
+            logger.info(f"Generated {len(intent_summaries)} intent summaries for batch.")
+        else:
+            logger.debug(f"Generated intent summary for JIT process.")
         
         # 2. Batch RAG Search
         rag_results_list = []
@@ -776,7 +808,16 @@ Step 4. SPAM 확정 조건:
             llm = self._get_chat_model()
             # Since this is a single call (not stream), we use .invoke or generic call
             from langchain_core.messages import HumanMessage
-            response = await llm.ainvoke([HumanMessage(content=prompt)])
+            # Add retry for summary generation
+            @retry(
+                stop=stop_after_attempt(3),
+                wait=wait_exponential(multiplier=1, min=2, max=10),
+                reraise=True
+            )
+            async def call_summary_llm():
+                return await llm.ainvoke([HumanMessage(content=prompt)])
+                
+            response = await call_summary_llm()
             
             # Extract content robustly
             final_content = ""
@@ -829,19 +870,10 @@ Step 4. SPAM 확정 조건:
         """
         
         try:
-            llm = self._get_chat_model()
-            from langchain_core.messages import HumanMessage
-            # Use invoke instead of ainvoke for synchronous execution
-            response = llm.invoke([HumanMessage(content=prompt)])
-            
-            if hasattr(response, 'content'):
-                content = response.content
-                if isinstance(content, list) and len(content) > 0:
-                     if isinstance(content[0], dict) and 'text' in content[0]:
-                         return content[0]['text']
-                     return str(content)
-                return str(content)
-            return str(response)
+            # Use with_retry wrapper
+            response_content = self._query_llm_with_retry(prompt)
+            return response_content
+            # Legacy logic below removed for brevity and unified call
 
         except Exception as e:
             logger.error(f"Intent Summary Generation Error: {e}")

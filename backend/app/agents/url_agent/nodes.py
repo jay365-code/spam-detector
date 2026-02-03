@@ -66,6 +66,13 @@ def get_playwright_manager():
         _playwright_manager = PlaywrightManager()
     return _playwright_manager
 
+async def close_playwright():
+    global _playwright_manager
+    if _playwright_manager:
+        await _playwright_manager.stop()
+        _playwright_manager = None
+
+
 def get_llm():
     """
     .env 설정에 따른 LLM 인스턴스 반환
@@ -90,7 +97,7 @@ def get_llm():
         return ChatOpenAI(model=model_name, api_key=api_key, temperature=0.1)
 
 
-async def analyze_with_vision(screenshot_b64: str, url: str, title: str) -> Dict[str, Any]:
+async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content_context: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     Gemini Vision API를 사용하여 스크린샷 기반 스팸 분석
     텍스트 분석이 Inconclusive일 때 호출됨
@@ -125,44 +132,46 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str) -> Dict
         spam_codes_only = {k: v for k, v in SPAM_CODE_MAP.items() if not k.startswith("HAM")}
         code_list_str = "\n".join([f"    - '{k}': {v}" for k, v in spam_codes_only.items()])
         
+        if content_context:
+            content_label = "HAM" if not content_context.get("is_spam") else "SPAM"
+            content_reason = content_context.get("reason", "")
+            content_context_str = f"""
+        [SMS Context (Reference)]
+        - SMS Text: {content_context.get('original_message', '') if content_context.get('original_message') else 'N/A'}
+        - Content Agent Verdict: {content_label}
+        - Reason: {content_reason}
+        """
+        else:
+            content_context_str = "[SMS Context] Not available"
+
         # Vision 프롬프트
         prompt = f"""
-        You are a spam detection expert. Analyze this webpage screenshot and determine if it has **malicious/spam intent**.
+        You are a spam detection expert. Analyze this webpage screenshot and determine if it has **malicious/spam intent** or is **evading detection**.
         
         Page Title: {title}
+        {content_context_str}
         
-        **Your task: Determine if this page has SPAM INTENT based on VISUAL CONTENT ONLY**
+        **Your task: Determine if this page has SPAM INTENT, is EVADING, or is INCONCLUSIVE based on VISUAL CONTENT**
         
+        **CRITICAL: HANDLING MISMATCH (Intent-Based Reasoning)**:
+        - If SMS Context and Screenshot are logically unrelated (Mismatch):
+        - **DO NOT** automatically flag as SPAM.
+        - **Analyze the Intent of the Screenshot**: Does the visual content itself show harmful intent (Gambling, Adult, Scam, Phishing)?
+        - If the page is **Harmless but Unrelated** (e.g., generic landing page, domain notice), mark as **Inconclusive** or match the **Content Agent's Hammer verdict**.
+        - Only flag as **SPAM** if the visual content itself is independently malicious or clearly fraudulent.
+
         SPAM INTENT (requires CLEAR visual evidence):
-        - Illegal gambling (도박, 카지노, 토토, 바카라, 슬롯 - flashy casino imagery, betting interfaces, chips/cards)
-        - Adult/prostitution (성인, 유흥 - provocative images, adult service ads)
-        - Phishing (피싱 - fake login pages mimicking known brands, urgent security warnings asking credentials)
-        - Illegal finance (불법 대출 - unlicensed loan offers, 급전, 무서류)
-        - Fraud/Scam (사기 - fake prizes, too-good-to-be-true offers)
+        - Illegal gambling (chips, cards, slots, betting)
+        - Adult/prostitution
+        - Phishing (fake logins)
+        - Illegal finance (unlicensed loans)
+        - Fraud/Scam
         
-        NOT SPAM (legitimate purposes):
-        - Delivery/shipping tracking pages (배송 조회, 배송 추적, 배송 완료)
-        - Normal business marketing/advertising
-        - E-commerce, product/service pages, order confirmations
-        - Real estate/apartment promotional pages
-        - Corporate websites, landing pages
-        - News, information sites
+        NOT SPAM (legitimate purposes - BUT MUST MATCH CONTEXT):
+        - Delivery tracking (IF SMS is about delivery)
+        - Normal business page (IF SMS is about that business)
         
-        **CRITICAL RULES:**
-        1. Judge ONLY by what you SEE in the screenshot, not by domain name or URL.
-        2. Unknown or unusual domain names are NOT evidence of spam.
-        3. Delivery tracking pages showing shipping timeline/status are LEGITIMATE.
-        4. Real estate marketing pages with apartment info are LEGITIMATE advertising.
-        5. If the page shows normal business content (배송, 주문, 분양, 상품 등), it is NOT spam.
-        6. Only mark as SPAM if you see CLEAR malicious visual content.
-        7. **CRITICAL - Inconclusive Conditions (include "Inconclusive" in reason if ANY of these apply):**
-           - You cannot see meaningful content (blocked, loading, error page, etc.)
-           - Page only shows redirect/link UI to external apps (KakaoTalk, Telegram, etc.) without actual service content
-           - Page only shows "click to proceed" buttons without revealing what the destination offers
-           - You CANNOT determine the TRUE INTENT of the final service from this screenshot alone
-           - The page is just a landing/bridge page without actual service details
-           
-        **IMPORTANT**: If the screenshot does not clearly reveal the PURPOSE/INTENT of the service, mark it as Inconclusive - do NOT assume HAM just because no malicious content is visible.
+        **CRITICAL RULE**: If you cannot verify the relation between SMS Context and this Screenshot (e.g., totally different content), mark as **Inconclusive**.
 
         Classification Codes (use only if SPAM):
 {code_list_str}
@@ -172,7 +181,7 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str) -> Dict
             "is_spam": boolean,
             "classification_code": "string or null if HAM",
             "spam_probability": float (0.0-1.0),
-            "reason": "Korean explanation based on visual content analysis"
+            "reason": "Korean explanation based on visual content vs context match"
         }}
         """
         
@@ -183,13 +192,19 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str) -> Dict
         )
         
         # Vision API 호출
-        response = await asyncio.get_running_loop().run_in_executor(
-            None,
-            lambda: model.generate_content(
-                [prompt, image_part],
-                generation_config=generation_config
+        try:
+            response = await asyncio.get_running_loop().run_in_executor(
+                None,
+                lambda: model.generate_content(
+                    [prompt, image_part],
+                    generation_config=generation_config
+                )
             )
-        )
+        except RuntimeError as e:
+            if "after shutdown" in str(e):
+                logger.info("[URL Agent] Vision analysis cancelled due to executor shutdown.")
+                return {"is_spam": None, "reason": "Stopped (System Shutdown)", "analysis_type": "vision"}
+            raise e
         
         content = response.text
         
@@ -206,9 +221,7 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str) -> Dict
         reason = result_json.get("reason", "")
         classification_code = result_json.get("classification_code")
         
-        logger.info(f"[URL Agent] Vision Analysis Result: is_spam={is_spam}, "
-                   f"probability={prob}, code={classification_code}, "
-                   f"reason={reason}")
+        logger.info(f"[URL Agent] [Vision] Result: IS_SPAM={is_spam} | Code={classification_code} | Reason={reason}")
         
         return {
             "is_spam": is_spam,
@@ -443,52 +456,46 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     - 판정: {content_label}
     - 근거: {content_reason}
     
-    **당신의 임무**: SMS 메시지와 URL 페이지 내용을 **종합적으로 연결**하여 스팸 의도를 판단하세요.
+    **당신의 임무**: SMS 메시지와 URL 페이지 내용을 **비교 분석(Crosscheck)**하여 **문맥 일치(Consistency)** 여부와 **스팸 의도**를 판단하세요.
     
-    핵심 질문: SMS가 URL을 통해 **유해한 목적(도박/피싱/사기 등)**으로 유도하려는 의도가 있는가?
-    
-    **SPAM 판단 기준**: URL이 도박/피싱/사기 등 **유해 목적**으로 유도하는 경우
-    **HAM 판단 기준**: URL이 SMS 내용과 연관된 정상 비즈니스인 경우 (성인용품 포함)
+    **핵심 판단 기준**: 
+    1. SMS가 주장하는 내용(예: 대출, 배송, 상품)과 URL 페이지 내용이 **일치**하는가?
+    2. URL 페이지가 SMS 내용을 숨기기 위한 **회피용(Evasion)** 페이지(단축기, 봇 체크 등)인가?
     """
     
     prompt = f"""
-    You are a spam detection expert. Analyze this webpage and determine if it has **malicious/spam intent**.
+    당신은 SMS 메시지와 웹페이지 콘텐츠를 비교 분석하여 스팸 여부를 판단하는 전문가입니다.
+
+    [입력 데이터]
     {content_context_str}
-    Title: {page_title}
-    Captcha/Security Check Detected: {is_captcha}
-    Content:
+    - 페이지 제목: {page_title}
+    - 봇 감지 여부: {is_captcha}
+    - 웹 페이지 콘텐츠 (증거):
     {raw_text}
     
-    **Your task: Determine if this page has SPAM INTENT based on CONTENT ONLY**
+    [임무]
+    웹 페이지(증거)가 SMS 내용(주장)과 일치하는지 검증하여 최종 판단을 내리세요.
     
-    SPAM INTENT (requires CLEAR evidence in content):
-    - Illegal gambling (도박, 카지노, 토토, 바카라, 슬롯 - actual gambling content/interface)
-    - Adult/prostitution services (성인, 유흥, 출장, 안마, 오피 - explicit adult content)
-    - Phishing (가짜 로그인, 브랜드 사칭 - fake forms asking for passwords/credentials)
-    - Illegal finance (불법 대출, 급전, 무서류 대출 - unlicensed loan offers)
-    - Fraud/Scam (사기, 가짜 이벤트, 허위 당첨 - clear deception)
-    
-    NOT SPAM (legitimate purposes):
-    - Delivery/shipping tracking pages (배송 조회, 배송 추적)
-    - Normal business marketing/advertising
-    - E-commerce, product sales, order confirmations
-    - Service notifications, transaction alerts
-    - News, blogs, information sites
-    
-    **CRITICAL RULES:**
-    1. Judge ONLY by the actual PAGE CONTENT, not by domain name or URL format.
-    2. Unknown or unusual domain names are NOT evidence of spam - focus on what the page SHOWS.
-    3. Delivery tracking pages showing shipping status are legitimate even if domain seems unfamiliar.
-    4. If content shows normal business activity (배송, 주문, 결제 등), it is NOT spam.
-    5. Only mark as SPAM if you see CLEAR malicious content (gambling UI, adult content, fake login, etc.)
-    6. **CRITICAL - Inconclusive Conditions (include "Inconclusive" in reason if ANY of these apply):**
-       - Content is too short/empty or blocked by captcha
-       - Page only redirects to external apps/messengers (KakaoTalk, Telegram, Line, etc.) without showing actual service content
-       - Page only shows "click to proceed" or link buttons without revealing what the destination offers
-       - You CANNOT determine the TRUE INTENT of the final service from this page's content alone
-       - The page is just a landing/bridge page that doesn't show the actual service details
+    [핵심 판단 기준]
+    1. **문맥 일치 (Consistency) - 최우선 기준**:
+       - URL이 연결된 사이트의 성격(예: 성인, 쇼핑, 금융 등)이 무엇이든, SMS 메시지에서 안내하는 특정 목적(배송 조회, 결제 내역 확인, 본인 인증 등)을 **실제로 수행할 수 있는 합당한 페이지**라면 **HAM(정상)**으로 판단하세요.
+       - 사이트의 일반적인 평판이나 카테고리보다, **"SMS가 주장하는 트랜잭션이 해당 페이지에서 실제로 일어날 수 있는가?"**를 기준으로 삼으세요.
+
+    2. **Content Agent 가설 검증**:
+       - Content Agent가 텍스트만으로 판단한 결과("스미싱 의심" 등)에 얽매이지 마세요. URL 페이지가 **실제 서비스의 정상적인 기능(예: 구체적인 청구 내역 표시, 공식적인 서비스 UI)**을 제공하고 있다면, 텍스트 기반의 의심을 기각(Override)하고 **HAM**으로 확정하세요.
+
+    3. **목적 불일치 시의 판단 (Handling Mismatch)**:
+       - SMS 내용과 URL 페이지 내용이 무관할 때, **무조건 SPAM으로 처리하지 마세요.**
+       - **핵심 질문**: "이 불일치하는 페이지가 수신자에게 해를 끼치는(도박, 성인, 사기, 개인정보 탈취 등) 유해한 의도를 가진 페이지인가?"
+       - **유해한 의도가 명확할 때만 SPAM**으로 분류하고 적절한 코드를 부여하세요.
+       - 만약 페이지가 단순히 범용 서비스 안내, 서비스 준비 중, 혹은 기타 해롭지 않은 내용이라면 **판단 보류(30)** 혹은 **Content Agent의 결과(HAM)**를 유지하세요.
        
-    **IMPORTANT**: If the page content does not clearly reveal the PURPOSE/INTENT of the service, you MUST mark it as Inconclusive - do NOT assume HAM just because no malicious content is visible.
+    [오판 방지 가이드 (Bias Correction)]
+    - **성급한 일반화 금지**: "성인 사이트", "관리비 미납 안내"라는 키워드만으로 무조건 SPAM이라고 단정하지 마세요. 반드시 **"SMS가 안내한 목적(배송, 고지서 확인)을 수행하는가?"**를 확인해야 합니다.
+    - **도메인 편향 제거**: URL 도메인이 낯선 단축 URL(bit.ly 등)이나 생소한 도메인이라도, 최종 착지 페이지가 정상적인 기능을 제공하면 HAM입니다.
+
+    [피싱 (Phishing)]
+    - 정부 기관, 금융사를 사칭하여 개인정보 입력을 유도하는 가짜 사이트는 무조건 **SPAM**입니다.
 
     Classification Codes (use only if SPAM):
 {code_list_str}
@@ -498,7 +505,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         "is_spam": boolean,
         "classification_code": "string or null if HAM",
         "spam_probability": float (0.0-1.0),
-        "reason": "Korean explanation. Include 'Inconclusive' if content insufficient."
+        "reason": "한글 서술 (판단 근거 상세히 기재. 특히 SMS와 URL의 관계를 중심으로 서술)"
     }}
     """
     
@@ -546,7 +553,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
             logger.info("Text분석 Inconclusive → Vision 분석 시도")
             
             # Vision 분석 호출
-            vision_result = await analyze_with_vision(screenshot_b64, current_url, page_title)
+            vision_result = await analyze_with_vision(screenshot_b64, current_url, page_title, content_context)
             
             # Vision 분석 성공 시 결과 사용
             if vision_result.get("analysis_type") == "vision" and vision_result.get("is_spam") is not None:

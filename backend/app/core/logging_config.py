@@ -23,6 +23,7 @@ import os
 import sys
 import logging
 import json
+from contextvars import ContextVar
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler, RotatingFileHandler
 from pathlib import Path
@@ -35,6 +36,9 @@ LOG_DIR.mkdir(exist_ok=True)
 LOG_FILE = LOG_DIR / "spam_detector.log"
 JSON_LOG_FILE = LOG_DIR / "spam_detector.json.log"
 
+
+# Batch ID를 저장하기 위한 ContextVar (asyncio/threading 지원)
+batch_id_context = ContextVar("batch_id", default=None)
 
 class JsonFormatter(logging.Formatter):
     """JSON 형식 로그 포맷터 (분석 도구 연동용)"""
@@ -50,6 +54,11 @@ class JsonFormatter(logging.Formatter):
             "line": record.lineno,
         }
         
+        # Batch ID 추가
+        batch_id = batch_id_context.get()
+        if batch_id:
+            log_data["batch_id"] = batch_id
+            
         # extra 필드 추가 (사용자 정의 데이터)
         if hasattr(record, "extra_data"):
             log_data["data"] = record.extra_data
@@ -86,9 +95,14 @@ class ConsoleFormatter(logging.Formatter):
         name = record.name.split(".")[-2] if "." in record.name else record.name
         name = name[:15]  # 최대 15자
         
+        
         message = record.getMessage()
         
-        formatted = f"{color}[{timestamp}] [{level}] [{name:15s}]{self.RESET} {message}"
+        # Batch ID 접두사 추가
+        batch_id = batch_id_context.get()
+        batch_prefix = f"[{batch_id}] " if batch_id else ""
+        
+        formatted = f"{color}[{timestamp}] [{level}] [{name:15s}]{self.RESET} {batch_prefix}{message}"
         
         # 예외 정보 포함
         if record.exc_info:
