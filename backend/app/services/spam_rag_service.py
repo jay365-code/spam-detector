@@ -5,6 +5,7 @@ ChromaDB를 사용하여 스팸 참조 예시(Reference Examples)를 저장하�
 """
 import os
 import uuid
+import threading
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 
@@ -22,6 +23,7 @@ class SpamRagService:
         self.collection_name = "spam_rag_intent"
         self.db = None
         self._embedding_function = None
+        self._db_lock = threading.Lock()
         logger.info(f"SpamRagService initialized (Collection: {self.collection_name})")
     
     def _get_embedding_function(self):
@@ -32,19 +34,22 @@ class SpamRagService:
         return self._embedding_function
     
     def _get_db(self):
-        """Lazy load ChromaDB connection"""
+        """Lazy load ChromaDB connection (Thread-safe)"""
         if self.db is None:
-            from langchain_chroma import Chroma
-            
-            # Project Root의 data 폴더 사용
-            db_path = os.path.join(os.path.dirname(__file__), "../../../data/chroma_db")
-            logger.info(f"[SpamRagService] Connecting to ChromaDB at {db_path}")
-            
-            self.db = Chroma(
-                collection_name=self.collection_name,
-                embedding_function=self._get_embedding_function(),
-                persist_directory=db_path
-            )
+            with self._db_lock:
+                # Double-check pattern
+                if self.db is None:
+                    from langchain_chroma import Chroma
+                    
+                    # Project Root의 data 폴더 사용
+                    db_path = os.path.join(os.path.dirname(__file__), "../../../data/chroma_db")
+                    logger.info(f"[SpamRagService] Connecting to ChromaDB at {db_path}")
+                    
+                    self.db = Chroma(
+                        collection_name=self.collection_name,
+                        embedding_function=self._get_embedding_function(),
+                        persist_directory=db_path
+                    )
         return self.db
     
     def add_example(self, intent_summary: str, original_message: str, label: str, code: str, category: str, reason: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -165,6 +170,10 @@ class SpamRagService:
         results = []
         if not query_intent_summaries:
             return results
+
+        # [User Request] Log for each item to match Chat Mode behavior
+        for summary in query_intent_summaries:
+            logger.debug(f"Searching similar intent: '{summary[:30]}...'")
 
         try:
             db = self._get_db()

@@ -89,13 +89,16 @@ class UrlAnalysisAgent:
     def __init__(self):
         pass
 
-    def check(self, message: str, decoded_text: str = None) -> Dict[str, Any]:
+    def check(self, message: str, decoded_text: str = None, playwright_manager: Any = None) -> Dict[str, Any]:
         """
         Stage 3: URL Deep Dive
         
         Args:
             message: SMS 메시지 내용
+        Args:
+            message: SMS 메시지 내용
             decoded_text: 난독화 디코딩된 텍스트 (있으면 URL 추출 시 사용)
+            playwright_manager: PlaywrightManager Instance (Optional)
         """
         initial_state = {
             "sms_content": message,
@@ -105,7 +108,9 @@ class UrlAnalysisAgent:
             "scraped_data": {},
             "depth": 0,
             "max_depth": 2, 
-            "is_final": False
+            "max_depth": 2, 
+            "is_final": False,
+            "playwright_manager": playwright_manager
         }
         
         try:
@@ -135,7 +140,7 @@ class UrlAnalysisAgent:
                 "reason": f"ISAA Error: {str(e)}"
             }
 
-    async def acheck(self, message: str, status_callback: Callable[[str], Awaitable[None]] = None, content_context: Dict[str, Any] = None, decoded_text: str = None) -> Dict[str, Any]:
+    async def acheck(self, message: str, status_callback: Callable[[str], Awaitable[None]] = None, content_context: Dict[str, Any] = None, decoded_text: str = None, playwright_manager: Any = None) -> Dict[str, Any]:
         """
         Async version of check for WebSocket compatibility with Status Streaming
         
@@ -154,7 +159,9 @@ class UrlAnalysisAgent:
             "depth": 0,
             "max_depth": 2, 
             "is_final": False,
-            "content_context": content_context  # Content Agent 결과 전달
+            "is_final": False,
+            "content_context": content_context,  # Content Agent 결과 전달
+            "playwright_manager": playwright_manager
         }
         
         try:
@@ -198,7 +205,7 @@ class UrlAnalysisAgent:
             classification_code = result_state.get("classification_code")
             
             # Extract detailed metrics
-            scraped_data = result_state.get("scraped_data", {})
+            scraped_data = result_state.get("scraped_data") or {}
             popup_count = scraped_data.get("popup_count", 0)
             captcha_detected = scraped_data.get("captcha_detected", False)
             depth = result_state.get("depth", 0)

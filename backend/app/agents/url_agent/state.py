@@ -26,3 +26,6 @@ class SpamState(TypedDict):
     
     # Content Agent 연동
     content_context: Optional[Dict[str, Any]]  # Content Agent 분석 결과 (연관성 확보용)
+    
+    # [Infrastructure] Localized Browser Manager (Prevent Global State Issues)
+    playwright_manager: Optional[Any] # PlaywrightManager Instance passed from caller

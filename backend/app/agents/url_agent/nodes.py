@@ -4,6 +4,7 @@ import os
 import json
 import asyncio
 import logging
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
 from app.core.logging_config import get_logger
 logger = get_logger(__name__)
 import base64
@@ -191,15 +192,28 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
             response_mime_type="application/json"
         )
         
-        # Vision API 호출
-        try:
-            response = await asyncio.get_running_loop().run_in_executor(
+        # Vision API 호출 with Retry
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=2, max=10),
+            retry=retry_if_exception_type(Exception),
+            before_sleep=before_sleep_log(logger, logging.WARNING),
+            reraise=True
+        )
+        async def call_vision_api():
+            return await asyncio.get_running_loop().run_in_executor(
                 None,
                 lambda: model.generate_content(
                     [prompt, image_part],
                     generation_config=generation_config
                 )
             )
+
+        try:
+            response = await call_vision_api()
+        except Exception as e:
+            logger.error(f"[URL Agent] Vision API failed after retries: {e}")
+            return {"is_spam": None, "reason": f"Vision API Fail: {e}"}
         except RuntimeError as e:
             if "after shutdown" in str(e):
                 logger.info("[URL Agent] Vision analysis cancelled due to executor shutdown.")
@@ -366,8 +380,14 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
     
     # Playwright Manager 사용
     try:
-        manager = get_playwright_manager()
+        # [Infrastructure] Prefer local manager from state to avoid global loop conflicts
+        manager = state.get("playwright_manager")
+        if not manager:
+            manager = get_playwright_manager()
+            
         result = await manager.scrape_url(url)
+        if not result:
+            result = {"status": "failed", "error": "No result returned", "url": url}
         
         # 스크래핑 결과 로깅
         logger.info(f"[URL Agent] Scrape Result: status={result.get('status')}, "
@@ -514,7 +534,18 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         # logger.info(f"[URL Agent] Text Analysis Prompt:\n{prompt[:2000]}...")  # 프롬프트 로그 출력 제거
         logger.info(f"[URL Agent] Scraped Content Preview (100 chars): {raw_text[:100]}...")
         llm = get_llm()
-        response = await llm.ainvoke(prompt)
+        
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=2, max=10),
+            retry=retry_if_exception_type(Exception),
+            before_sleep=before_sleep_log(logger, logging.WARNING),
+            reraise=True
+        )
+        async def call_llm():
+            return await llm.ainvoke(prompt)
+            
+        response = await call_llm()
         content = response.content
         
         # Handle structured content (List of dicts) if LLM returns it

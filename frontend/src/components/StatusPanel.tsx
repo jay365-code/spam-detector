@@ -5,6 +5,8 @@ interface StatusPanelProps {
     current: number;
     total: number;
     isProcessing: boolean;
+    startTime?: number | null; // Start Time
+    endTime?: number | null;   // [New] End Time
     downloadUrl: string | null;
     onDownload?: () => void;
     isCancelling?: boolean;
@@ -16,6 +18,8 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
     current,
     total,
     isProcessing,
+    startTime,
+    endTime,
     downloadUrl,
     onDownload,
     isCancelling = false,
@@ -27,6 +31,32 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
 
     const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
 
+    // Timer Logic
+    const [elapsed, setElapsed] = React.useState(0);
+
+    React.useEffect(() => {
+        let interval: ReturnType<typeof setInterval>;
+        if (isProcessing && startTime) {
+            setElapsed(Math.floor((Date.now() - startTime) / 1000)); // Reset initially
+            interval = setInterval(() => {
+                setElapsed(Math.floor((Date.now() - startTime) / 1000));
+            }, 1000);
+        } else if (!isProcessing && startTime && endTime) {
+            // Fix invalid final time by using stored endTime
+            setElapsed(Math.floor((endTime - startTime) / 1000));
+        }
+        return () => clearInterval(interval);
+    }, [isProcessing, startTime, endTime]);
+
+    // Format Seconds to HH:MM:SS
+    const formatTime = (seconds: number) => {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = seconds % 60;
+        if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    };
+
     return (
         <div className="relative w-full h-[78px] bg-slate-800 border border-slate-700 rounded-xl shadow-xl px-4 flex items-center animate-fade-in">
             <div className="flex-1 mr-4">
@@ -36,11 +66,23 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
                             <>
                                 <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
                                 Processing...
+                                {/* Timer Display */}
+                                {startTime && (
+                                    <span className="text-blue-300 font-mono bg-blue-500/10 px-1.5 rounded ml-1">
+                                        {formatTime(elapsed)}
+                                    </span>
+                                )}
                             </>
                         ) : (
                             <>
                                 <CheckCircle className="w-3 h-3 text-green-400" />
                                 Completed
+                                {/* Final Time Display */}
+                                {startTime && (
+                                    <span className="text-slate-400 font-mono ml-2 border-l border-slate-600 pl-2">
+                                        Total: {formatTime(Math.floor(((endTime || Date.now()) - startTime) / 1000))}
+                                    </span>
+                                )}
                             </>
                         )}
                     </span>

@@ -9,6 +9,9 @@ import sys
 import logging
 import warnings
 
+import re
+import unicodedata
+
 # **CRITICAL**: 다른 앱 모듈 import 전에 로깅 설정 먼저 초기화
 from dotenv import load_dotenv
 load_dotenv(override=True)  # .env 파일 로드
@@ -46,6 +49,10 @@ class CancellationException(Exception):
     pass
 
 app = FastAPI()
+
+
+# Global Executor to prevent Thread Leak
+global_executor = None
 
 # WebSocket Connection Manager
 class ConnectionManager:
@@ -138,9 +145,61 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+def _log_env_config():
+    """서버 기동 시 .env 설정값 출력 (API 키 제외)"""
+    # 민감 정보 패턴 - 이 키들은 값 출력 생략
+    SENSITIVE_PATTERNS = ("KEY", "SECRET", "PASSWORD", "TOKEN")
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    if not os.path.exists(env_path):
+        return
+    try:
+        lines = []
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    key, _, val = line.partition("=")
+                    key = key.strip()
+                    val = val.strip().strip('"\'')
+                    # 민감 키 스킵
+                    key_upper = key.upper()
+                    if any(p in key_upper for p in SENSITIVE_PATTERNS):
+                        lines.append(f"  {key}=***")
+                    else:
+                        lines.append(f"  {key}={val}")
+        if lines:
+            logger.info("📋 [Config] .env loaded:\n" + "\n".join(lines))
+    except Exception as e:
+        logger.warning(f"Could not read .env for config log: {e}")
+
+
 @app.on_event("startup")
 async def startup_event():
-    logger.info("✅ Server Application Started! Ready for requests.")
+    # [Config] .env 값 출력 (API 키 제외)
+    _log_env_config()
+
+    # [Performance Fix] Initialize Global ThreadPoolExecutor ONCE
+    # Preventing thread leak (4320 threads issue)
+    global global_executor
+    workers = int(os.getenv("MAX_THREAD_WORKERS", 70))
+    from concurrent.futures import ThreadPoolExecutor
+    global_executor = ThreadPoolExecutor(max_workers=workers)
+    
+    # Set as default for the main loop
+    loop = asyncio.get_event_loop()
+    loop.set_default_executor(global_executor)
+    
+    logger.info(f"✅ Server Application Started! Global ThreadPool initialized with {workers} workers.")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Server shutting down...")
+    global global_executor
+    if global_executor:
+        global_executor.shutdown(wait=False)
+        logger.info("Global ThreadPoolExecutor shutdown.")
 
 @app.get("/health")
 async def health_check():
@@ -219,10 +278,9 @@ async def search_spam_rag_examples(query: str, k: int = 3):
     """유사 참조 예시 검색 (Intent-based, Threshold-filtered)"""
     try:
         # 1. Generate Intent Summary for the query (to align with stored vectors)
-        # Run sync method in thread pool to avoid blocking
+        from app.agents.content_agent.agent import ContentAnalysisAgent
         agent = ContentAnalysisAgent()
-        loop = asyncio.get_event_loop()
-        intent_summary = await loop.run_in_executor(None, agent.generate_intent_summary, query)
+        intent_summary = await agent.agenerate_intent_summary(query)
         
         logger.info(f"RAG Search Query: '{query}' -> Intent: '{intent_summary}'")
 
@@ -276,7 +334,7 @@ async def create_spam_rag_example(example: SpamRagCreate):
         # Import inside to ensure availability or avoid circular deps if any (though unlikely here)
         from app.agents.content_agent.agent import ContentAnalysisAgent
         agent = ContentAnalysisAgent()
-        intent_summary = agent.generate_intent_summary(example.message) # No await
+        intent_summary = await agent.agenerate_intent_summary(example.message)
         logger.info(f"Generated Intent Summary for RAG: '{intent_summary}' (Original: {example.message[:20]}...)")
 
         # 2. Save to RAG (Intent Summary based)
@@ -522,19 +580,44 @@ def process_message(message: str) -> dict:
         reason_lower = isaa_result.get("reason", "").lower()
         is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only"])
         
-        if is_inconclusive:
-             # Inconclusive -> Trust Content Verdict
-             final_reason += f" | [URL: Suspected but Inconclusive]"
+        if is_inconclusive or url_is_spam is None:
+             # URL 심층 분석 불가 (404, 내용 없음, 오류 등) -> 본문 분석 결과(Content Agent)를 전적으로 따름
+             logger.info("    -> URL Analysis Inconclusive/Error. Falling back to Content Agent verdict.")
+             final_reason += f" | [URL: Inaccessible/Empty - Using Content Verdict]"
         elif url_is_spam:
-             # Confirmed Spam -> Force SPAM
-             logger.info("    -> Suspicious URL Confirmed! Overriding to SPAM.")
-             final_is_spam = True
-             final_reason += f" | [URL: DETECTED SPAM]"
-             # Ideally map code, but for now strictly override verdict
-             if not final_code or final_code == "0":
-                  final_code = isaa_result.get("classification_code")
+             # 1차: 실질적 유해성(Harmful Intent) 여부 확인
+             url_reason = isaa_result.get("reason", "").lower()
+             url_code = isaa_result.get('classification_code')
+             
+             # 단순 문맥 불일치(Inconsistency)나 사칭(Impersonation)만으로는 HAM을 SPAM으로 뒤집지 않음.
+             # 실질적 유해성(도박, 성인, 불법, 사기 등)이 언급되거나 관련 코드가 있는 경우에만 SPAM 전환.
+             harm_keywords = ["gambling", "adult", "phishing", "malicious", "fraud", "scam", "illegal", "유해", "도박", "성인", "피싱", "사기"]
+             has_harmful_intent = any(k in url_reason for k in harm_keywords) or (url_code and str(url_code) != "0")
+             
+             if not final_is_spam and not has_harmful_intent:
+                  # 본문은 HAM인데 URL은 단순 불일치/낚시성인 경우 -> HAM 유지 (의도 중심)
+                  logger.info("    -> URL shows inconsistency but no harmful intent. Maintaining HAM.")
+                  final_reason += " | [URL: Inconsistent but no clear harm (HAM maintained)]"
+             else:
+                  # 실제 유해성이 확인되었거나 본문이 이미 SPAM인 경우 -> SPAM 확정
+                  logger.info("    -> Suspicious URL with Harmful Intent Confirmed! Finalizing as SPAM.")
+                  final_is_spam = True
+                  final_reason += f" | [URL: DETECTED SPAM]"
+                  
+                  # 확률 업데이트
+                  url_prob = isaa_result.get("spam_probability", 0.95)
+                  if url_prob > final_prob:
+                      final_prob = url_prob
+                  
+                  # 코드 업데이트 (본문이 HAM이었거나 코드가 없으면 URL 코드 사용, 기본값 '0')
+                  if url_code and str(url_code) != "0":
+                       final_code = url_code
+                  elif not final_code or str(final_code).startswith("HAM"):
+                       final_code = "0" 
+                  
+                  logger.info(f"[URL Override] Final Verdict: SPAM, Code: {final_code}")
         else:
-             # Confirmed Safe -> Force HAM (Override Content SPAM if needed)
+             # Confirmed Safe -> Force HAM (Override Content SPAM if confirmed as safe institution/service)
              if final_is_spam:
                   logger.info("    -> URL Confirmed Safe! Overriding Content SPAM to HAM.")
                   final_is_spam = False
@@ -774,38 +857,58 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 # Bidirectional Override Logic
                                 url_is_spam = isaa_result.get('is_spam')
                                 reason_lower = isaa_result.get("reason", "").lower()
-                                is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only"])
+                                is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only"]) or url_is_spam is None
                                 
                                 if is_inconclusive:
-                                     pass # Trust Content
+                                     # URL 심층 분석 불가 -> 본문 결과(Content Agent) 폴백 지지
+                                     await send_text_chunk("\nℹ️ **URL 분석 불가**: 링크가 만료되었거나 접근할 수 없습니다. 문자 본문 분석 결과를 우선하여 판정합니다.\n")
+                                     pass 
                                 elif url_is_spam:
-                                     # Case 4: Content(HAM) -> URL(SPAM) : SPAM Confirmed
-                                     final_is_spam = True
-                                     
-                                     # Update Probability
-                                     final_prob = isaa_result.get("spam_probability", 0.95)
-                                     
-                                     # Update Reason
-                                     url_reason = isaa_result.get("reason", "Malicious URL detected")
-                                     content_reason += f" | [URL SPAM: {url_reason}]"
-
-                                     # URL Agent의 classification_code로 업데이트 (URL 분석이 Ground Truth)
+                                     # Case 4: Content(HAM) -> URL(SPAM) : SPAM Confirmed conditionally
+                                     # 실질적 유해성(Harmful Intent) 여부 확인
+                                     url_reason = isaa_result.get("reason", "").lower()
                                      url_code = isaa_result.get('classification_code')
-                                     original_code = code
                                      
-                                     # URL 코드가 존재하고 '0'(기타)이 아니면 업데이트
-                                     if url_code and str(url_code) != "0":
-                                          code = url_code
+                                     harm_keywords = ["gambling", "adult", "phishing", "malicious", "fraud", "scam", "illegal", "유해", "도박", "성인", "피싱", "사기"]
+                                     has_harmful_intent = any(k in url_reason for k in harm_keywords) or (url_code and str(url_code) != "0")
+
+                                     if not final_is_spam and not has_harmful_intent:
+                                          # 본문 HAM인데 URL은 단순 불일치 -> HAM 유지 (의도 중심)
+                                          await send_text_chunk("\nℹ️ **의도 중심 판정**: 본문과 URL의 문맥이 다르나, 페이지에서 명확한 피해 의도가 확인되지 않아 **정상(HAM)**으로 처리합니다.\n")
+                                     else:
+                                          # 실제 유해성이 확인되었거나 본문이 이미 SPAM인 경우 -> SPAM 확정
+                                          final_is_spam = True
+                                          
+                                          # Update Probability
+                                          url_prob = isaa_result.get("spam_probability", 0.95)
+                                          if url_prob > prob:
+                                              prob = url_prob
+                                          
+                                          # Update Reason
+                                          url_reason_text = isaa_result.get("reason", "Malicious URL detected")
+                                          content_reason += f" | [URL SPAM: {url_reason_text}]"
+
+                                          # URL Agent의 classification_code로 업데이트 (URL 분석이 Ground Truth)
+                                          original_code = code
+                                          
+                                          # URL 코드가 존재하고 '0'(기타)이 아니면 업데이트. 
+                                          # 그렇지 않더라도 기존 코드가 HAM 계열이면 일반 스팸 코드('0')로 전환하여 불일치 방지
+                                          if url_code and str(url_code) != "0":
+                                               code = url_code
+                                          elif str(original_code).startswith("HAM") or not original_code:
+                                               code = "0" # Default SPAM code
+                                               
                                           logger.info(f"[URL Override] Updated code from '{original_code}' to '{code}' based on URL analysis")
                                           # 코드 변경 알림 출력
                                           new_code_desc = code_map.get(str(code), "기타")
-                                          await send_text_chunk(f"\n⚠️ **코드 업데이트**: {original_code} → **{code}. {new_code_desc}** (URL 분석 기반)\n")
-                                else:
+                                          await send_text_chunk(f"\n⚠️ **스팸 확정**: {original_code} → **{code}. {new_code_desc}** (유해 URL 탐지)\n")
+                                elif isaa_result: # result가 있을 때만 처리 (Case 2: Content(SPAM) -> URL(Safe))
                                      # Case 2: Content(SPAM) -> URL(Safe) : HAM Confirmed
                                      if final_is_spam:
                                           final_is_spam = False
                                           code = None  # HAM으로 바뀌면 코드도 초기화
                                           content_reason += " | [URL: Confirmed Safe (Override)]" # Update display reason
+                                          await send_text_chunk("\n✅ **정상 확인**: URL 분석 결과 안전한 기관/서비스로 확인되어 정상으로 판정합니다.\n")
 
                             # Step C: Auto-IBSE (Only if Spam)
                             if final_is_spam:
@@ -857,9 +960,50 @@ async def cancel_processing(client_id: str):
     return {"message": f"Cancellation requested for {client_id}"}
 
 
+    ws.cell(row=excel_row, column=output_columns["Reason"]).value = sanitize(reason)
+
+# ==========================================
+# [Helper] URL Detection for Smart Concurrency
+# ==========================================
+def has_potential_url(message: str) -> bool:
+    """
+    메시지에 URL이 포함되어 있는지 확인 (난독화된 URL 포함)
+    Smart Concurrency: URL이 있으면 Browser Queue(Slow), 없으면 LLM Queue(Fast)로 배정하기 위한 판단
+    """
+    if not message:
+        return False
+        
+    # nodes.py와 동일한 강력한 정규식 (http(s) 옵션 + 도메인 패턴)
+    # 한글, 영문, 숫자, 특수문자 도메인 지원
+    url_pattern = r'(?:http[s]?://)?(?:[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.)+[a-zA-Z가-힣]{2,}'
+    
+    # 1. 원본 텍스트 검사
+    if re.search(url_pattern, message):
+        return True
+        
+    # 2. 난독화 해제 후 검사 (NFKC 정규화)
+    # 예: "lⓔtⓩ.kr" -> "letz.kr"
+    try:
+        normalized = unicodedata.normalize('NFKC', message)
+        if normalized != message:
+            if re.search(url_pattern, normalized):
+                # logger.debug(f"De-obfuscated URL detected: {message} -> {normalized}")
+                return True
+    except:
+        pass
+        
+    return False
+
 @app.post("/upload")
 async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
     logger.info(f"DEBUG: Receive file upload request from Client {client_id}: {file.filename}")
+    
+    # [Safe Cleanup] Zombie process killing via 'taskkill' removed.
+    # New architecture uses localized PlaywrightManager with auto-cleanup (finally block).
+    # This prevents accidental termination of user's local Chrome browser.
+    # loop = asyncio.get_running_loop()
+    # await loop.run_in_executor(None, kill_zombie_processes)
+
     try:
         # Clear any previous cancellation flags
         manager.clear_cancellation(client_id)
@@ -907,25 +1051,31 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
             
             # Async Batch Orchestrator
             async def run_batch_pipeline():
-                from concurrent.futures import ThreadPoolExecutor
+                # [Performance Fix] Use Global ThreadPoolExecutor
+                # We do NOT create a new executor here.
+                # loop.set_default_executor is NOT called. 
+                # The global executor (size=70) handles all blocking I/O.
                 try:
-                    # [Concurrency Optimization] 
-                    # Python default executor is often limited to 40 threads (cpu+4).
-                    # For high batch sizes, we need more workers for sync LLM calls/summaries.
-                    batch_size = int(os.getenv("LLM_BATCH_SIZE", 10))
-                    loop = asyncio.get_running_loop()
-                    loop.set_default_executor(ThreadPoolExecutor(max_workers=batch_size + 10))
+
                     
                     # [JIT Optimization] Global pre-processing removed to eliminate startup delay.
                     # Context will be prepared individually within process_single_item.
 
                     # A. Define Single Item Processing Function (Wraps Content + URL Logic per item)
                     from app.graphs.batch_flow import create_batch_graph
-                    from app.agents.url_agent.nodes import close_playwright # Import cleanup
+                    from app.agents.url_agent.tools import PlaywrightManager
+                    
+                    # [Infrastructure] Create Local PlaywrightManager for this batch to ensure isolation
+                    # This fixes race conditions where global manager was closed by other threads.
+                    local_manager = PlaywrightManager() 
+
                     # Use global agents (Thread-safe/Async-safe assumed)
-                    batch_graph = create_batch_graph(rag_filter, url_filter, ibse_service)
+                    batch_graph = create_batch_graph(rag_filter, url_filter, ibse_service, playwright_manager=local_manager)
 
                     async def process_single_item(index, message, s1_res):
+                        import time
+                        start_time = time.time() # [Time Tracking] Start
+
                         # Set Batch ID for this context (automatically prefixes all logs in this task)
                         batch_id_context.set(f"Batch {index+1}")
                         
@@ -946,11 +1096,13 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                             s1_code = s1_res.get("classification_code")
                             s1_reason = s1_res.get("reason", "Rule-based HAM")
                             logger.info(f"Rule-based HAM | code={s1_code}")
+                            duration = round(time.time() - start_time, 2)
                             return index, {
                                 "is_spam": False,
                                 "classification_code": s1_code,
                                 "spam_probability": 0.0,
-                                "reason": s1_reason
+                                "reason": s1_reason,
+                                "duration_seconds": duration
                             }
                         
                         # Construct Input State
@@ -976,7 +1128,8 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                             final_prob = final_res.get("spam_probability", 0.0)
                             verdict = "SPAM" if final_is_spam else ("HITL" if final_is_spam is None else "HAM")
                             
-                            logger.info(f"완료 | {verdict} | code={final_code} | prob={final_prob}")
+                            duration = round(time.time() - start_time, 2)
+                            logger.info(f"완료 | {verdict} | code={final_code} | prob={final_prob} | {duration}s")
                             
                             # [User Request] Generate Final Summary for Logging (Batch Mode)
                             # graph output contains content/url results needed for summary
@@ -990,16 +1143,26 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                                 except Exception as ex:
                                     logger.warning(f"Batch Summary Gen Error: {ex}")
                             
+                            # Add duration to result
+                            final_res["duration_seconds"] = duration
                             return index, final_res
                             
                         except Exception as e:
                             logger.error(f"Graph Execution Error: {e}")
-                            return index, {"is_spam": None, "reason": f"Graph Error: {e}"}
+                            duration = round(time.time() - start_time, 2)
+                            return index, {"is_spam": None, "reason": f"Graph Error: {e}", "duration_seconds": duration}
 
-                    # Create Tasks with Semaphore (LLM_BATCH_SIZE)
-                    # We use a large pool (Sliding Window) but limit concurrency via Semaphore
-                    batch_size = int(os.getenv("LLM_BATCH_SIZE", 10))
-                    sem = asyncio.Semaphore(batch_size)
+                    # Create Two Priority Queues (Semaphores)
+                    # 1. Browser Queue: For messages with URLs (High Resource) -> Limited by MAX_BROWSER_CONCURRENCY
+                    # 2. LLM Queue: For text-only messages (Low Resource) -> Limited by LLM_BATCH_SIZE
+                    
+                    max_browser = int(os.getenv("MAX_BROWSER_CONCURRENCY", 10))
+                    max_llm = int(os.getenv("LLM_BATCH_SIZE", 50))
+                    
+                    sem_browser = asyncio.Semaphore(max_browser)
+                    sem_llm = asyncio.Semaphore(max_llm)
+                    
+                    logger.info(f"Initialized Dual Concurrency: Browser={max_browser}, LLM-Only={max_llm}")
                     
                     # Monotonic counter for progress
                     completed_count = 0
@@ -1011,21 +1174,29 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                             logger.info(f"Cancelled before start.")
                             return index, {"is_spam": None, "reason": "Cancelled"}
                             
+                        # Smart Concurrency: Check for URL (including obfuscated)
+                        is_url_msg = has_potential_url(msg)
+                        selected_sem = sem_browser if is_url_msg else sem_llm
+                        queue_type = "Browser" if is_url_msg else "LLM-Only"
+                        
                         # Terminology: 'Queued' means created and waiting for worker slot
-                        logger.debug(f"Queued (Waiting for semaphore...)")
-                        async with sem:
+                        logger.debug(f"Queued in {queue_type} Queue (Waiting for semaphore...)")
+                        async with selected_sem:
                             if manager.is_cancelled(client_id):
                                 logger.info(f"Cancelled after semaphore acquisition.")
                                 return index, {"is_spam": None, "reason": "Cancelled"}
                                 
-                            logger.debug(f"Acquired semaphore. Starting process...")
+                            logger.debug(f"Acquired {queue_type} semaphore. Starting process...")
                             idx, res = await process_single_item(index, msg, s1)
                             # [Real-time Streaming] Send result to client immediately
                             try:
-                                # Send partial result via WebSocket
-                                
                                 nonlocal completed_count
                                 completed_count += 1
+                                
+                                # [Optimization] Strip large binary/b64 data that frontend doesn't need
+                                ws_res = res.copy()
+                                if "screenshot_b64" in ws_res:
+                                    del ws_res["screenshot_b64"]
                                 
                                 # [UI Fix] Use run_coroutine_threadsafe to send to main event loop
                                 asyncio.run_coroutine_threadsafe(
@@ -1034,7 +1205,7 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                                         "index": idx + start_index,  # Use Global Index for updating specific row
                                         "message": msg,
                                         "status": "done",
-                                        "result": res,
+                                        "result": ws_res,
                                         "current": start_index + completed_count, # Monotonic progress
                                         "total": total_count # Total rows in file
                                     }, client_id), loop
@@ -1061,9 +1232,9 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                 finally:
                     # Cleanup Playwright after batch loop finishes
                     try:
-                        from app.agents.url_agent.nodes import close_playwright
-                        await close_playwright()
-                        logger.info("PlaywrightManager cleaned up.")
+                        if local_manager:
+                             await local_manager.stop()
+                        logger.info("Local PlaywrightManager cleaned up.")
                     except Exception as cleanup_err:
                         logger.warning(f"Cleanup warning: {cleanup_err}")
 
@@ -1082,7 +1253,8 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                 # Just HITL logic remains.
                 
                 # Check for HITL Condition (Code 30)
-                # User Request: If prob >= 0.9, override Code 30 and mark as SPAM-1 (or similar) without asking user.
+                # User Request (2026-02-06): Non-blocking notification only. No waiting.
+                # If prob >= 0.9, auto-confirm SPAM. Otherwise, mark as HAM (30) with [확인 필요].
                 spam_prob = result.get("spam_probability", 0.0)
                 
                 if result.get("classification_code") == "30":
@@ -1092,55 +1264,30 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                         result["classification_code"] = "1" # Default to General/Illegal Spam
                         result["reason"] += " [Auto-Confirmed due to High Probability]"
                     else:
-                        logger.info(f"[HITL] Triggered for message: {msg[:20]}...")
+                        logger.info(f"[HITL] Non-blocking Notification: {msg[:20]}...")
                     
-                    # Notify Client
-                    hitl_request = {
-                        "type": "HITL_REQUEST",
-                        "message": msg,
-                        "spam_probability": result.get("spam_probability"),
-                        "reason": result.get("reason")
-                    }
-                    asyncio.run_coroutine_threadsafe(
-                        manager.send_personal_message(hitl_request, client_id), loop
-                    ).result() # Wait for send
-                    
-                    # Block Thread & Wait
-                    event = manager.register_hitl_request(client_id)
-                    flag = event.wait(timeout=300) # Wait up to 5 mins
-                    
-                    if flag:
-                        # User Responded
-                        user_response = manager.get_hitl_response(client_id)
-                        decision = user_response.get("decision", "HAM")
-                        comment = user_response.get("comment")
+                        # Notify Client (Visual Notification Only)
+                        hitl_notification = {
+                            "type": "HITL_NOTIFICATION", # Changed from REQUEST to NOTIFICATION
+                            "message": msg,
+                            "spam_probability": result.get("spam_probability"),
+                            "reason": result.get("reason"),
+                            "index": i + start_index # Global Index for Frontend Highlight
+                        }
+                        try:
+                            # Send asynchronously without waiting for result blocking heavily
+                            asyncio.run_coroutine_threadsafe(
+                                manager.send_personal_message(hitl_notification, client_id), loop
+                            )
+                        except Exception as noti_err:
+                            logger.warning(f"Failed to send HITL notification: {noti_err}")
                         
-                        if decision == "SPAM":
-                            result["is_spam"] = True
-                            orig_code = result.get("classification_code", "0")
-                            result["classification_code"] = orig_code if orig_code != "30" else "1" 
-                            result["reason"] += " [Manually Marked as SPAM]"
-                        else:
-                            result["is_spam"] = False
-                            result["classification_code"] = "0"
-                            result["reason"] += " [Manually Marked as HAM]"
-                            
-                        if comment:
-                             result["reason"] += f" 👤 {comment}"
-                        else:
-                             result["reason"] += " 👤"
-                            
-                        logger.info(f"[HITL] User decided: {decision}")
-                        
-                    else:
-                        # Timeout
-                        logger.warning("[HITL] Timeout. Defaulting to HAM.")
+                        # ** Non-blocking Default Decision **
+                        # Mark as HAM (is_spam=False) but keep Code 30 so user can review later.
                         result["is_spam"] = False
-                        result["classification_code"] = "0"
-                        result["reason"] += " [HITL Timeout -> HAM]"
-    
-                    # Cleanup
-                    manager.cleanup_hitl(client_id)
+                        result["classification_code"] = "30" 
+                        result["reason"] += " [판단 보류 - 확인 필요]"
+                        logger.info("[HITL] Defaulted to HAM(30) (Non-blocking mode).")
                 
                 final_results.append(result)
                 
@@ -1339,19 +1486,25 @@ async def update_excel_row(update: ExcelRowUpdate):
         else:
             new_code = ""
         
+        # Helper for sanitization
+        def sanitize(val):
+            if isinstance(val, str) and val.startswith(('=', '+', '-', '@')):
+                 return "'" + val
+            return val
+
         # ========== 메인 시트 업데이트 ==========
         if gubun_col:
-            ws.cell(row=found_row, column=gubun_col, value="o" if update.is_spam else "")
+            ws.cell(row=found_row, column=gubun_col, value=sanitize("o" if update.is_spam else ""))
         
         if code_col:
-            ws.cell(row=found_row, column=code_col, value=new_code)
+            ws.cell(row=found_row, column=code_col, value=sanitize(new_code))
         
         if prob_col:
             prob_val = f"{int(update.spam_probability * 100)}%"
-            ws.cell(row=found_row, column=prob_col, value=prob_val)
+            ws.cell(row=found_row, column=prob_col, value=sanitize(prob_val))
         
         if reason_col:
-            ws.cell(row=found_row, column=reason_col, value=update.reason)
+            ws.cell(row=found_row, column=reason_col, value=sanitize(update.reason))
         
         # ========== 메시지 셀 채우기 색 업데이트 ==========
         from openpyxl.styles import PatternFill, Alignment

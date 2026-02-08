@@ -20,6 +20,24 @@ class ExcelHandler:
             # Fallback for chars not in cp949
             return len(text.encode('utf-8'))
 
+    def _sanitize_cell_value(self, value):
+        """
+        Prevent Excel Formula Injection (CSV Injection).
+        If value starts with =, +, -, @, prepend ' to treat as text.
+        Also remove illegal characters.
+        """
+        if not isinstance(value, str):
+            return value
+        
+        # 1. OpenPyXL handles illegal XML chars (mostly), but let's be safe against nulls
+        value = value.replace('\0', '')
+        
+        # 2. Formula Injection prevention
+        if value.startswith(('=', '+', '-', '@')):
+            return "'" + value
+        
+        return value
+
     def _sort_sheet_by_gubun(self, ws, gubun_col_idx: int):
         """
         구분 컬럼 기준으로 정렬: SPAM("o") 상단, HAM("") 하단
@@ -322,7 +340,11 @@ class ExcelHandler:
             
         # Write Data
         for url, info in unique_urls.items():
-            ws.append([url, info['len'], info['code']])
+            ws.append([
+                self._sanitize_cell_value(url), 
+                info['len'], 
+                self._sanitize_cell_value(info['code'])
+            ])
 
     def _create_blocklist_sheet(self, wb: Workbook, blocklist_data: list):
         """
@@ -351,7 +373,12 @@ class ExcelHandler:
         # Write Data
         # blocklist_data = [{"msg":..., "sig":..., "len":..., "code":...}, ...]
         for item in blocklist_data:
-            ws.append([item['msg'], item['sig'], item['len'], item['code']])
+            ws.append([
+                self._sanitize_cell_value(item['msg']), 
+                self._sanitize_cell_value(item['sig']), 
+                item['len'], 
+                self._sanitize_cell_value(item['code'])
+            ])
 
 
     def process_file(self, file_path: str, output_path: str, processing_function, progress_callback=None, batch_size: int = 1):
@@ -394,7 +421,9 @@ class ExcelHandler:
 
             # 3. Iterate Rows & Batch Processing
             total_rows = ws.max_row - 1 # Excluding header
-            logger.info(f"Processing {total_rows} rows from Excel (Batch Size: {batch_size})...")
+            # 전체 메시지 큐 로드: ≤2000이면 전체, >2000이면 2000개씩 청크
+            effective_batch_size = min(2000, total_rows) if total_rows > 0 else 1
+            logger.info(f"Processing {total_rows} rows from Excel (Batch Size: {effective_batch_size})...")
             
             row_iterator = ws.iter_rows(min_row=2, max_row=ws.max_row)
             
@@ -402,7 +431,7 @@ class ExcelHandler:
             unique_urls = {} # URL Reduplication Store
             blocklist_data = [] # IBSE Blocklist Store
             
-            def flush_batch():
+            def flush_batch(start_index=0):
                 if not batch_buffer:
                     return
                 
@@ -411,7 +440,12 @@ class ExcelHandler:
                 
                 # Call Processing Function (Expects List -> Returns List)
                 try:
-                    results = processing_function(messages)
+                    # Pass start_index (global offset) to processing function for correct UI mapping
+                    # processing_function signature: processing_function(messages, start_index=0, total_count=0)
+                    results = processing_function(messages, start_index=start_index, total_count=total_rows)
+                except TypeError:
+                     # Fallback for backward compatibility if function doesn't accept start_index yet
+                     results = processing_function(messages)
                 except Exception as e:
                     logger.error(f"Batch Processing Failed: {e}")
                     # Create error results
@@ -515,14 +549,18 @@ class ExcelHandler:
                 
                 batch_buffer.append((current_row_idx, message_str, row))
                 
-                if len(batch_buffer) >= batch_size:
+                if len(batch_buffer) >= effective_batch_size:
                     logger.info(f"Processing Batch (Row {i+1}/{total_rows})...")
-                    flush_batch()
+                    # Calculate start_index based on current position
+                    current_start_index = i - len(batch_buffer) + 1
+                    flush_batch(start_index=current_start_index)
             
             # Process remaining
             if batch_buffer:
                 logger.info(f"Processing Remaining Batch...")
-                flush_batch()
+                # Calculate start_index for remaining items
+                final_start_index = total_rows - len(batch_buffer)
+                flush_batch(start_index=final_start_index)
 
             # 3.5 구분 컬럼 기준 정렬 (SPAM 상단, HAM 하단)
             self._sort_sheet_by_gubun(ws, gubun_col_idx)
@@ -610,7 +648,9 @@ class ExcelHandler:
                 rows.append({"message": msg_body, "url": url_in_file})
 
             total_rows = len(rows)
-            logger.info(f"Processing {total_rows} rows from KISA TXT (Batch Mode)...")
+            # 전체 메시지 큐 로드: ≤2000이면 전체, >2000이면 2000개씩 청크
+            effective_batch_size = min(2000, total_rows) if total_rows > 0 else 1
+            logger.info(f"Processing {total_rows} rows from KISA TXT (Batch Size: {effective_batch_size})...")
 
             # 3. Create Excel & Setup Styles
             wb = Workbook()
@@ -648,7 +688,11 @@ class ExcelHandler:
                 messages = [item["message"] for item in batch_buffer]
                 
                 try:
-                    results = processing_function(messages)
+                    # Pass start_index to processing_function for correct UI indexing
+                    # Argument name is start_idx in this function definition
+                    results = processing_function(messages, start_index=start_idx, total_count=total_rows)
+                except TypeError:
+                     results = processing_function(messages)
                 except Exception as e:
                     logger.error(f"Batch Processing Failed: {e}")
                     results = [{"is_spam": None, "reason": f"Error: {e}"} for _ in messages]
@@ -689,7 +733,14 @@ class ExcelHandler:
                     
                     # Write Row
                     ws.append([
-                        msg_val, url_val, gubun_val, code_val, msg_len, url_len, prob_val, reason_val
+                        self._sanitize_cell_value(msg_val), 
+                        self._sanitize_cell_value(url_val), 
+                        self._sanitize_cell_value(gubun_val), 
+                        self._sanitize_cell_value(code_val), 
+                        msg_len, 
+                        url_len, 
+                        self._sanitize_cell_value(prob_val), 
+                        self._sanitize_cell_value(reason_val)
                     ])
                     
                     # --- URL Collection Logic ---
@@ -765,8 +816,8 @@ class ExcelHandler:
             for i, row_data in enumerate(rows):
                 batch_buffer.append(row_data)
                 
-                if len(batch_buffer) >= batch_size:
-                    flush_batch(i - batch_size + 1)
+                if len(batch_buffer) >= effective_batch_size:
+                    flush_batch(i - effective_batch_size + 1)
             
             # Remaining
             if batch_buffer:

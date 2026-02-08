@@ -1,5 +1,6 @@
 import asyncio
 from playwright.async_api import async_playwright, Page, BrowserContext
+import os
 # playwright-stealth 라이브러리 API 호환성 문제로 수동 stealth 사용
 import base64
 import random
@@ -166,16 +167,28 @@ class PlaywrightManager:
         
         # Detect if we are in a new event loop (e.g. restart of asyncio.run)
         if self.loop and self.loop != current_loop:
+            logger.warning(f"[PlaywrightManager] Loop change detected! Old: {id(self.loop)}, New: {id(current_loop)}. Resetting browser.")
             # Old loop is closed or different, discard stale objects
             self.browser = None
             self.playwright = None
             self._lock = None # Discard lock from old loop
+            self._semaphore = None # Discard semaphore from old loop
             
         self.loop = current_loop
 
         # Initialize lock if needed (Lazy init to bind to current loop)
         if self._lock is None:
             self._lock = asyncio.Lock()
+
+        # Initialize semaphore if needed (Lazy init to bind to current loop)
+        if hasattr(self, "_semaphore") and self._semaphore is None: # hasattr check just in case
+            pass 
+        
+        if not hasattr(self, "_semaphore") or self._semaphore is None:
+             # Default to 5 if not set, user can tune via env
+            max_concurrency = int(os.getenv("MAX_BROWSER_CONCURRENCY", 5))
+            self._semaphore = asyncio.Semaphore(max_concurrency)
+            logger.info(f"[PlaywrightManager] Initialized concurrency semaphore with limit: {max_concurrency}")
 
         # Atomic Browser Launch
         async with self._lock:
@@ -196,6 +209,10 @@ class PlaywrightManager:
         if self.playwright:
             await self.playwright.stop()
             self.playwright = None
+        # Clean up semaphore/lock refs so they get recreated on next start if loop changes
+        self._semaphore = None
+        self._lock = None
+
 
     async def simulate_human_behavior(self, page: Page):
         """
@@ -461,167 +478,171 @@ class PlaywrightManager:
                 logger.debug(f"Checking browser state... (Headless: {self.headless})")
                 await self.start()
                 
-                # 새 컨텍스트 생성 (모바일 에뮬레이션 - SMS는 모바일에서 클릭되므로)
-                logger.debug("Creating mobile context (iPhone emulation)...")
-                context = await self.browser.new_context(
-                    user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
-                    viewport={"width": 390, "height": 844},
-                    device_scale_factor=3,
-                    is_mobile=True,
-                    has_touch=True,
-                    ignore_https_errors=True  # SSL 인증서 오류 무시 (스팸 사이트 분석용)
-                )
-                logger.debug("Mobile context created (iPhone 14 Pro emulation).")
-                break # Success
-            except Exception as e:
-                logger.warning(f"Browser connection failed (Attempt {attempt+1}): {e}")
-                # Force reset
-                self.browser = None
-                self.playwright = None
-                self.loop = None
-                if attempt == 1:
-                    result["error"] = f"Browser Init Failed: {str(e)}"
-                    return result
-
-        if not context:
-             result["error"] = "Could not create browser context"
-             return result
-
-        try:
-            page = await context.new_page()
-            
-            # 강화된 봇 감지 우회 Stealth 스크립트 적용
-            await page.add_init_script(ENHANCED_STEALTH_SCRIPT)
-            
-            logger.debug(f"Page created with enhanced stealth. Navigating to {url}...")
-            
-            # 1. 페이지 로드 (타임아웃 20초로 증가)
-            response = await page.goto(url, wait_until="domcontentloaded", timeout=20000)
-            logger.debug(f"Navigation complete. Status: {response.status if response else 'None'}")
-            
-            # 리디렉션 최종 URL 업데이트
-            final_url = page.url
-            result["url"] = final_url
-
-            if response:
-                result["status_code"] = response.status
-            
-            # 2. Human-like behavior 시뮬레이션
-            await self.simulate_human_behavior(page)
-            
-            # 3. 렌더링 대기 (동적 콘텐츠) - 시간 증가
-            logger.debug("Waiting for content...")
-            await page.wait_for_timeout(2000)
-            
-            # 4. 봇 방어 시스템 감지 및 대기 (Cloudflare, 부정클릭방지 등)
-            text_content_initial = await page.evaluate("document.body.innerText")
-            bot_protection_indicators = [
-                # Cloudflare
-                "verifying you are human", "just a moment", "checking your browser", "cf-spinner",
-                # 한국 봇 방어 시스템
-                "부정클릭방지", "부정클릭 방지", "자동화방지", "invalid access", "접근제한",
-                # 일반
-                "bot protection", "security check"
-            ]
-            is_bot_protected = any(ind in text_content_initial.lower() for ind in bot_protection_indicators)
-            
-            if is_bot_protected:
-                logger.info("Bot protection detected. Waiting for auto-resolution...")
-                # 봇 방어 자동 해결 대기 (최대 25초)
-                protection_passed = await self.wait_for_bot_protection(page, max_wait=25)
-                if not protection_passed:
-                    logger.info("Protection not auto-resolved. Attempting manual bypass...")
-                    await self.attempt_captcha_bypass(page)
-                    await page.wait_for_timeout(3000)
+                # Acquire semaphore before doing heavy work (creating context)
+                async with self._semaphore:
+                    # 새 컨텍스트 생성 (모바일 에뮬레이션 - SMS는 모바일에서 클릭되므로)
+                    logger.debug("Creating mobile context (iPhone emulation)...")
+                    context = await self.browser.new_context(
+                        user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
+                        viewport={"width": 390, "height": 844},
+                        device_scale_factor=3,
+                        is_mobile=True,
+                        has_touch=True,
+                        ignore_https_errors=True  # SSL 인증서 오류 무시 (스팸 사이트 분석용)
+                    )
+                    logger.debug("Mobile context created (iPhone 14 Pro emulation).")
                     
-                    # 다시 텍스트 확인
-                    text_content_initial = await page.evaluate("document.body.innerText")
-                    
-                    # 여전히 보호 중이면 플래그 설정
-                    if any(ind in text_content_initial.lower() for ind in bot_protection_indicators):
-                        result["bot_protection_active"] = True
-                        logger.info("Bot protection still active after bypass attempts.")
+                    try:
+                        page = await context.new_page()
+                        
+                        # 강화된 봇 감지 우회 Stealth 스크립트 적용
+                        await page.add_init_script(ENHANCED_STEALTH_SCRIPT)
+                        
+                        logger.debug(f"Page created with enhanced stealth. Navigating to {url}...")
+                        
+                        # 1. 페이지 로드 (타임아웃 10초로 단축 - 1000개/60분 목표)
+                        response = await page.goto(url, wait_until="domcontentloaded", timeout=10000)
+                        logger.debug(f"Navigation complete. Status: {response.status if response else 'None'}")
+                        
+                        # 리디렉션 최종 URL 업데이트
+                        final_url = page.url
+                        result["url"] = final_url
 
-            # 2.5 팝업 닫기 시도 (Heuristic)
-            popup_count = 0
-            try:
-                # 일반적인 닫기 버튼 선택자들
-                close_selectors = [
-                    "text=닫기", "text=Close", "text=오늘 하루", "text=그만보기",
-                    "button[class*='close']", "div[class*='close']", 
-                    "button[aria-label='Close']", "button[aria-label='닫기']",
-                    ".modal-close", ".popup-close"
-                ]
+                        if response:
+                            result["status_code"] = response.status
+                        
+                        # 2. Human-like behavior 시뮬레이션
+                        await self.simulate_human_behavior(page)
+                        
+                        # 3. 렌더링 대기 (동적 콘텐츠) - 시간 증가
+                        logger.debug("Waiting for content...")
+                        await page.wait_for_timeout(2000)
+                        
+                        # 4. 봇 방어 시스템 감지 및 대기 (Cloudflare, 부정클릭방지 등)
+                        text_content_initial = await page.evaluate("document.body.innerText")
+                        bot_protection_indicators = [
+                            # Cloudflare
+                            "verifying you are human", "just a moment", "checking your browser", "cf-spinner",
+                            # 한국 봇 방어 시스템
+                            "부정클릭방지", "부정클릭 방지", "자동화방지", "invalid access", "접근제한",
+                            # 일반
+                            "bot protection", "security check"
+                        ]
+                        is_bot_protected = any(ind in text_content_initial.lower() for ind in bot_protection_indicators)
+                        
+                        if is_bot_protected:
+                            logger.info("Bot protection detected. Waiting for auto-resolution...")
+                            # 봇 방어 자동 해결 대기 (최대 5초 - 빠른 포기)
+                            protection_passed = await self.wait_for_bot_protection(page, max_wait=5)
+                            if not protection_passed:
+                                logger.info("Protection not auto-resolved. Attempting manual bypass...")
+                                await self.attempt_captcha_bypass(page)
+                                await page.wait_for_timeout(3000)
+                                
+                                # 다시 텍스트 확인
+                                text_content_initial = await page.evaluate("document.body.innerText")
+                                
+                                # 여전히 보호 중이면 플래그 설정
+                                if any(ind in text_content_initial.lower() for ind in bot_protection_indicators):
+                                    result["bot_protection_active"] = True
+                                    logger.info("Bot protection still active after bypass attempts.")
+
+                        # 2.5 팝업 닫기 시도 (Heuristic)
+                        popup_count = 0
+                        try:
+                            # 일반적인 닫기 버튼 선택자들
+                            close_selectors = [
+                                "text=닫기", "text=Close", "text=오늘 하루", "text=그만보기",
+                                "button[class*='close']", "div[class*='close']", 
+                                "button[aria-label='Close']", "button[aria-label='닫기']",
+                                ".modal-close", ".popup-close"
+                            ]
+                            
+                            for selector in close_selectors:
+                                # 보이는 요소만 클릭 (옵션: timeout 짧게)
+                                closes = await page.locator(selector).all()
+                                for close_btn in closes:
+                                    if await close_btn.is_visible():
+                                        try:
+                                            await close_btn.click(timeout=1000)
+                                            await page.wait_for_timeout(500) # 클릭 후 잠시 대기
+                                            popup_count += 1
+                                        except:
+                                            pass # 클릭 실패해도 무시하고 계속
+                        except Exception as e_popup:
+                            # 팝업 닫기 중 에러가 나도 메인 로직은 진행
+                            logger.debug(f"Popup close warning: {e_popup}")
+                        
+                        result["popup_count"] = popup_count
+
+                        
+                        # 3. 데이터 추출
+                        result["title"] = await page.title()
+                        
+                        # visible text만 추출 평가
+                        text_content = await page.evaluate("document.body.innerText")
+                        
+                        # 3.5 캡차 탐지 및 우회 시도 (Heuristic)
+                        result["captcha_detected"] = False
+                        captcha_keywords = ["captcha", "recaptcha", "turnstile", "사람 확인", "로봇이 아닙니다", "not a robot", "human check"]
+                        lower_text = text_content.lower()
+                        if any(k in lower_text for k in captcha_keywords):
+                            result["captcha_detected"] = True
+                            logger.info(f"Captcha/Interstitial detected. Attempting bypass...")
+                            # Bypass 시도
+                            if await self.attempt_captcha_bypass(page):
+                                # 우회 성공 가능성 있으므로 텍스트/타이틀 다시 추출
+                                logger.debug("Bypass action performed. Refreshing content...")
+                                result["title"] = await page.title()
+                                text_content = await page.evaluate("document.body.innerText")
+                                # 재검사
+                                result["captcha_detected"] = False 
+                                lower_text = text_content.lower()
+                                if any(k in lower_text for k in captcha_keywords):
+                                     result["captcha_detected"] = True # 여전히 캡차면 True 유지
+
+                        result["text"] = text_content[:5000] # 너무 길면 자름
+                        
+                        # 4. 스크린샷 캡처
+                        logger.debug("Capturing screenshot...")
+                        screenshot_bytes = await page.screenshot(type="jpeg", quality=60, full_page=False)
+                        result["screenshot_b64"] = base64.b64encode(screenshot_bytes).decode('utf-8')
+                        
+                        result["status"] = "success"
+                        logger.info(f"Scraping success: {result['title'][:50]}")
+                        
+                        return result # Return immediately on success
+
+                    finally:
+                        logger.debug("Closing context.")
+                        await context.close()
                 
-                for selector in close_selectors:
-                    # 보이는 요소만 클릭 (옵션: timeout 짧게)
-                    closes = await page.locator(selector).all()
-                    for close_btn in closes:
-                        if await close_btn.is_visible():
-                            try:
-                                await close_btn.click(timeout=1000)
-                                await page.wait_for_timeout(500) # 클릭 후 잠시 대기
-                                popup_count += 1
-                            except:
-                                pass # 클릭 실패해도 무시하고 계속
-            except Exception as e_popup:
-                # 팝업 닫기 중 에러가 나도 메인 로직은 진행
-                logger.debug(f"Popup close warning: {e_popup}")
-            
-            result["popup_count"] = popup_count
+                break # Success (if we returned above, this line is unreachable, but logically loop breaks)
 
-            
-            # 3. 데이터 추출
-            result["title"] = await page.title()
-            
-            # visible text만 추출 평가
-            text_content = await page.evaluate("document.body.innerText")
-            
-            # 3.5 캡차 탐지 및 우회 시도 (Heuristic)
-            result["captcha_detected"] = False
-            captcha_keywords = ["captcha", "recaptcha", "turnstile", "사람 확인", "로봇이 아닙니다", "not a robot", "human check"]
-            lower_text = text_content.lower()
-            if any(k in lower_text for k in captcha_keywords):
-                result["captcha_detected"] = True
-                logger.info(f"Captcha/Interstitial detected. Attempting bypass...")
-                # Bypass 시도
-                if await self.attempt_captcha_bypass(page):
-                    # 우회 성공 가능성 있으므로 텍스트/타이틀 다시 추출
-                    logger.debug("Bypass action performed. Refreshing content...")
-                    result["title"] = await page.title()
-                    text_content = await page.evaluate("document.body.innerText")
-                    # 재검사
-                    result["captcha_detected"] = False 
-                    lower_text = text_content.lower()
-                    if any(k in lower_text for k in captcha_keywords):
-                         result["captcha_detected"] = True # 여전히 캡차면 True 유지
+            except Exception as e:
+                # Check for Playwright TimeoutError specifically
+                if "Timeout" in str(e) and "Page.goto" in str(e):
+                    logger.warning(f"Scraping Timeout (likely bot protection): {e}")
+                    result["error"] = "Timeout (Bot Protection?)"
+                    result["status"] = "timeout"
+                else:
+                    logger.exception("Scraping error")
+                    result["error"] = str(e)
+                    result["status"] = "error"
+                
+                # If we are here, it means we failed. Move to next attempt in outer loop.
+                # But we need to distinguish between "Browser Init Fail" and "Scraping Fail"
+                # Browser Init Fail is caught in the outer 'except' block. 
+                # This try/except covers the logic INSIDE the semaphore.
+                pass
 
-            result["text"] = text_content[:5000] # 너무 길면 자름
-            
-            # 4. 스크린샷 캡처
-            logger.debug("Capturing screenshot...")
-            screenshot_bytes = await page.screenshot(type="jpeg", quality=60, full_page=False)
-            result["screenshot_b64"] = base64.b64encode(screenshot_bytes).decode('utf-8')
-            
-            result["status"] = "success"
-            logger.info(f"Scraping success: {result['title'][:50]}")
 
-        except Exception as e:
-            # Check for Playwright TimeoutError specifically
-            if "Timeout" in str(e) and "Page.goto" in str(e):
-                logger.warning(f"Scraping Timeout (likely bot protection): {e}")
-                result["error"] = "Timeout (Bot Protection?)"
-                result["status"] = "timeout"
-            else:
-                logger.exception("Scraping error")
-                result["error"] = str(e)
-                result["status"] = "error"
+        # If we reached here (not returned), it means we failed or loop attempt failed inside semaphore
+        if result["status"] == "success":
+             return result # Should have returned above, but safety check
         
-        finally:
-            logger.debug("Closing context.")
-            await context.close()
-            
-        return result
+        return result # [Fix] Always return result dict (with error status) instead of None
+
 
 # Singleton 인스턴스 (필요시)
 # manager = PlaywrightManager()

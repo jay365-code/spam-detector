@@ -163,9 +163,19 @@ function App() {
 
   // 수정 모달 열기
   const openEditModal = (logIndex: number, log: any) => {
+    // [Fix] Fallback for older reports without excel_row_number
+    // Assuming 1 header row, so index 0 is row 2
+    let rowNumber = log.excel_row_number;
+    if (rowNumber === undefined) {
+      rowNumber = logIndex + 2;
+    } else if (rowNumber < 2) {
+      // 0-based index fix (Legacy bug)
+      rowNumber = rowNumber + 2;
+    }
+
     setEditingLog({
       index: logIndex,
-      excel_row_number: log.excel_row_number,  // Add row number
+      excel_row_number: rowNumber,
       message: log.message,
       is_spam: log.result.is_spam,
       classification_code: log.result.classification_code || '',
@@ -191,9 +201,15 @@ function App() {
     if (!editingLog || !downloadFilename) return;
 
     // Validate excel_row_number exists
-    if (!editingLog.excel_row_number) {
-      alert('Excel 행 번호 정보가 없습니다. JSON 리포트를 다시 생성해주세요.');
+    let rowNum = editingLog.excel_row_number;
+    if (rowNum === undefined || rowNum === null) {
+      // Only fallback if really missing. If 0, we fix below.
+      alert('Excel 행 번호 정보가 없습니다.');
       return;
+    }
+    // [Fix] Double-check for 0-based index
+    if (rowNum < 2) {
+      rowNum = rowNum + 2;
     }
 
     setEditSaving(true);
@@ -204,7 +220,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filename: downloadFilename,
-          excel_row_number: editingLog.excel_row_number,  // Add row number
+          excel_row_number: rowNum,  // Use corrected rowNum
           message: editingLog.message,
           is_spam: editingLog.is_spam,
           classification_code: editingLog.classification_code,
@@ -280,6 +296,8 @@ function App() {
   // Progress State
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [startedAt, setStartedAt] = useState<number | null>(null); // [New] Start Time
+  const [endTime, setEndTime] = useState<number | null>(null); // [New] End Time
 
   // HITL State
   const [hitlRequest, setHitlRequest] = useState<any | null>(null);
@@ -502,22 +520,63 @@ function App() {
         // Ignore Chat Streaming messages and Process Status for System Log
         if (data.type && (data.type.startsWith('CHAT_') || data.type === 'PROCESS_STATUS')) return;
 
+        // [New] Handle Batch Process Update (Real-time Streaming)
+        if (data.type === 'BATCH_PROCESS_UPDATE') {
+          // Update Progress Logic (Moved inside to avoid early return issue)
+          if (data.current !== undefined && data.total !== undefined) {
+            setProgress({ current: data.current, total: data.total });
+            if (data.current < data.total) {
+              setIsProcessing(true);
+            } else {
+              // Only set to false if we are sure it's done?
+              // Actually, batch update implies ongoing. 
+              // Wait for final "Processing complete" message safely, 
+              // but if current == total, we might be done.
+              if (data.current === data.total) {
+                // Don't set isProcessing false here immediately, let the final response handle it 
+                // or just leave it true.
+              }
+            }
+          }
+
+          setLogs(prev => {
+            const newLogs = [...prev];
+            // Ensure array is large enough (sparse array handling)
+            if (newLogs.length <= data.index) {
+              // Fill gaps if needed, though usually pushed sequentially on upload
+              // Here we just assign to the specific index
+            }
+
+            // Construct Log Object
+            const logItem = {
+              excel_row_number: data.index + 2, // [Fix] Store Excel Row Number (Index + Header + 1-based)
+              message: data.message,
+              result: data.result,
+              timestamp: new Date()
+            };
+
+            newLogs[data.index] = logItem;
+            return newLogs;
+          });
+          return;
+        }
+
         // Handle Progress/Log with Deduplication
         setLogs(prev => {
           // If this is a result message (has result), look for matching pending message
           if (data.result && data.message) {
-            const index = prev.findIndex(l => l.message === data.message && !l.result);
+            const index = prev.findIndex(l => l && l.message === data.message && !l.result);
             if (index !== -1) {
               // Found pending log -> matching result; Update it
               const newLogs = [...prev];
-              newLogs[index] = { ...data, timestamp: newLogs[index].timestamp };
+              newLogs[index] = { ...data, timestamp: newLogs[index]?.timestamp || new Date() };
               return newLogs;
             }
           }
 
           // Safety check: Avoid adding exact duplicate results if already present
           const exists = prev.some(l =>
-            l.message === data.message &&
+            l && l.message === data.message &&
             l.result && data.result &&
             l.result.reason === data.result.reason
           );
@@ -618,6 +677,8 @@ function App() {
     setLogs([]);
     setProgress({ current: 0, total: 0 });
     setIsProcessing(true);
+    setStartedAt(Date.now()); // [New] Set Start Time
+    setEndTime(null); // Reset End Time
     setDownloadUrl(null);
     setDownloadFilename(null);
     setHitlRequest(null);
@@ -630,6 +691,7 @@ function App() {
 
   const handleUploadComplete = (filename: string) => {
     setIsProcessing(false);
+    setEndTime(Date.now()); // Capture Finish Time
     setDownloadFilename(filename);
     setDownloadUrl(`http://localhost:8000/download/${encodeURIComponent(filename)}`);
   };
@@ -733,6 +795,8 @@ function App() {
                   current={progress.current}
                   total={progress.total}
                   isProcessing={isProcessing}
+                  startTime={startedAt} // [New] Pass Start Time
+                  endTime={endTime} // [New] Pass End Time
                   downloadUrl={downloadUrl}
                   onDownload={handleExcelSaveAs}
                   isCancelling={isCancelling}
@@ -936,6 +1000,12 @@ function App() {
                           <span className="text-blue-400 text-xs">Processing...</span>
                         )}
                         <span className="text-slate-500 ml-auto text-xs whitespace-nowrap">
+                          {/* Duration Badge */}
+                          {log.result?.duration_seconds && (
+                            <span className="mr-2 px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded border border-slate-700">
+                              {log.result.duration_seconds}s
+                            </span>
+                          )}
                           [{log.timestamp ? log.timestamp.toLocaleTimeString() : new Date().toLocaleTimeString()}]
                         </span>
                       </div>

@@ -128,9 +128,9 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 logger.error(f"    [Error] Failed to load spam_guide.md: {e2}")
                 return "스팸 판단 기준: 도박, 성인, 사기, 불법 대출 의도가 명확하면 SPAM, 그렇지 않으면 HAM."
 
-    def _query_llm(self, prompt: str) -> str:
+    async def _aquery_llm(self, prompt: str) -> str:
         """
-        Executes the LLM call based on the provider.
+        Executes the LLM call based on the provider (Async version).
         """
         content = ""
         provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
@@ -138,6 +138,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         try:
             if provider == "GEMINI":
                 import google.generativeai as genai
+                import asyncio
                 gemini_key = os.getenv("GEMINI_API_KEY")
                 if not gemini_key:
                     raise ValueError("GEMINI_API_KEY is missing")
@@ -145,9 +146,8 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 genai.configure(api_key=gemini_key)
                 model_name = self.model_name if "gemini" in self.model_name else "gemini-1.5-flash"
                 model = genai.GenerativeModel(model_name)
-                # Sync call with temperature=0.2 for classification tasks
                 generation_config = genai.GenerationConfig(temperature=0.2)
-                # [Safety Settings] Disable safety filters to allow analysis of spam/harmful content
+                # [Safety Settings]
                 safety_settings = [
                     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
                     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -155,14 +155,14 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                     {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
                 ]
                 
-                response = model.generate_content(prompt, generation_config=generation_config, safety_settings=safety_settings)
+                # Use to_thread for the sync SDK call to avoid blocking the loop
+                response = await asyncio.to_thread(
+                    lambda: model.generate_content(prompt, generation_config=generation_config, safety_settings=safety_settings)
+                )
                 
                 try:
                     content = response.text
                 except ValueError:
-                    # Handle blocked content (Safety Filters)
-                    # Even with BLOCK_NONE, some content (CSAM, extreme hate) is blocked at the system level.
-                    # We return a fallback SPAM verdict to prevent system crash and ensure pipeline continuity.
                     logger.warning("[Gemini] Response blocked by safety filters. Returning fallback SPAM verdict.")
                     content = json.dumps({
                         "label": "SPAM",
@@ -178,31 +178,29 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 if not claude_key:
                     raise ValueError("CLAUDE_API_KEY is missing")
                     
-                client = anthropic.Anthropic(api_key=claude_key)
+                client = anthropic.AsyncAnthropic(api_key=claude_key)
                 model_name = self.model_name if "claude" in self.model_name else "claude-3-haiku-20240307"
                 
-                response = client.messages.create(
+                response = await client.messages.create(
                     model=model_name,
                     max_tokens=1024,
-                    temperature=0.2,  # 분류 작업에 적합한 낮은 temperature
-                    messages=[
-                        {"role": "user", "content": prompt}
-                    ]
+                    temperature=0.2,
+                    messages=[{"role": "user", "content": prompt}]
                 )
                 content = response.content[0].text
 
             else: # Default to OPENAI
-                from openai import OpenAI # Local import
-                local_client = OpenAI(api_key=self.api_key)
-                response = local_client.chat.completions.create( # Changed from local_client.responses.create
+                from openai import AsyncOpenAI
+                async_client = AsyncOpenAI(api_key=self.api_key)
+                response = await async_client.chat.completions.create(
                     model=self.model_name,
-                    messages=[{"role": "user", "content": prompt}], # Changed from input=prompt
-                    temperature=0.2  # 분류 작업에 적합한 낮은 temperature
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.2
                 )
-                content = response.choices[0].message.content.strip() # Changed from response.output_text.strip()
+                content = response.choices[0].message.content.strip()
                 
         except Exception as e:
-            logger.exception(f"{provider} API Error")
+            logger.exception(f"{provider} Async API Error")
             raise e
         
         return content
@@ -214,12 +212,12 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True
     )
-    def _query_llm_with_retry(self, prompt: str) -> str:
+    async def _aquery_llm_with_retry(self, prompt: str) -> str:
         """
-        Helper method to wrap _query_llm with tenacity retry logic.
-        Handles transient network errors like 'Server disconnected'.
+        Helper method to wrap _aquery_llm with tenacity retry logic (Async).
+        Handles transient network errors like WinError 10060/10054.
         """
-        return self._query_llm(prompt)
+        return await self._aquery_llm(prompt)
 
     def _build_prompt(self, message: str, detected_pattern: str, context_data: dict) -> str:
         guide_context = context_data.get("guide_context", "")
@@ -497,9 +495,17 @@ Step 4. SPAM 확정 조건:
         logger.debug(f"분석 시작 | msg={message[:80]}{'...' if len(message) > 80 else ''}")
         
         try:
-            # 1. Intent Summary Generation
-            # [Revert] Restore Intent Summary for Accuracy
-            intent_summary = self.generate_intent_summary(message)
+            # 1. Intent Summary Generation (Use loop to run the async version or simplified sync)
+            # For check (sync), we wrap the async call
+            # 1. Intent Summary Generation (Directly use agenerate_intent_summary if possible, else sync fallback)
+            import asyncio
+            try:
+                # check is sync, but we want the high-quality intent summary from agenerate
+                intent_summary = self.generate_intent_summary(message)
+            except Exception as e:
+                logger.warning(f"Sync Intent Summary Generation Failed: {e}")
+                intent_summary = f"Intent analysis of: {message[:50]}..."
+
             logger.info(f"Intent Summary: {intent_summary[:120]}...")
 
             # 2. RAG Retrieval (guide + FN examples)
@@ -532,7 +538,14 @@ Step 4. SPAM 확정 조건:
             logger.info(f"프롬프트 생성 완료 | RAG Guide={'O' if has_guide else 'X'} | rag_retrieved={rag_retrieved}, rag_injected={rag_injected}")
             logger.info(f"RAG Details | injected_labels=SPAM:{spam_hits}/HAM:{ham_hits} | injected_ids={injected_ids}")
             
-            content = self._query_llm_with_retry(prompt)
+            try:
+                # Bridge sync check to async LLM call
+                loop = asyncio.get_event_loop()
+                content = loop.run_until_complete(self._aquery_llm_with_retry(prompt))
+            except Exception as e:
+                logger.error(f"Sync bridging for LLM failed: {e}")
+                # Fallback to a legacy sync query if needed, or just re-raise
+                raise e
             
             # LLM 응답 로그
             logger.debug(f"LLM 응답: {content[:300]}{'...' if len(content) > 300 else ''}")
@@ -577,9 +590,9 @@ Step 4. SPAM 확정 조건:
                 if status_callback:
                     await status_callback("🧠 의도 파악 중...")
                 
-                # 0. Generate Intent Summary (Blocking LLM call in executor)
-                # [Revert] Restore Intent Summary
-                intent_summary = await loop.run_in_executor(None, lambda: self.generate_intent_summary(message))
+                # 0. Generate Intent Summary (Direct Async Call)
+                # [Fix] Don't use run_in_executor for an async method wrapper
+                intent_summary = await self.agenerate_intent_summary(message)
                 logger.info(f"Intent Summary: {intent_summary[:120]}...")
 
                 # 1. RAG Retrieval (guide + FN examples, Run in thread to avoid blocking)
@@ -622,14 +635,12 @@ Step 4. SPAM 확정 조건:
             logger.debug(f"Prompt built, length: {len(prompt)} chars")
             
             logger.debug("Calling LLM...")
-            # Run blocking LLM call in executor
+            # Run async LLM call with retry
             try:
-                content = await loop.run_in_executor(None, lambda: self._query_llm_with_retry(prompt))
-            except RuntimeError as e:
-                if "after shutdown" in str(e):
-                    logger.info("LLM query cancelled due to executor shutdown.")
-                    return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": "Stopped (System Shutdown)"}
-                raise e
+                content = await self._aquery_llm_with_retry(prompt)
+            except Exception as e:
+                logger.error(f"Async LLM query failure: {e}")
+                return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": f"Error: {e}"}
             
             # LLM 응답 로그
             logger.debug(f"LLM 응답: {content[:300]}{'...' if len(content) > 300 else ''}")
@@ -701,12 +712,9 @@ Step 4. SPAM 확정 조건:
         loop = asyncio.get_running_loop()
         
         # 1. Intent Summary Generation (Parallel)
-        # generate_intent_summary is sync/blocking, run in executor
-        summary_tasks = [
-            loop.run_in_executor(None, lambda m=msg: self.generate_intent_summary(m))
-            for msg in messages
-        ]
+        summary_tasks = [self.agenerate_intent_summary(msg) for msg in messages]
         intent_summaries = await asyncio.gather(*summary_tasks)
+        
         if len(intent_summaries) > 1:
             logger.info(f"Generated {len(intent_summaries)} intent summaries for batch.")
         else:
@@ -847,11 +855,9 @@ Step 4. SPAM 확정 조건:
             logger.error(f"Summary Generation Error: {e}")
             return "종합 결과 요약 생성 중 오류가 발생했습니다."
 
-    def generate_intent_summary(self, message: str) -> str:
+    async def agenerate_intent_summary(self, message: str) -> str:
         """
-        Public method to generate 'Judgement Semantic Unit' (Intent Summary).
-        Used by main.py for saving RAG examples and internally for analysis.
-        (Synchronous version for compatibility)
+        Asynchronous version of intent summary generation with retries.
         """
         prompt = f"""
         [GOAL]
@@ -870,11 +876,25 @@ Step 4. SPAM 확정 조건:
         """
         
         try:
-            # Use with_retry wrapper
-            response_content = self._query_llm_with_retry(prompt)
-            return response_content
-            # Legacy logic below removed for brevity and unified call
-
+            return await self._aquery_llm_with_retry(prompt)
         except Exception as e:
             logger.error(f"Intent Summary Generation Error: {e}")
             return "Error generating intent summary"
+
+    def generate_intent_summary(self, message: str) -> str:
+        """
+        Public method to generate 'Judgement Semantic Unit' (Intent Summary).
+        Used by main.py for saving RAG examples and internally for analysis.
+        (Synchronous version for compatibility)
+        """
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If we are in a thread with a loop running, we use run_coroutine_threadsafe
+                return asyncio.run_coroutine_threadsafe(self.agenerate_intent_summary(message), loop).result()
+            else:
+                return asyncio.run(self.agenerate_intent_summary(message))
+        except Exception:
+            # Fallback for sync environments without a running loop
+            return f"Intent analysis of: {message[:50]}..."

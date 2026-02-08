@@ -20,7 +20,7 @@ class BatchState(TypedDict):
 
 logger = logging.getLogger(__name__)
 
-def create_batch_graph(content_agent, url_agent, ibse_service):
+def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manager: Optional[Any] = None):
     """
     Factory to create the Unified Batch Graph with injected dependencies.
     """
@@ -56,7 +56,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service):
         # 난독화 디코딩된 텍스트가 있으면 전달
         decoded_text = s1.get("decoded_text")
         # URL Agent is already Async - Content 결과를 컨텍스트로 전달
-        res = await url_agent.acheck(msg, content_context=content_result, decoded_text=decoded_text)
+        res = await url_agent.acheck(msg, content_context=content_result, decoded_text=decoded_text, playwright_manager=playwright_manager)
         return {"url_result": res}
 
     async def ibse_node(state: BatchState):
@@ -91,12 +91,19 @@ def create_batch_graph(content_agent, url_agent, ibse_service):
              elif url_is_spam:
                  # Case: Content(HAM) -> URL(SPAM) : SPAM Confirmed
                  final["is_spam"] = True
-                 final["reason"] = f"{existing_reason} | [URL: DETECTED SPAM]"
-                 # Code update: URL 스팸 코드가 있으면 업데이트
-                 # Content가 HAM 코드(HAM-1, HAM-2 등)이거나 코드가 없거나 "0"(기타)일 때 URL 코드로 교체
+                 
+                 # Update Probability (Use URL's high confidence)
+                 url_prob = u_res.get("spam_probability", 0.95)
+                 final["spam_probability"] = url_prob
+                 
+                 # Update Reason (Include specific URL reason)
+                 url_reason = u_res.get("reason", "Malicious URL detected")
+                 final["reason"] = f"{existing_reason} | [URL SPAM: {url_reason}]"
+                 
+                 # Code update: URL 스팸 코드가 있으면 무조건 업데이트 (URL 분석이 Ground Truth)
+                 # Content가 이미 스팸 코드를 가지고 있어도, URL 방문 결과가 더 정확하므로 덮어씀
                  url_code = u_res.get("classification_code")
-                 is_content_ham_code = content_code and str(content_code).upper().startswith("HAM")
-                 if url_code and (not content_code or content_code == "0" or content_code == "Unk" or is_content_ham_code):
+                 if url_code and str(url_code) != "0":
                      final["classification_code"] = url_code
              else:
                  # Case: Content(SPAM) -> URL(Safe) : HAM Confirmed
@@ -125,8 +132,10 @@ def create_batch_graph(content_agent, url_agent, ibse_service):
         
         # Check URL existence (Pre-check) to avoid unnecessary agent call
         import re
-        url_pattern = re.compile(r'(https?://\S+|www\.\S+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})')
-        
+        # 원본 메시지에서 URL 체크 (한글 도메인 지원)
+        # url_pattern = re.compile(r'(https?://\S+|www\.\S+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})')
+        url_pattern = re.compile(r'(?:https?://|www\.)\S+|[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.[a-zA-Z가-힣]{2,}')
+
         # 원본 메시지에서 URL 체크
         has_url = bool(url_pattern.search(msg))
         
