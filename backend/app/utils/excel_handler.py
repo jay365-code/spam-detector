@@ -9,6 +9,18 @@ from openpyxl.utils import get_column_letter
 
 logger = logging.getLogger(__name__)
 
+
+def _count_cjk_japanese(text: str) -> int:
+    """문자열 내 CJK 한자 + 일본어(히라가나/가타카나) 문자 수. 인코딩 선택 시 사용."""
+    n = 0
+    for c in text:
+        if '\u4e00' <= c <= '\u9fff':
+            n += 1
+        elif '\u3040' <= c <= '\u30ff':
+            n += 1
+    return n
+
+
 class ExcelHandler:
     def _lenb(self, text: str) -> int:
         """Calculate byte length for CP949 encoding (Korean standard)."""
@@ -619,20 +631,37 @@ class ExcelHandler:
             
             os.makedirs(output_dir, exist_ok=True)
             
-            # 2. Read Text File with Encoding Detection (UTF-8 prior to CP949)
-            lines = []
-            encoding_used = 'utf-8'
-            try:
-                # First try UTF-8 (Common for modern editors/generated files)
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    lines = f.readlines()
-            except UnicodeDecodeError:
-                # Fallback to CP949 (KISA Standard)
-                encoding_used = 'cp949'
-                logger.info("UTF-8 decode failed, falling back to CP949")
-                with open(file_path, 'r', encoding='cp949', errors='replace') as f:
-                    lines = f.readlines()
-            
+            # 2. Read Text File: try encodings and pick the one that yields most CJK/Japanese (일본어 오인코딩 방지)
+            with open(file_path, 'rb') as f:
+                raw = f.read()
+            encodings_to_try = [
+                ('utf-8-sig', 'UTF-8-BOM'),
+                ('utf-8', 'UTF-8'),
+                ('cp932', 'Japanese (CP932)'),
+                ('shift_jis', 'Shift_JIS'),
+                ('cp949', 'CP949 (Korean)'),
+            ]
+            best_lines = None
+            best_enc = 'utf-8'
+            best_label = 'UTF-8'
+            best_score = -1
+            for enc, label in encodings_to_try:
+                try:
+                    decoded = raw.decode(enc, errors='strict' if enc in ('utf-8-sig', 'utf-8') else 'replace')
+                    lines_cand = decoded.splitlines()
+                    score = sum(_count_cjk_japanese(line) for line in lines_cand)
+                    # 동점이면 utf-8 계열 우선
+                    if score > best_score or (score == best_score and enc in ('utf-8-sig', 'utf-8')):
+                        best_score = score
+                        best_lines = [line.strip() for line in lines_cand]
+                        best_enc = enc
+                        best_label = label
+                except (UnicodeDecodeError, LookupError):
+                    continue
+            lines = best_lines or []
+            encoding_used = best_enc
+            if best_enc not in ('utf-8-sig', 'utf-8'):
+                logger.info(f"Selected {best_label} (CJK/Japanese score={best_score}) for TXT")
             logger.info(f"Processed KISA text file using {encoding_used} encoding. Total lines: {len(lines)}")
 
             rows = []
