@@ -13,7 +13,7 @@
 단, 용량이 크거나 불필요한 다음 폴더들은 **제외**하고 복사하는 것이 좋습니다 (새 환경에서 다시 생성됨).
 - `.venv` (Python 가상환경)
 - `.git` (Git 저장소 정보 - 필요시 포함)
-- `backend/frontend/node_modules` (Node.js 라이브러리)
+- `frontend/node_modules` (Node.js 라이브러리)
 - `backend/__pycache__` (캐시 파일)
 
 **필수 포함 폴더/파일:**
@@ -49,7 +49,7 @@ playwright install
 새로운 터미널을 열고 진행합니다.
 
 ```bash
-cd backend/frontend
+cd frontend
 npm install
 ```
 
@@ -70,7 +70,7 @@ uvicorn app.main:app --reload
 
 **Frontend 실행:**
 ```bash
-# backend/frontend 폴더에서
+# frontend 폴더에서
 npm run dev
 ```
 - 웹 접속: `http://localhost:5173` (Vite 기본 포트)
@@ -165,3 +165,8 @@ npm run dev -- --host
 ### 7.5 방화벽 (Firewall)
 접속이 안 된다면 Windows 방화벽에서 `8000`, `8001`, `5173`, `5174` 포트의 인바운드 연결을 허용해야 합니다.
 (가장 쉬운 테스트 방법은 잠시 방화벽을 끄고 확인하는 것입니다.)
+
+- **'vite'은(는) 내부 또는 외부 명령... 또는 실행할 수 있는 프로그램이 아닙니다.**
+  1. Frontend 폴더(`frontend`)로 정확히 이동했는지 확인하세요.
+  2. `npm install`을 실행하여 필요한 라이브러리(`node_modules`)를 설치해야 합니다.
+  3. 그래도 안 되면 `npm run dev` 대신 `npx vite --host`를 실행해 보세요.

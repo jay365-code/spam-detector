@@ -35,7 +35,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             self.vector_db = Chroma(
                 collection_name="spam_guide",
                 embedding_function=OpenAIEmbeddings(model="text-embedding-ada-002"),
-                persist_directory="../../../data/chroma_db"
+                persist_directory=os.path.join(os.path.dirname(__file__), "../../../data/chroma_db")
             )
             logger.info(f"[ContentAnalysisAgent] ChromaDB initialized in {time.time() - start_t:.4f}s")
         return self.vector_db
