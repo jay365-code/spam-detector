@@ -305,6 +305,16 @@ def convert_korean_domain_to_punycode(url: str) -> str:
         return url
 
 
+# 주요 TLD 리스트 (False Positive 방지용)
+# 프로토콜(http/https)이 없을 때, 이 TLD로 끝나는 경우만 URL로 인정
+# (오징어.오뎅탕 등 방지)
+COMMON_TLDS = {
+    'com', 'net', 'org', 'edu', 'gov', 'mil', 'int', 'kr', 'co.kr', 'or.kr', 'pe.kr', 'go.kr', 'ac.kr',
+    'io', 'ai', 'me', 'info', 'biz', 'shop', 'site', 'top', 'xyz', 'club', 'online', 'pro',
+    'id', 'vn', 'jp', 'cn', 'us', 'uk', 'de', 'fr', 'tv', 'cc', 'li', 'ly', 'be', 'it', 'to', 'gg',
+    'ws', 'mobi', 'asia', 'name', 'store', 'news', 'app', 'dev', 'tech'
+}
+
 async def extract_node(state: SpamState) -> Dict[str, Any]:
     """
     SMS 본문에서 URL 추출 (한글 도메인 지원)
@@ -313,60 +323,101 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
     # 난독화 디코딩된 텍스트가 있으면 우선 사용
     message = state.get("decoded_text") or state.get("sms_content", "")
     
-    # 한글 도메인을 포함한 URL 패턴
-    # 한글 유니코드 범위: \uac00-\ud7a3 (가-힣), \u3131-\u3163 (ㄱ-ㅣ)
-    url_pattern = r'(?:http[s]?://)?(?:[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.)+[a-zA-Z가-힣]{2,}(?:/[^\s]*)?'
+    # 1. 프로토콜이 있는 URL 추출 (가장 확실, 한글 포함 가능)
+    # http://오징어.오뎅탕 -> 허용
+    protocol_pattern = r'(?:http|https)://[^\s]+'
+    protocol_urls = re.findall(protocol_pattern, message)
     
-    # 1. 원본 텍스트에서 추출
-    found_urls = re.findall(url_pattern, message)
+    # 2. 프로토콜이 없는 도메인 패턴 추출 (엄격한 검증 필요)
+    # 한글.한글 -> 오징어.오뎅탕 (제외되어야 함)
+    # google.com -> 허용
+    # 정규식: (문자열.문자열) 형태
+    domain_pattern = r'(?:[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.)+[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]{2,}'
+    raw_candidates = re.findall(domain_pattern, message)
     
-    # 2. 정규화(NFKC)된 텍스트에서 추출 (난독화 대응)
-    # 예: "dⓢlp①③7⑤.cc" -> "dslp1375.cc"
+    # 정규화(NFKC)된 텍스트에서도 추출
     try:
         normalized_message = unicodedata.normalize('NFKC', message)
         if normalized_message != message:
-            logger.info(f"[URL Agent] Normalized text: {normalized_message}")
-            found_urls_normalized = re.findall(url_pattern, normalized_message)
-            found_urls.extend(found_urls_normalized)
+            protocol_urls.extend(re.findall(protocol_pattern, normalized_message))
+            raw_candidates.extend(re.findall(domain_pattern, normalized_message))
     except Exception as e:
         logger.warning(f"[URL Agent] Normalization failed: {e}")
     
     urls = []
-    for url in found_urls:
-        # Filter out common false positives
-        # 최소 도메인 길이 체크 (너무 짧은 것 제외)
-        if len(url) < 4:
+    
+    # 2-1. 프로토콜 URL 처리
+    for url in protocol_urls:
+         # 뒤에 붙은 구두점 제거
+        url = url.rstrip('.,;!?)]}"\'')
+        if len(url) > 7: # http://...
+            urls.append(url)
+            
+    # 2-2. 도메인 후보 검증
+    for cand in raw_candidates:
+        cand = cand.rstrip('.,;!?)]}"\'')
+        if not cand: continue
+        
+        # 이미 프로토콜 URL에 포함된 경우 스킵
+        if any(cand in u for u in urls):
             continue
-        
-        # Prepend http:// if missing
-        if not url.startswith("http"):
-            url = "http://" + url
-        
-        # 한글 도메인을 Punycode로 변환
-        url = convert_korean_domain_to_punycode(url)
-        
-        urls.append(url)
-    
-    # 중복 제거 (순서 유지)
-    seen = set()
+
+        # TLD 확인
+        try:
+            parts = cand.split('.')
+            if len(parts) < 2: continue
+            
+            tld = parts[-1].lower()
+            
+            # 한글이 포함된 TLD인 경우 (.한국 등)
+            is_korean_tld = any('\uac00' <= char <= '\ud7a3' or '\u3131' <= char <= '\u3163' for char in tld)
+            
+            if is_korean_tld:
+                # [Policy] 프로토콜 없는 한글 TLD는 스킵 (오징어.오뎅탕 방지)
+                # 만약 .한국 등 공식 TLD를 지원하려면 Whitelist가 필요하나, 
+                # 현재는 스팸 오탐 방지를 위해 프로토콜 필수 정책 적용
+                continue
+            
+            # 영문 TLD인 경우: Whitelist(COMMON_TLDS)에 있어야 허용
+            # (chicken.beer 같은 유효하지만 드문 TLD는 프로토콜 없으면 놓칠 수 있으나, 안전을 위해 보수적 접근)
+            if tld not in COMMON_TLDS:
+                 # punycode TLD (xn--) 은 허용
+                 if not tld.startswith('xn--'):
+                     continue
+            
+            # 통과된 경우 http:// 붙여서 추가
+            urls.append(f"http://{cand}")
+            
+        except Exception:
+            continue
+            
+    # 중복 제거 및 Punycode 변환
     unique_urls = []
-    for url in urls:
-        if url not in seen:
-            seen.add(url)
-            unique_urls.append(url)
-    urls = unique_urls
+    seen = set()
     
-    logger.info(f"[URL Agent] Extracted URLs: {urls}")
+    for url in urls:
+        # 최소 길이 체크
+        if len(url) < 10: # http://a.com
+            continue
+            
+        # Punycode 변환
+        converted = convert_korean_domain_to_punycode(url)
+        
+        if converted not in seen:
+            seen.add(converted)
+            unique_urls.append(converted)
+            
+    logger.info(f"[URL Agent] Extracted URLs: {unique_urls}")
     
     return {
-        "target_urls": urls,
-        "current_url": urls[0] if urls else None,
+        "target_urls": unique_urls,
+        "current_url": unique_urls[0] if unique_urls else None,
         "visited_history": [],
         "scraped_data": {},
         "depth": 0,
-        "is_final": False if urls else True, # URL 없으면 종료
-        "is_spam": False if not urls else None,
-        "reason": "No URL found" if not urls else "URL extracted"
+        "is_final": False if unique_urls else True, 
+        "is_spam": False if not unique_urls else None,
+        "reason": "No URL found" if not unique_urls else "URL extracted"
     }
 
 async def scrape_node(state: SpamState) -> Dict[str, Any]:

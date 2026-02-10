@@ -23,15 +23,21 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
     def _get_vector_db(self):
         if self.vector_db is None:
             # Local imports to optimize startup
+            logger.info("[ContentAnalysisAgent] Lazy loading Vector DB...")
+            import time
+            start_t = time.time()
             from langchain_community.vectorstores import Chroma
             from langchain_openai import OpenAIEmbeddings
+            logger.info(f"[ContentAnalysisAgent] Imports took {time.time() - start_t:.4f}s")
             
-            logger.debug("ChromaDB 초기화 중...")
+            logger.info("ChromaDB 초기화 중...")
+            start_t = time.time()
             self.vector_db = Chroma(
                 collection_name="spam_guide",
                 embedding_function=OpenAIEmbeddings(model="text-embedding-ada-002"),
                 persist_directory="../../../data/chroma_db"
             )
+            logger.info(f"[ContentAnalysisAgent] ChromaDB initialized in {time.time() - start_t:.4f}s")
         return self.vector_db
 
     def search_guide(self, message: str, k: int = 3):

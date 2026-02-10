@@ -190,8 +190,32 @@ async def startup_event():
     # Set as default for the main loop
     loop = asyncio.get_event_loop()
     loop.set_default_executor(global_executor)
+
+    # [Performance Optimization] Warm-up Heavy Components
+    # Eliminate 30s+ delay on first request by initializing resources here
+    logger.info("🔥 [Startup] Warming up AI Components (Vector DB & LLM)...")
+    import time
+    t0 = time.time()
     
-    logger.info(f"✅ Server Application Started! Global ThreadPool initialized with {workers} workers.")
+    try:
+        # 1. Warm-up SpamRagService (loads Chroma, OpenAIEmbeddings)
+        from app.services.spam_rag_service import get_spam_rag_service
+        rag_service = get_spam_rag_service()
+        # Force initialization of lazy properties
+        _ = rag_service._get_db() 
+        logger.info(f"   -> SpamRagService Warmed up.")
+
+        # 2. Warm-up ContentAnalysisAgent (loads Guide Chroma)
+        from app.agents.content_agent.agent import ContentAnalysisAgent
+        content_agent = ContentAnalysisAgent()
+        # Force initialization
+        _ = content_agent._get_vector_db() 
+        logger.info(f"   -> ContentAnalysisAgent Warmed up.")
+        
+    except Exception as e:
+        logger.warning(f"⚠️ [Startup] Warm-up failed (non-critical): {e}")
+
+    logger.info(f"✅ Server Application Started! (Startup took {time.time() - t0:.2f}s) | Global ThreadPool: {workers} workers.")
 
 @app.on_event("shutdown")
 async def shutdown_event():

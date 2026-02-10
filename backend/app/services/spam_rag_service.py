@@ -29,8 +29,16 @@ class SpamRagService:
     def _get_embedding_function(self):
         """Lazy load embedding function"""
         if self._embedding_function is None:
+            logger.info("[SpamRagService] Importing OpenAIEmbeddings...")
+            import time
+            start_t = time.time()
             from langchain_openai import OpenAIEmbeddings
+            logger.info(f"[SpamRagService] Imported OpenAIEmbeddings in {time.time() - start_t:.4f}s")
+            
+            logger.info("[SpamRagService] Initializing OpenAIEmbeddings helper...")
+            start_t = time.time()
             self._embedding_function = OpenAIEmbeddings(model="text-embedding-ada-002")
+            logger.info(f"[SpamRagService] Initialized OpenAIEmbeddings helper in {time.time() - start_t:.4f}s")
         return self._embedding_function
     
     def _get_db(self):
@@ -39,17 +47,23 @@ class SpamRagService:
             with self._db_lock:
                 # Double-check pattern
                 if self.db is None:
+                    logger.info("[SpamRagService] Importing Chroma...")
+                    import time
+                    start_t = time.time()
                     from langchain_chroma import Chroma
+                    logger.info(f"[SpamRagService] Imported Chroma in {time.time() - start_t:.4f}s")
                     
                     # Project Root의 data 폴더 사용
                     db_path = os.path.join(os.path.dirname(__file__), "../../../data/chroma_db")
                     logger.info(f"[SpamRagService] Connecting to ChromaDB at {db_path}")
                     
+                    start_t = time.time()
                     self.db = Chroma(
                         collection_name=self.collection_name,
                         embedding_function=self._get_embedding_function(),
                         persist_directory=db_path
                     )
+                    logger.info(f"[SpamRagService] Connected to ChromaDB in {time.time() - start_t:.4f}s")
         return self.db
     
     def add_example(self, intent_summary: str, original_message: str, label: str, code: str, category: str, reason: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
