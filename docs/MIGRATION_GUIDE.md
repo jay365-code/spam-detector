@@ -170,3 +170,15 @@ npm run dev -- --host
   1. Frontend 폴더(`frontend`)로 정확히 이동했는지 확인하세요.
   2. `npm install`을 실행하여 필요한 라이브러리(`node_modules`)를 설치해야 합니다.
   3. 그래도 안 되면 `npm run dev` 대신 `npx vite --host`를 실행해 보세요.
+
+## 8. 성능 튜닝 (Performance Tuning)
+리모트 서버의 CPU/RAM 사양이 충분하다면, 브라우저 동시 실행 개수를 늘려 속도를 높일 수 있습니다.
+
+**`backend/.env` 파일 수정:**
+```bash
+# 기본값: 10 (설정 없을 시)
+# 권장값: 20~30 (고사양 서버)
+MAX_BROWSER_CONCURRENCY=20
+```
+- 이 값을 설정하지 않으면 기본적으로 **10개**의 브라우저만 동시에 뜹니다.
+- 로컬 개발 환경에서는 `.env`에 이미 `20`으로 설정되어 있어 빠았던 것입니다.

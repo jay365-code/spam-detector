@@ -185,8 +185,14 @@ class PlaywrightManager:
             pass 
         
         if not hasattr(self, "_semaphore") or self._semaphore is None:
-             # Default to 5 if not set, user can tune via env
-            max_concurrency = int(os.getenv("MAX_BROWSER_CONCURRENCY", 5))
+            # Default to 10 if not set (Safe middle ground)
+            env_concurrency = os.getenv("MAX_BROWSER_CONCURRENCY")
+            if env_concurrency is None:
+                max_concurrency = 10
+                logger.warning(f"[PlaywrightManager] 'MAX_BROWSER_CONCURRENCY' not set in .env. Using default: {max_concurrency}. Set this value (e.g., 20) for higher performance.")
+            else:
+                max_concurrency = int(env_concurrency)
+            
             self._semaphore = asyncio.Semaphore(max_concurrency)
             logger.info(f"[PlaywrightManager] Initialized concurrency semaphore with limit: {max_concurrency}")
 
