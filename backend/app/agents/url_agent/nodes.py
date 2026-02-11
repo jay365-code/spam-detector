@@ -496,13 +496,13 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     
     # 신뢰 도메인 체크 (Google, Naver, Play Store 등)
     if is_trusted_domain(current_url):
-        logger.info(f"Trusted domain 검출 | URL={current_url} → Auto HAM")
+        logger.info(f"Trusted domain 검출 | URL={current_url} → Auto HAM (Continuing to next URL)")
         return {
             "is_spam": False,
             "spam_probability": 0.0,
             "classification_code": None,
-            "reason": f"리다이렉트 목적지가 신뢰할 수 있는 공식 도메인 ({current_url.split('/')[2]}) - 자동 HAM 처리",
-            "is_final": True,
+            "reason": f"리다이렉트 목적지가 신뢰할 수 있는 공식 도메인 ({current_url.split('/')[2]})",
+            "is_final": False, # 다른 URL도 확인해야 하므로 계속 진행
             "analysis_type": "trusted_domain"
         }
     
@@ -640,12 +640,14 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
             # Vision 분석 성공 시 결과 사용
             if vision_result.get("analysis_type") == "vision" and vision_result.get("is_spam") is not None:
                 logger.info("Vision 분석 완료 → Vision 결과 사용")
+                is_spam = vision_result.get("is_spam")
+                
                 return {
-                    "is_spam": vision_result.get("is_spam"),
+                    "is_spam": is_spam,
                     "spam_probability": vision_result.get("spam_probability", 0.0),
                     "classification_code": vision_result.get("classification_code"),
                     "reason": vision_result.get("reason"),
-                    "is_final": True,
+                    "is_final": True if is_spam else False, # SPAM이면 즉시 종료, 아니면 다음 URL
                     "analysis_type": "vision"
                 }
             else:
@@ -654,26 +656,45 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                 reason = f"{reason} | [Vision 분석 시도했으나 판단 불가]"
         
         # 1차 분석 결과 반환 (확정 판단 또는 Vision 실패 시)
+        # SPAM이면 즉시 종료 (is_final=True)
+        # HAM/Inconclusive면 다음 URL 확인 (is_final=False)
         return {
             "is_spam": is_spam,
             "spam_probability": prob,
             "classification_code": classification_code,
             "reason": reason,
-            "is_final": True,
+            "is_final": True if is_spam else False,
             "analysis_type": "text"
         }
         
     except Exception as e:
         logger.exception("URL 분석 중 오류 발생")
-        return {"reason": f"Analysis Error: {e}"}
+        return {"reason": f"Analysis Error: {e}", "is_final": False}
 
 async def select_link_node(state: SpamState) -> Dict[str, Any]:
     """
-    추가 탐색이 필요한 경우 다음 링크 선정
+    모든 URL을 순회하며 확인하기 위한 로직
     """
-    # 현재는 구현 간소화를 위해 재귀 탐색 없이 종료 처리
-    # 추후 LLM이 'a' 태그 목록 중 의심스러운 링크 선택 로직 추가 가능
-    return {
-        "is_final": True,
-        "reason": "Max depth reached or no suspicious links found"
-    }
+    target_urls = state.get("target_urls", [])
+    visited = state.get("visited_history", [])
+    
+    # 1. 아직 방문하지 않은 URL 찾기
+    next_url = None
+    for url in target_urls:
+        if url not in visited:
+            next_url = url
+            break
+            
+    if next_url:
+        logger.info(f"[URL Agent] Next URL selected: {next_url}")
+        return {
+            "current_url": next_url,
+            "is_final": False # 계속 진행
+        }
+    else:
+        # 2. 모든 URL 방문 완료
+        logger.info("[URL Agent] All URLs visited. No SPAM found.")
+        return {
+            "is_final": True,
+            "reason": "All URLs scanned (No SPAM detected)"
+        }
