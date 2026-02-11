@@ -312,7 +312,7 @@ COMMON_TLDS = {
     'com', 'net', 'org', 'edu', 'gov', 'mil', 'int', 'kr', 'co.kr', 'or.kr', 'pe.kr', 'go.kr', 'ac.kr',
     'io', 'ai', 'me', 'info', 'biz', 'shop', 'site', 'top', 'xyz', 'club', 'online', 'pro',
     'id', 'vn', 'jp', 'cn', 'us', 'uk', 'de', 'fr', 'tv', 'cc', 'li', 'ly', 'be', 'it', 'to', 'gg',
-    'ws', 'mobi', 'asia', 'name', 'store', 'news', 'app', 'dev', 'tech'
+    'ws', 'mobi', 'asia', 'name', 'store', 'news', 'app', 'dev', 'tech', 'so'
 }
 
 async def extract_node(state: SpamState) -> Dict[str, Any]:

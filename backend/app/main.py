@@ -881,7 +881,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 # Bidirectional Override Logic
                                 url_is_spam = isaa_result.get('is_spam')
                                 reason_lower = isaa_result.get("reason", "").lower()
-                                is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only"]) or url_is_spam is None
+                                is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only", "no url found", "no url extracted", "no url to scrape"]) or url_is_spam is None
                                 
                                 if is_inconclusive:
                                      # URL 심층 분석 불가 -> 본문 결과(Content Agent) 폴백 지지

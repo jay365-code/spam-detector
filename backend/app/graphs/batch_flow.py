@@ -81,7 +81,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              
              url_is_spam = u_res.get("is_spam")
              reason_lower = u_res.get("reason", "").lower()
-             is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only"])
+             is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only", "no url found", "no url extracted", "no url to scrape"])
              existing_reason = final.get("reason", "")
              content_code = final.get("classification_code")
              
