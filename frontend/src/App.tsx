@@ -514,7 +514,13 @@ function App() {
       };
 
       ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+        let data;
+        try {
+          data = JSON.parse(event.data);
+        } catch (e) {
+          console.error('Failed to parse WS message:', event.data);
+          return;
+        }
         console.log('WS Message:', data);
 
         // Ignore Chat Streaming messages and Process Status for System Log
@@ -750,8 +756,8 @@ function App() {
 
   // [New] Filter & Count Logic
   const allCount = logs.length;
-  const spamCount = logs.filter(l => l.result && l.result.is_spam).length;
-  const hamCount = logs.filter(l => l.result && !l.result.is_spam).length;
+  const spamCount = logs.filter(l => l?.result?.is_spam).length;
+  const hamCount = logs.filter(l => l?.result && !l.result.is_spam).length;
 
   const filteredLogs = logs
     .map((log, originalIdx) => ({ ...log, originalIdx }))
