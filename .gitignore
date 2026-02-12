@@ -51,6 +51,7 @@ spams/  # 스팸 메시지 원문
 
 # Logs
 *.log
+import_log.txt
 
 # Secrets and Configs
 mcp_config.json
