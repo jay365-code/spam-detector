@@ -1,5 +1,6 @@
 import re
 import unicodedata
+import os
 
 class RuleBasedFilter:
     def __init__(self):
@@ -12,6 +13,16 @@ class RuleBasedFilter:
         
         # 외국어 판정 기준 (한글 비율 10% 미만이면 외국어로 간주)
         self.korean_ratio_threshold = 0.1
+        
+        # 알파벳-숫자 혼용 난독화 임계치 (환경변수 로드)
+        try:
+            self.alphanumeric_obfuscation_threshold = float(os.getenv("ALPHANUMERIC_OBFUSCATION_RATIO_THRESHOLD", "0.55"))
+        except ValueError:
+            self.alphanumeric_obfuscation_threshold = 0.55
+
+        # 숫자와 혼동될 수 있는 알파벳 (대소문자 포함)
+        # O, o, I, l, B, S, Z, b, q, g, z ... 
+        self.number_lookalikes = set('OoIlBSZbqgz')
         
         # Unicode 난독화 문자 매핑 (Circle letters, Fullwidth 등)
         self.unicode_obfuscation_map = self._build_unicode_map()
@@ -126,6 +137,29 @@ class RuleBasedFilter:
         korean_chars = [c for c in alpha_chars if '\uac00' <= c <= '\ud7a3']
         return len(korean_chars) / len(alpha_chars)
 
+    def get_obfuscation_ratio(self, text: str) -> float:
+        """
+        알파벳-숫자 혼용 난독화 비율 계산
+        숫자(0-9)와 숫자 유사 문자(O, I, B, S 등)가 전체 영숫자(Alphanumeric) 중 차지하는 비율 
+        """
+        if not text:
+            return 0.0
+            
+        # 영문자와 숫자만 추출 (공백, 특수문자 제외)
+        # 한글도 제외하고 순수하게 영문자+숫자 패턴만 봄
+        alphanum_chars = [c for c in text if c.isalnum() and not ('\uac00' <= c <= '\ud7a3')]
+        
+        if not alphanum_chars:
+            return 0.0
+            
+        # 의심스러운 문자: 숫자(0-9) + 숫자 유사 알파벳(O, I 등)
+        suspicious_count = 0
+        for char in alphanum_chars:
+            if char.isdigit() or char in self.number_lookalikes:
+                suspicious_count += 1
+                
+        return suspicious_count / len(alphanum_chars)
+
     def has_foreign_language(self, text: str) -> dict:
         """
         실제 외국어 문자가 포함되어 있는지 확인
@@ -203,7 +237,17 @@ class RuleBasedFilter:
                     "detected_pattern": detected_text
                 }
 
-        # 3. 외국어 체크 (난독화가 없는 경우에만)
+        # 3. 알파벳-숫자 혼용 난독화 체크 (Foreign Language 판단 전)
+        # 외국어 HAM으로 빠지지 않도록 먼저 체크하여 Pass 시킴
+        obfuscation_ratio = self.get_obfuscation_ratio(message)
+        if obfuscation_ratio >= self.alphanumeric_obfuscation_threshold:
+             return {
+                "is_spam": None,  # LLM으로 전달 (스팸 의심)
+                "reason": f"Alphanumeric obfuscation suspected (Ratio: {obfuscation_ratio:.2f}) - Rule Bypassed",
+                "detected_pattern": "alphanumeric_obfuscation"
+            }
+
+        # 4. 외국어 체크 (난독화가 없는 경우에만)
         # 실제 외국어 문자가 있어야 HAM-5 처리
         foreign_check = self.has_foreign_language(message)
         if foreign_check["has_foreign"]:
@@ -214,7 +258,7 @@ class RuleBasedFilter:
                 "classification_code": "HAM-5"
             }
 
-        # 4. Pass to Next Stage
+        # 5. Pass to Next Stage
         return {
             "is_spam": None,
             "reason": "No rule matched",

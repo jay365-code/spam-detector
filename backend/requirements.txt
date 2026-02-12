@@ -30,3 +30,4 @@ langsmith
 ruff
 mypy
 python-multipart
+chardet

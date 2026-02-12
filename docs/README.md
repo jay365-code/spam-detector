@@ -9,10 +9,16 @@
   - **2단계 (Content AI)**: LLM(RAG)을 활용하여 문맥을 이해하고 교묘한 스팸 의도를 탐지.
   - **3단계 (URL Deep Dive)**: Playwright를 사용해 URL을 실시간으로 방문하여 피싱 사이트나 리다이렉트 체인을 추적.
 
-- **📚 Spam RAG (Retrieval-Augmented Generation)**
+- **📊 Spam Alignment Monitor (SAM)**
+  - **트렌드 분석**: 기간별 Accuracy, Cohen's Kappa, MCC 지표를 차트로 시각화하여 품질 변화를 추적합니다.
+  - **대화형 필터링**: 소스 카드(Source Tiles)를 클릭하여 특정 데이터 소스 및 FN/FP 유형별로 빠르게 필터링할 수 있습니다.
+  - **품질 지표 설정**: 차트의 Y축 범위를 자유롭게 설정하여 미세한 성능 변화를 관찰할 수 있습니다.
+
+- **📚 Spam Validator (검증 도구 고도화)**
   - **참조 시스템**: 단순 매칭이 아닌 **"의도(Intent)"** 기반의 유사 사례를 참조하여 판단의 정확도를 높입니다.
-  - **SpamValidator**: 오탐(False Negative) 사례를 관리하고, 중복 데이터(Exact/Semantic) 등록을 방지하는 전담 에이전트가 동작합니다.
-  - **학습 구조**: `harm_anchor`(악의적 의도) 우선순위를 유지하며 RAG는 강력한 보조 근거로 활용됩니다.
+  - **데이터 관리**: 분석 결과를 가독성 높은 JSON 포맷으로 저장하고 필요 시 다시 로드할 수 있습니다.
+  - **RAG 통합**: 오탐 사례를 즉시 RAG(유사 예시)에 등록하여 모델 성능 개선의 선순환 구조를 구축합니다.
+  - **중복 방지**: 등록 시 중복 메시지(Exact/Semantic) 체크를 통해 데이터 클렌징을 자동화합니다.
 
 - **🛑 안전한 취소 기능 (Robust Cancellation)**
   - **Graceful Shutdown**: 대량 처리 중 "중지" 버튼 클릭 시, 데이터 무결성을 위해 **현재 배치를 완료한 후** 안전하게 멈춥니다.
@@ -130,6 +136,18 @@ graph LR
 *   **추가 시트**:
     *   **`URL중복 제거`**: 스팸 URL 유니크 목록.
     *   **`문자문장차단등록`**: IBSE 시그니처 목록.
+
+## 📊 Spam Alignment Monitor (SAM) 상세
+
+운영 중인 모델의 품질을 정량적으로 모니터링하고 가시화합니다.
+
+- **Trend Chart**: Accuracy(정확도), Kappa(합의도), MCC(상관관계) 지표를 시계열로 제공.
+  - 범례 클릭 시 특정 지표 On/Off 기능 제공.
+  - Y축 최솟값(Min) 설정을 통한 정밀 모니터링 지원.
+- **Source Breakdown**: 각 유입 경로별 에러(FN/FP) 분포를 시각화.
+  - 타일 클릭 시 해당 소스/유형별 데이터 즉시 필터링.
+- **Daily Summary**: 일별 주요 지표 및 데이터 일관성 확인.
+
 
 ## 🛠️ 기술 스택 (Tech Stack)
 

@@ -620,20 +620,64 @@ class ExcelHandler:
             os.makedirs(output_dir, exist_ok=True)
             
             # 2. Read Text File with Encoding Detection (UTF-8 prior to CP949)
-            lines = []
-            encoding_used = 'utf-8'
+            # 2. Read Text File with Robust Encoding Detection (chardet)
+            import chardet
+
+            raw_data = b""
             try:
-                # First try UTF-8 (Common for modern editors/generated files)
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    lines = f.readlines()
-            except UnicodeDecodeError:
-                # Fallback to CP949 (KISA Standard)
-                encoding_used = 'cp949'
-                logger.info("UTF-8 decode failed, falling back to CP949")
-                with open(file_path, 'r', encoding='cp949', errors='replace') as f:
-                    lines = f.readlines()
+                with open(file_path, 'rb') as f:
+                    # Read enough bytes for detection (e.g., 100KB or full file)
+                    raw_data = f.read()
+            except Exception as e:
+                logger.error(f"Failed to read file for encoding detection: {e}")
+                raise e
+
+            # Detect encoding
+            detected = chardet.detect(raw_data)
+            encoding_used = detected.get('encoding')
+            confidence = detected.get('confidence', 0)
             
-            logger.info(f"Processed KISA text file using {encoding_used} encoding. Total lines: {len(lines)}")
+            logger.info(f"Detected encoding: {encoding_used} (Confidence: {confidence}) for {original_filename}")
+
+            # Fallback logic
+            # User report: "Previously worked without UTF-8 conversion" -> Likely EUC-KR/CP949 was default or successfully fell back
+            # PROBLEM: Chardet sometimes guesses ISO-8859-1 (Latin1) for EUC-KR files with high confidence.
+            # ISO-8859-1 ALWAYS succeeds in decoding but produces garbage (Mojibake).
+            # SOLUTION: We MUST try UTF-8 and CP949 (Korean) *strictly* first, regardless of what Chardet thinks.
+            
+            encodings_to_try = ['utf-8', 'cp949', 'euc-kr']
+            
+            if encoding_used and encoding_used.lower() not in encodings_to_try:
+                 encodings_to_try.append(encoding_used)
+            
+            encodings_to_try.append('latin1') # Last resort
+            
+            # Remove duplicates while preserving order
+            encodings_to_try = list(dict.fromkeys(encodings_to_try))
+
+            lines = []
+            success_encoding = None
+
+            for enc in encodings_to_try:
+                try:
+                    logger.debug(f"Attempting decoding with {enc}...")
+                    decoded_text = raw_data.decode(enc)
+                    lines = decoded_text.splitlines()
+                    success_encoding = enc
+                    logger.info(f"Successfully decoded using {enc}")
+                    break
+                except UnicodeDecodeError:
+                    # logger.debug(f"Failed decoding with {enc}")
+                    continue
+            
+            if not success_encoding:
+                # Last resort: CP949 with replace (KISA standard)
+                logger.warning("All decoding attempts failed. Fallback to CP949 (replace).")
+                decoded_text = raw_data.decode('cp949', errors='replace')
+                lines = decoded_text.splitlines()
+                success_encoding = 'cp949-replace'
+
+            logger.info(f"Processed KISA text file using {success_encoding} encoding. Total lines: {len(lines)}")
 
             rows = []
             for line in lines:
