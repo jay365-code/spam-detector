@@ -305,21 +305,41 @@ Step 4. SPAM 확정 조건:
 
 
     def _parse_response(self, content: str, provider: str) -> dict:
-        # Simple JSON cleanup
-        if content.startswith("```json"):
-            content = content.replace("```json", "").replace("```", "")
-        elif content.startswith("```"):
-            content = content.replace("```", "")
+        import re
         
-        # Debug Log
-        logger.info(f"[ContentAnalysisAgent] Raw LLM Response: {content.strip()}")
+        # 1. Try to find JSON block wrapped in ```json ... ```
+        json_block = re.search(r"```json\s*(\{.*?\})\s*```", content, re.DOTALL)
+        if json_block:
+            try:
+                result_json = json.loads(json_block.group(1))
+                return result_json
+            except json.JSONDecodeError:
+                pass
 
-        import json
+        # 2. Try to find any JSON block wrapped in ``` ... ```
+        json_block = re.search(r"```\s*(\{.*?\})\s*```", content, re.DOTALL)
+        if json_block:
+            try:
+                result_json = json.loads(json_block.group(1))
+                return result_json
+            except json.JSONDecodeError:
+                pass
+                
+        # 3. Try to find the first valid JSON object in the text (greedy match from first { to last })
         try:
-            result_json = json.loads(content)
+            start_idx = content.find('{')
+            end_idx = content.rfind('}')
+            
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                json_str = content[start_idx:end_idx+1]
+                result_json = json.loads(json_str)
+                return result_json
         except json.JSONDecodeError:
-             logger.error("JSON Decode Error")
-             return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": "Error (JSON Parse Fail)"}
+            pass
+
+        # If all parsing attempts fail
+        logger.error("JSON Decode Error: Failed to extract valid JSON from LLM response")
+        return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": "Error (JSON Parse Fail)"}
         
         # Reverted to 'spam_probability' as per user request for readability.
         spam_prob = float(result_json.get("spam_probability", 0.0))
