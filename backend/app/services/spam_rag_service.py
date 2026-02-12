@@ -53,8 +53,8 @@ class SpamRagService:
                     from langchain_chroma import Chroma
                     logger.info(f"[SpamRagService] Imported Chroma in {time.time() - start_t:.4f}s")
                     
-                    # Project Root의 data 폴더 사용
-                    db_path = os.path.join(os.path.dirname(__file__), "../../../data/chroma_db")
+                    # Project Root의 data 폴더 대신 Backend 내부 data 폴더 사용 (Migration 용이성)
+                    db_path = os.path.join(os.path.dirname(__file__), "../../data/chroma_db")
                     logger.info(f"[SpamRagService] Connecting to ChromaDB at {db_path}")
                     
                     start_t = time.time()
