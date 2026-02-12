@@ -748,6 +748,28 @@ function App() {
     console.log("Chat cleared");
   };
 
+  // [New] Filter & Count Logic
+  const allCount = logs.length;
+  const spamCount = logs.filter(l => l.result && l.result.is_spam).length;
+  const hamCount = logs.filter(l => l.result && !l.result.is_spam).length;
+
+  const filteredLogs = logs
+    .map((log, originalIdx) => ({ ...log, originalIdx }))
+    .filter(log => {
+      // Apply Filter
+      if (logFilter === 'SPAM' && (!log.result || !log.result.is_spam)) return false;
+      if (logFilter === 'HAM' && (!log.result || log.result.is_spam)) return false;
+
+      // Apply Search
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const matchesMsg = log.message?.toLowerCase().includes(query);
+        const matchesReason = log.result?.reason?.toLowerCase().includes(query);
+        return matchesMsg || matchesReason;
+      }
+      return true;
+    });
+
   return (
     <div className="h-screen bg-slate-900 text-white flex flex-col overflow-hidden">
 
@@ -848,16 +870,24 @@ function App() {
 
             {/* Filter Buttons */}
             <div className="flex items-center bg-slate-900/50 rounded-lg p-1 border border-slate-700 ml-4">
-              {(['ALL', 'SPAM', 'HAM'] as const).map((f) => (
+              {[
+                { label: 'ALL', count: allCount },
+                { label: 'SPAM', count: spamCount },
+                { label: 'HAM', count: hamCount }
+              ].map(({ label, count }) => (
                 <button
-                  key={f}
-                  onClick={() => setLogFilter(f)}
-                  className={`px-3 py-1 rounded-md transition-all ${logFilter === f
+                  key={label}
+                  onClick={() => setLogFilter(label as any)}
+                  className={`px-3 py-1 rounded-md transition-all text-xs font-bold flex items-center ${logFilter === label
                     ? 'bg-blue-500 text-white shadow-lg'
                     : 'text-slate-400 hover:text-slate-200'
                     }`}
                 >
-                  {f}
+                  {label}
+                  <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${logFilter === label ? 'bg-white/20' : 'bg-slate-700'
+                    }`}>
+                    {count}
+                  </span>
                 </button>
               ))}
             </div>
@@ -880,6 +910,11 @@ function App() {
                   <X className="w-3.5 h-3.5 text-slate-400" />
                 </button>
               )}
+            </div>
+
+            {/* Search Result Count */}
+            <div className="ml-3 text-xs text-slate-400 font-mono whitespace-nowrap">
+              {filteredLogs.length} results
             </div>
 
             {/* Client Status */}
@@ -933,22 +968,7 @@ function App() {
             onScroll={handleScroll}
             className="flex-1 overflow-auto p-4 space-y-2"
           >
-            {logs
-              .map((log, originalIdx) => ({ ...log, originalIdx }))
-              .filter(log => {
-                // Apply Filter
-                if (logFilter === 'SPAM' && (!log.result || !log.result.is_spam)) return false;
-                if (logFilter === 'HAM' && (!log.result || log.result.is_spam)) return false;
-
-                // Apply Search
-                if (searchQuery.trim()) {
-                  const query = searchQuery.toLowerCase();
-                  const matchesMsg = log.message?.toLowerCase().includes(query);
-                  const matchesReason = log.result?.reason?.toLowerCase().includes(query);
-                  return matchesMsg || matchesReason;
-                }
-                return true;
-              })
+            {filteredLogs
               .map((log) => {
                 const { cleanReason, note, isManual } = log.result ? parseReason(log.result.reason) : { cleanReason: "", note: null, isManual: false };
                 const idx = log.originalIdx;
