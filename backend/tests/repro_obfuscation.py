@@ -36,6 +36,20 @@ def test_obfuscation():
             "msg": "0l0l 8282 O1O1",
             "expected_bypass": True,
             "desc": "Heavy Obfuscation"
+        },
+        # 5. User reported: Garbled text + obfuscated URL (should bypass Foreign Language Auto HAM)
+        {
+            "msg": "????? ?????????????????????????????https://v????.im/flrvl2...",
+            "expected_bypass": True,
+            "expected_not_ham5": True,
+            "desc": "Garbled + obfuscated URL spam"
+        },
+        # 6. Normal English with URL (should stay HAM-5, no garbled pattern)
+        {
+            "msg": "Check out this link https://example.com/page",
+            "expected_bypass": False,
+            "expected_code": "HAM-5",
+            "desc": "Normal English with clean URL"
         }
     ]
 
@@ -56,10 +70,16 @@ def test_obfuscation():
         print(f"  Bypassed HAM-5: {is_bypass}")
         
         if case["expected_bypass"]:
-            if is_bypass:
-                print("  ✅ PASS (Correctly detected obfuscation)")
+            # Bypass = not Auto HAM-5 (passed to analysis)
+            passed_to_analysis = result.get("is_spam") is None
+            if "expected_not_ham5" in case and case["expected_not_ham5"]:
+                ok = passed_to_analysis and result.get("classification_code") != "HAM-5"
             else:
-                print("  ❌ FAIL (Failed to detect obfuscation)")
+                ok = is_bypass or passed_to_analysis
+            if ok:
+                print("  ✅ PASS (Correctly bypassed to analysis / detected obfuscation)")
+            else:
+                print("  ❌ FAIL (Failed to bypass - got Auto HAM or wrong path)")
         else:
             if not is_bypass:
                  if "expected_code" in case:

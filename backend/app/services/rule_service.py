@@ -24,6 +24,9 @@ class RuleBasedFilter:
         # O, o, I, l, B, S, Z, b, q, g, z ... 
         self.number_lookalikes = set('OoIlBSZbqgz')
         
+        # 키보드 입력 가능한 가림/난독화 문자 (? * _ # ~ ^ · 및 인코딩 오류 시 �)
+        self.mask_obfuscation_chars = set('?*_#~^\u00b7\ufffd')
+        
         # Unicode 난독화 문자 매핑 (Circle letters, Fullwidth 등)
         self.unicode_obfuscation_map = self._build_unicode_map()
     
@@ -160,6 +163,38 @@ class RuleBasedFilter:
                 
         return suspicious_count / len(alphanum_chars)
 
+    def has_url_in_message(self, text: str) -> bool:
+        """메시지에 URL이 포함되어 있는지 확인"""
+        url_pattern = re.compile(
+            r'(?:https?://|www\.)\S+|[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163\-\.?]+\.[a-zA-Z가-힣]{2,}'
+        )
+        return bool(url_pattern.search(text))
+
+    def has_garbled_or_masked_text(self, text: str) -> bool:
+        """
+        난독화/가림 패턴: mask_obfuscation_chars 비율이 높으면 의심
+        대상: ? * _ # ~ ^ · � (키보드 입력 가능 + 인코딩 오류 시)
+        예: "????? ***** https://v****.im/...", "___^^^___"
+        """
+        if not text or len(text) < 10:
+            return False
+        garbled_chars = sum(1 for c in text if c in self.mask_obfuscation_chars)
+        return garbled_chars / len(text) >= 0.15  # 15% 이상이면 가림/난독화 의심
+
+    def has_url_with_obfuscated_domain(self, text: str) -> bool:
+        """
+        도메인 내부에 가림 문자가 있는 URL 패턴
+        예: https://v????.im/flrvl2, bit*.ly/xxx, v***.im
+        """
+        # mask_obfuscation_chars 중 하나라도 도메인 부분에 있으면 의심
+        mask_class = ''.join(re.escape(c) for c in self.mask_obfuscation_chars)
+        # 도메인.확장자 직전에 가림 문자 포함
+        pattern = re.compile(
+            rf'[a-zA-Z0-9]*[{mask_class}]+[a-zA-Z0-9]*\.[a-zA-Z]{{2,}}',
+            re.IGNORECASE
+        )
+        return bool(pattern.search(text))
+
     def has_foreign_language(self, text: str) -> dict:
         """
         실제 외국어 문자가 포함되어 있는지 확인
@@ -251,6 +286,15 @@ class RuleBasedFilter:
         # 실제 외국어 문자가 있어야 HAM-5 처리
         foreign_check = self.has_foreign_language(message)
         if foreign_check["has_foreign"]:
+            # 예외: URL + 난독화/가림 패턴 → Auto HAM 적용 안 함, 분석 단계로 Pass
+            # 예: "????? ?????????????????????????????https://v????.im/flrvl2..."
+            if self.has_url_in_message(message):
+                if self.has_garbled_or_masked_text(message) or self.has_url_with_obfuscated_domain(message):
+                    return {
+                        "is_spam": None,
+                        "reason": "URL + garbled/obfuscated text - bypass Foreign Language Auto HAM, requires analysis",
+                        "detected_pattern": "url_with_obfuscation"
+                    }
             return {
                 "is_spam": False,
                 "reason": f"Foreign language message ({foreign_check['language']}, ratio: {foreign_check['ratio']:.1%}) - Auto HAM",
