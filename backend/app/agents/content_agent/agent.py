@@ -492,6 +492,7 @@ Step 4. SPAM 확정 조건:
 
 [CRITICAL] 너는 텍스트만 분석한다. URL의 '존재 여부'나 '이동 경로'는 판단 근거가 아니다.
 단, 텍스트로서의 **URL 난독화 패턴**(특수문자 삽입, 기이한 도메인 형태, 띄어쓰기 등)은 **강력한 스팸 회피 시그널(Textual Signal)**로 간주해야 한다.
+외국어 메시지는 언어 장벽에 상관없이 그 속에 숨겨진 **'의도(Intent)'와 '회피 목적의 난독화(Obfuscation)'**가 있는지 분석하라.
 
 [PROCEDURE]
 Step 1. HARD GATE 확인 → harm_anchor = false 이면 무조건 HAM (label="HAM")

@@ -231,7 +231,8 @@ class RuleBasedFilter:
                 return {"has_foreign": True, "language": "Chinese", "ratio": chinese_count / total_alpha}
             if japanese_count > 5:
                 return {"has_foreign": True, "language": "Japanese", "ratio": japanese_count / total_alpha}
-            if english_count > 10 and korean_count == 0:
+            # 영어의 경우 40자 이상(긴 문장)일 때만 자동 HAM 처리를 검토
+            if english_count > 40 and korean_count == 0:
                 return {"has_foreign": True, "language": "English", "ratio": english_count / total_alpha}
         
         return {"has_foreign": False, "language": None, "ratio": korean_ratio}
@@ -277,9 +278,10 @@ class RuleBasedFilter:
         obfuscation_ratio = self.get_obfuscation_ratio(message)
         if obfuscation_ratio >= self.alphanumeric_obfuscation_threshold:
              return {
-                "is_spam": None,  # LLM으로 전달 (스팸 의심)
-                "reason": f"Alphanumeric obfuscation suspected (Ratio: {obfuscation_ratio:.2f}) - Rule Bypassed",
-                "detected_pattern": "alphanumeric_obfuscation"
+                "is_spam": True,  # 의도적인 혼용 난독화는 즉시 스팸으로 판정
+                "reason": f"Alphanumeric obfuscation detected (Ratio: {obfuscation_ratio:.2f})",
+                "detected_pattern": "alphanumeric_obfuscation",
+                "classification_code": "0" # 기타 스팸
             }
 
         # 4. 외국어 체크 (난독화가 없는 경우에만)
