@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Save, RefreshCw, Settings, ShieldAlert, CheckCircle2 } from 'lucide-react';
 
 interface ConfigItem {
@@ -152,9 +153,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         }
     };
 
-    return (
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="bg-slate-900 w-full max-w-xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border border-slate-800 animate-in zoom-in-95 duration-200">
+
+    // [React Portal] Render modal at document.body level to avoid stacking context issues
+    return createPortal(
+        <div
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+            onClick={(e) => {
+                // Background click close
+                if (e.target === e.currentTarget) onClose();
+            }}
+        >
+            <div
+                className="bg-slate-900 w-full max-w-xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border border-slate-800 animate-in zoom-in-95 duration-200"
+                onClick={(e) => e.stopPropagation()}
+            >
                 {/* Header */}
                 <div className="px-6 py-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
                     <div className="flex items-center gap-3">
@@ -172,7 +184,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-900/30">
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-900/30 text-left">
                     {loading ? (
                         <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-500">
                             <RefreshCw size={32} className="animate-spin" />
@@ -257,6 +269,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
