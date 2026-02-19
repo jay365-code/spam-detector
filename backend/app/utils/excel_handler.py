@@ -208,6 +208,20 @@ class ExcelHandler:
                     
                     row_idx, _, _ = batch_buffer[idx] # Current Row Element
                     
+                    # [User Request] Skip Excel Write if flagged (Short message)
+                    if result.get("exclude_from_excel"):
+                        logger.debug(f"Row {row_idx}: Skipped from Excel (exclude_from_excel=True)")
+                        # Callback은 호출하여 UI에는 표시되게 함
+                        if progress_callback:
+                            progress_callback({
+                                "current": row_idx - 1,
+                                "total": total_rows,
+                                "message": batch_buffer[idx][1],
+                                "excel_row_number": row_idx,
+                                "result": result
+                            })
+                        continue
+
                     # Write Result
                     if result.get("is_spam") is True:
                         gubun_val = "o"
@@ -743,6 +757,20 @@ class ExcelHandler:
 
                 # Populate Excel Rows
                 for i, result in enumerate(results):
+                    # [User Request] Skip Excel Write if flagged (Short message)
+                    if result.get("exclude_from_excel"):
+                        logger.debug(f"Row {start_idx + i + 1}: Skipped from Excel (exclude_from_excel=True)")
+                        # Callback은 호출하여 UI에는 표시되게 함
+                        if progress_callback:
+                            progress_callback({
+                                "current": start_idx + i + 1,
+                                "total": total_rows,
+                                "message": batch_buffer[i]["message"],
+                                "excel_row_number": None,
+                                "result": result
+                            })
+                        continue
+
                     original_data = batch_buffer[i]
                     msg_val = original_data["message"]
                     url_val = original_data["url"]

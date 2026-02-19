@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Form, BackgroundTasks
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -8,15 +8,17 @@ import asyncio
 import sys
 import logging
 import warnings
-
+import json
+import time
 import re
 import unicodedata
 
 # **CRITICAL**: 다른 앱 모듈 import 전에 로깅 설정 먼저 초기화
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
 load_dotenv(override=True)  # .env 파일 로드
 
-from app.core.logging_config import setup_logging, get_logger, batch_id_context
+from app.core.logging_config import setup_logging, get_logger, batch_id_context, set_log_level, set_console_enabled
+from app.core.models import LLM_MODELS, CONFIG_METADATA
 
 # 로깅 시스템 초기화 (앱 모듈 import 전에 반드시 호출!)
 # 환경변수: LOG_LEVEL_CONSOLE, LOG_LEVEL_FILE, LOG_JSON_ENABLED
@@ -34,7 +36,7 @@ if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 import uuid
-from typing import List, Dict
+from typing import List, Dict, Any
 
 # 이제 앱 모듈들을 import (로깅 설정 완료 후)
 from app.services.rule_service import RuleBasedFilter
@@ -257,6 +259,77 @@ async def change_log_level(request: LogLevelChange):
 async def toggle_console_log(request: ConsoleToggle):
     """콘솔 로그 출력 ON/OFF"""
     return set_console_enabled(request.enabled)
+
+# ========== 런타임 환경설정 관리 API ==========
+
+@app.get("/api/models")
+async def get_supported_models():
+    """지원하는 LLM 모델 리스트 조회"""
+    return LLM_MODELS
+
+@app.get("/api/config")
+async def get_current_config():
+    """현재 시스템 설정값 조회 (마스킹 처리)"""
+    config_values = {}
+    SENSITIVE_KEYS = ["KEY", "SECRET", "PASSWORD", "TOKEN"]
+    
+    for item in CONFIG_METADATA:
+        key = item["key"]
+        val = os.getenv(key, "")
+        
+        # 민감 정보 마스킹
+        if any(sk in key.upper() for sk in SENSITIVE_KEYS) and val:
+            config_values[key] = "***"
+        else:
+            config_values[key] = val
+            
+    return {
+        "metadata": CONFIG_METADATA,
+        "values": config_values
+    }
+
+class ConfigUpdate(BaseModel):
+    settings: Dict[str, Any]
+
+@app.post("/api/config")
+async def update_config(request: ConfigUpdate):
+    """런타임에 설정값 변경 및 .env 저장"""
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    updated_keys = []
+    
+    try:
+        for key, value in request.settings.items():
+            # 1. 메모리(os.environ) 업데이트
+            str_val = str(value)
+            os.environ[key] = str_val
+            
+            # 2. .env 파일 영구 저장 (민감정보 제외 - 민감정보는 별도 처리 권장되나 여기서는 일단 저장 지원)
+            # 유효성 검증 로직 추가 가능
+            set_key(env_path, key, str_val)
+            updated_keys.append(key)
+            
+        logger.info(f"⚙️ [Config] Updated keys: {', '.join(updated_keys)}")
+        
+        # 3. 로그 레벨 관련 설정 즉시 반영
+        from app.core.logging_config import set_log_level, set_console_enabled
+        if "LOG_LEVEL_CONSOLE" in updated_keys:
+            set_log_level("console", os.environ["LOG_LEVEL_CONSOLE"])
+        if "LOG_LEVEL_FILE" in updated_keys:
+            set_log_level("file", os.environ["LOG_LEVEL_FILE"])
+        if "LOG_CONSOLE_ENABLED" in updated_keys:
+            set_console_enabled(os.environ["LOG_CONSOLE_ENABLED"] == "1")
+        
+        # 4. 필터 임계값 관련 설정 즉시 반영
+        if "MIN_MESSAGE_LENGTH" in updated_keys or "ALPHANUMERIC_OBFUSCATION_RATIO_THRESHOLD" in updated_keys:
+            rule_filter.update_thresholds()
+        
+        # 5. 변경 사항 즉시 로그 출력 (마스킹 적용)
+        _log_env_config()
+        
+        return {"success": True, "updated": updated_keys}
+    except Exception as e:
+        logger.error(f"Config update failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ========== Spam RAG API (Reference Examples) ==========
 from app.services.spam_rag_service import get_spam_rag_service

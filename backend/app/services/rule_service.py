@@ -14,11 +14,16 @@ class RuleBasedFilter:
         # 외국어 판정 기준 (한글 비율 10% 미만이면 외국어로 간주)
         self.korean_ratio_threshold = 0.1
         
-        # 알파벳-숫자 혼용 난독화 임계치 (환경변수 로드)
         try:
             self.alphanumeric_obfuscation_threshold = float(os.getenv("ALPHANUMERIC_OBFUSCATION_RATIO_THRESHOLD", "0.55"))
         except ValueError:
             self.alphanumeric_obfuscation_threshold = 0.55
+
+        # 메시지 최소 길이 필터링 (환경변수 로드)
+        try:
+            self.min_message_length = int(os.getenv("MIN_MESSAGE_LENGTH", "10"))
+        except ValueError:
+            self.min_message_length = 10
 
         # 숫자와 혼동될 수 있는 알파벳 (대소문자 포함)
         # O, o, I, l, B, S, Z, b, q, g, z ... 
@@ -29,6 +34,19 @@ class RuleBasedFilter:
         
         # Unicode 난독화 문자 매핑 (Circle letters, Fullwidth 등)
         self.unicode_obfuscation_map = self._build_unicode_map()
+    
+    def update_thresholds(self):
+        """런타임에 설정 임계값들을 다시 로드"""
+        try:
+            self.alphanumeric_obfuscation_threshold = float(os.getenv("ALPHANUMERIC_OBFUSCATION_RATIO_THRESHOLD", "0.55"))
+            self.min_message_length = int(os.getenv("MIN_MESSAGE_LENGTH", "10"))
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"⚙️ [RuleFilter] 임계값 갱신: MIN_LEN={self.min_message_length}, ALPHANUMERIC={self.alphanumeric_obfuscation_threshold}")
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"RuleFilter thresholds update failed: {e}")
     
     def _build_unicode_map(self) -> dict:
         """유니코드 난독화 문자를 일반 ASCII로 매핑하는 딕셔너리 생성"""
@@ -248,6 +266,16 @@ class RuleBasedFilter:
                 "decoded_urls": list or None  # 난독화된 URL이 있으면 디코딩된 URL 리스트
             }
         """
+        # 0. 메시지 최소 길이 체크 (SKIP 대상)
+        if message and len(message) < self.min_message_length:
+            return {
+                "is_spam": False,
+                "reason": f"Short message (Length: {len(message)} < {self.min_message_length}) - Skipped",
+                "detected_pattern": "short_message",
+                "classification_code": "SKIP",
+                "exclude_from_excel": True  # 엑셀 저장에서 제외 플래그
+            }
+
         # 1. Unicode 난독화 체크 (Circle letters, Fullwidth 등)
         # 난독화가 감지되면 외국어 체크 건너뛰고 분석 진행
         if self.has_unicode_obfuscation(message):

@@ -1,9 +1,10 @@
 ﻿import { useState, useEffect, useRef } from 'react';
-import { CheckCircle, AlertCircle, User, Database, Pencil, X, Save, Loader2, Search, FileText, FolderOpen } from 'lucide-react';
+import { CheckCircle, AlertCircle, User, Database, Pencil, X, Save, Loader2, Search, FileText, FolderOpen, Settings } from 'lucide-react';
 import { FileUpload } from './components/FileUpload';
 import { StatusPanel } from './components/StatusPanel';
 import { ChatInterface } from './components/ChatInterface';
 import { RagManager } from './components/RagManager';
+import { SettingsModal } from './components/SettingsModal';
 
 // 백엔드 constants.py 및 spam_guide.md v1.5 기준 (0-3 코드 체계)
 const CLASSIFICATION_MAP: Record<string, string> = {
@@ -110,6 +111,7 @@ function App() {
 
   // RAG Manager State
   const [isRagManagerOpen, setIsRagManagerOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [ragInitialData, setRagInitialData] = useState<{
     message: string;
     label: 'SPAM' | 'HAM';
@@ -796,9 +798,18 @@ function App() {
             <button
               onClick={() => setIsRagManagerOpen(true)}
               className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors text-sm"
+              title="RAG 데이터 관리"
             >
               <Database className="w-4 h-4 text-blue-400" />
               <span className="text-slate-300">스팸 RAG</span>
+            </button>
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors text-sm"
+              title="런타임 환경설정"
+            >
+              <Settings className="w-4 h-4 text-purple-400" />
+              <span className="text-slate-300">Settings</span>
             </button>
           </div>
 
@@ -1216,6 +1227,16 @@ function App() {
         </div>
       )}
 
+      <RagManager
+        isOpen={isRagManagerOpen}
+        onClose={() => setIsRagManagerOpen(false)}
+        initialData={ragInitialData}
+      />
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
     </div>
   );
 }

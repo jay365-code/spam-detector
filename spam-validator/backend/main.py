@@ -147,16 +147,41 @@ async def compare_results(
     df_h = process_df(df_human)
     df_l = process_df(df_llm)
 
-    # Merge on [norm_msg, cc_idx]
-    # Inner join to compare only matched messages
-    merged = pd.merge(
+    # Combined Merge for Match and Missing detection
+    merged_all = pd.merge(
         df_h, 
         df_l, 
         on=['norm_msg', 'cc_idx'], 
-        how='inner', 
-        suffixes=('_human', '_llm')
+        how='outer', 
+        suffixes=('_human', '_llm'),
+        indicator=True
     )
     
+    # Split into Matched / Missing
+    merged = merged_all[merged_all['_merge'] == 'both'].copy()
+    missing_in_llm_df = merged_all[merged_all['_merge'] == 'left_only'].copy()
+    missing_in_human_df = merged_all[merged_all['_merge'] == 'right_only'].copy()
+
+    def format_missing(df, side):
+        msg_col = f'메시지_{side}'
+        label_col = f'구분_{side}'
+        idx_col = f'original_index_{side}'
+        code_col = f'code_{side}'
+        reason_col = f'reason_{side}'
+        
+        return [
+            {
+                "index": int(row[idx_col]),
+                "message": str(row[msg_col]),
+                "label": str(row[label_col]),
+                "code": str(row.get(code_col, '')),
+                "reason": str(row.get(reason_col, ''))
+            } for _, row in df.iterrows()
+        ]
+
+    missing_in_llm = format_missing(missing_in_llm_df, 'human')
+    missing_in_human = format_missing(missing_in_human_df, 'llm')
+
     # Calculate Metrics
     tp = len(merged[(merged['is_spam_human'] == True) & (merged['is_spam_llm'] == True)])
     fn = len(merged[(merged['is_spam_human'] == True) & (merged['is_spam_llm'] == False)])
@@ -173,7 +198,7 @@ async def compare_results(
     # 고급 지표 계산
     advanced_metrics = calculate_advanced_metrics(tp, tn, fp, fn, matched_count)
     
-    # Generate Diffs
+    # Generate Diffs (Mismatched Labels)
     diffs = []
     # Filter for mismatches
     mismatch = merged[merged['is_spam_human'] != merged['is_spam_llm']]
@@ -237,11 +262,13 @@ async def compare_results(
     
     auto_summary = generate_summary_text(summary_dict, advanced_metrics)
     
-    logger.info(f"비교 완료 | Matched: {matched_count} | TP: {tp} | FP: {fp} | FN: {fn} | TN: {tn} | Accuracy: {advanced_metrics['accuracy']}")
+    logger.info(f"비교 완료 | Matched: {matched_count} | TP: {tp} | FP: {fp} | FN: {fn} | TN: {tn} | Accuracy: {advanced_metrics['accuracy']} | MissingH: {len(missing_in_human)} | MissingL: {len(missing_in_llm)}")
     
     return {
         "summary": summary_dict,
         "diffs": diffs,
+        "missing_in_human": missing_in_human,
+        "missing_in_llm": missing_in_llm,
         "auto_summary": auto_summary
     }
 

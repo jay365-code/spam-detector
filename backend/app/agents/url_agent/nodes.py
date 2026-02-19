@@ -6,6 +6,7 @@ import asyncio
 import logging
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
 from app.core.logging_config import get_logger
+from app.core.llm_manager import key_manager
 logger = get_logger(__name__)
 import base64
 from typing import Dict, Any, List
@@ -86,15 +87,15 @@ def get_llm():
     
     if provider == "GEMINI":
         from langchain_google_genai import ChatGoogleGenerativeAI
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = key_manager.get_key("GEMINI")
         return ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=0, convert_system_message_to_human=True)
     elif provider == "CLAUDE":
         from langchain_anthropic import ChatAnthropic
-        api_key = os.getenv("CLAUDE_API_KEY")
+        api_key = key_manager.get_key("CLAUDE")
         return ChatAnthropic(model=model_name, anthropic_api_key=api_key, temperature=0)
     else:
         from langchain_openai import ChatOpenAI
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = key_manager.get_key("OPENAI")
         return ChatOpenAI(model=model_name, api_key=api_key, temperature=0.1)
 
 
@@ -110,7 +111,7 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
         import google.generativeai as genai
         
         # Gemini API 설정
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = key_manager.get_key("GEMINI")
         if not api_key:
             raise ValueError("GEMINI_API_KEY is not set")
         
@@ -201,13 +202,25 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
             reraise=True
         )
         async def call_vision_api():
-            return await asyncio.get_running_loop().run_in_executor(
-                None,
-                lambda: model.generate_content(
-                    [prompt, image_part],
-                    generation_config=generation_config
+            # Check for rotation inside retry if possible, or just use current key
+            api_key = key_manager.get_key("GEMINI")
+            genai.configure(api_key=api_key)
+            
+            try:
+                return await asyncio.get_running_loop().run_in_executor(
+                    None,
+                    lambda: model.generate_content(
+                        [prompt, image_part],
+                        generation_config=generation_config
+                    )
                 )
-            )
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "quota" in error_msg or "429" in error_msg:
+                    logger.warning("[URL Agent] Vision API Quota Exceeded. Rotating key...")
+                    # [동시성 개선] 실패한 키 전달
+                    key_manager.rotate_key("GEMINI", failed_key=api_key)
+                raise e
 
         try:
             response = await call_vision_api()
@@ -448,8 +461,12 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
                    f"text_len={len(result.get('text', ''))}")
         
         # 텍스트 일부 로깅 (디버깅용)
-        text_preview = result.get('text', '')[:200].replace('\n', ' ')
-        logger.info(f"[URL Agent] Content Preview: {text_preview}...")
+        text_preview = result.get('text', '').strip()
+        if "403" in text_preview[:100] and ("Forbidden" in text_preview[:100] or "denied" in text_preview[:100].lower()):
+             logger.warning(f"⚠️ [URL Agent] Scraper Blocked (403 Forbidden)! Site may have bot protection.")
+        
+        display_preview = text_preview[:200].replace('\n', ' ')
+        logger.info(f"[URL Agent] Content Preview: {display_preview}...")
         
     except Exception as e:
         logger.error(f"[URL Agent] Scrape Error: {e}")
@@ -583,7 +600,10 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     try:
         # ========== 1차: 텍스트 기반 분석 ==========
         # logger.info(f"[URL Agent] Text Analysis Prompt:\n{prompt[:2000]}...")  # 프롬프트 로그 출력 제거
-        logger.info(f"[URL Agent] Scraped Content Preview (100 chars): {raw_text[:100]}...")
+        preview_text = raw_text[:100].strip()
+        if "403" in preview_text and ("Forbidden" in preview_text or "denied" in preview_text.lower()):
+            logger.warning(f"⚠️ [URL Agent] Scraper Blocked (403 Forbidden)! Site may have bot protection. Falling back to content-only analysis where possible.")
+        logger.info(f"[URL Agent] Scraped Content Preview (100 chars): {preview_text}...")
         llm = get_llm()
         
         @retry(
@@ -594,7 +614,18 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
             reraise=True
         )
         async def call_llm():
-            return await llm.ainvoke(prompt)
+            provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
+            api_key = key_manager.get_key(provider) # 실패 시 대조를 위해 키 보관
+            llm = get_llm() # Get fresh LLM (uses the same key)
+            try:
+                return await llm.ainvoke(prompt)
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "quota" in error_msg or "429" in error_msg or "rate" in error_msg:
+                    logger.warning(f"[URL Agent] {provider} Quota Exceeded. Rotating key...")
+                    # [동시성 개선] 실패한 키 전달
+                    key_manager.rotate_key(provider, failed_key=api_key)
+                raise e
             
         response = await call_llm()
         content = response.content

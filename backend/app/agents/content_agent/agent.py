@@ -8,15 +8,16 @@ import logging
 import time
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
 from app.core.logging_config import get_logger
+from app.core.llm_manager import key_manager
 
 logger = get_logger(__name__)
 # from openai import OpenAI  <-- Removed global import
 
 class ContentAnalysisAgent: # Renamed from RagBasedFilter
     def __init__(self):
-        # Initialize LLM (Get model from env, default to gpt-5-mini)
-        self.model_name = os.getenv("LLM_MODEL", "gpt-5-mini")
-        self.api_key = os.getenv("OPENAI_API_KEY")
+        # Initialize LLM (Get model from env)
+        self.model_name = os.getenv("LLM_MODEL", "gpt-4o-mini")
+        self.vector_db = None
         self.vector_db = None
         self._full_guide_cache = None
 
@@ -79,22 +80,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         Returns:
             dict with 'guide_context' and 'rag_examples'
         """
-        # [Deprecated] RAG 기능 비활성화 (항상 Full Context 사용)
-        # rag_on = os.getenv("RAG_ON", "1")
-        # guide_context = ""
-        # 
-        # if rag_on == "1":
-        #     logger.debug("RAG Mode ON: Searching Vector DB...")
-        #     similar_docs = self.search_guide(message)
-        #     if similar_docs:
-        #         guide_context = "\n".join([doc.page_content for doc in similar_docs])
-        #     else:
-        #         # RAG 검색 실패 시 Fallback: 전체 가이드 로드
-        #         logger.info("RAG Fallback: Loading full guide (search returned empty)")
-        #         guide_context = self._load_full_guide()
-        # else:
-        
-        logger.debug("Using Full Spam Guide Text (RAG Disabled)")
+        logger.debug("Using Full Spam Guide Text (Always)")
         guide_context = self._load_full_guide()
         
         # RAG 예시 검색 (유사 스팸 사례) - Intent Summary 필수
@@ -145,11 +131,12 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             if provider == "GEMINI":
                 import google.generativeai as genai
                 import asyncio
-                gemini_key = os.getenv("GEMINI_API_KEY")
-                if not gemini_key:
+                api_key = key_manager.get_key("GEMINI")
+                if not api_key:
                     raise ValueError("GEMINI_API_KEY is missing")
-                    
-                genai.configure(api_key=gemini_key)
+                
+                current_api_key = api_key # 실패 시 대조용
+                genai.configure(api_key=api_key)
                 model_name = self.model_name if "gemini" in self.model_name else "gemini-1.5-flash"
                 model = genai.GenerativeModel(model_name)
                 generation_config = genai.GenerationConfig(temperature=0.2)
@@ -180,7 +167,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 
             elif provider == "CLAUDE":
                 import anthropic
-                claude_key = os.getenv("CLAUDE_API_KEY")
+                claude_key = key_manager.get_key("CLAUDE")
                 if not claude_key:
                     raise ValueError("CLAUDE_API_KEY is missing")
                     
@@ -194,10 +181,15 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                     messages=[{"role": "user", "content": prompt}]
                 )
                 content = response.content[0].text
-
-            else: # Default to OPENAI
+                
+            else: # OPENAI
                 from openai import AsyncOpenAI
-                async_client = AsyncOpenAI(api_key=self.api_key)
+                api_key = key_manager.get_key("OPENAI")
+                if not api_key:
+                    raise ValueError("OPENAI_API_KEY is missing")
+                    
+                current_api_key = api_key # 실패 시 대조용
+                async_client = AsyncOpenAI(api_key=api_key)
                 response = await async_client.chat.completions.create(
                     model=self.model_name,
                     messages=[{"role": "user", "content": prompt}],
@@ -206,6 +198,16 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 content = response.choices[0].message.content.strip()
                 
         except Exception as e:
+            error_msg = str(e).lower()
+            # Quota Exceeded / Rate Limit 체크 (429 에러)
+            if "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg:
+                logger.warning(f"[ContentAnalysisAgent] {provider} Quota Exceeded detected. Attempting key rotation...")
+                # [동시성 개선] 실패한 키를 넘겨주어 중복 전환 방지
+                if key_manager.rotate_key(provider, failed_key=current_api_key):
+                    logger.info(f"[ContentAnalysisAgent] Rotated to next {provider} key. Retrying...")
+                else:
+                    logger.error(f"[ContentAnalysisAgent] All {provider} keys exhausted or rotation failed.")
+            
             logger.exception(f"{provider} Async API Error")
             raise e
         
@@ -577,7 +579,7 @@ Step 4. SPAM 확정 조건:
                 raise e
             
             # LLM 응답 로그
-            logger.debug(f"LLM 응답: {content[:300]}{'...' if len(content) > 300 else ''}")
+            logger.debug(f"LLM 응답: {content[:1000]}{'...' if len(content) > 1000 else ''}")
             
             result = self._parse_response(content, os.getenv("LLM_PROVIDER", "OPENAI"))
             
@@ -672,7 +674,7 @@ Step 4. SPAM 확정 조건:
                 return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": f"Error: {e}"}
             
             # LLM 응답 로그
-            logger.debug(f"LLM 응답: {content[:300]}{'...' if len(content) > 300 else ''}")
+            logger.debug(f"LLM 응답: {content[:1000]}{'...' if len(content) > 1000 else ''}")
             
             result = self._parse_response(content, os.getenv("LLM_PROVIDER", "OPENAI"))
             
@@ -791,23 +793,24 @@ Step 4. SPAM 확정 조건:
         from langchain_anthropic import ChatAnthropic
 
         if provider == "GEMINI":
-            api_key = os.getenv("GEMINI_API_KEY")
+            api_key = key_manager.get_key("GEMINI")
             return ChatGoogleGenerativeAI(
                 model=self.model_name if "gemini" in self.model_name else "gemini-1.5-flash",
                 google_api_key=api_key,
                 temperature=0.2  # 분류 작업에 적합한 낮은 temperature
             )
         elif provider == "CLAUDE":
-            api_key = os.getenv("CLAUDE_API_KEY")
+            api_key = key_manager.get_key("CLAUDE")
             return ChatAnthropic(
                 model=self.model_name if "claude" in self.model_name else "claude-3-haiku-20240307",
                 anthropic_api_key=api_key,
                 temperature=0.2  # 분류 작업에 적합한 낮은 temperature
             )
         else: # OPENAI
+            api_key = key_manager.get_key("OPENAI")
             return ChatOpenAI(
                 model=self.model_name,
-                api_key=self.api_key,
+                api_key=api_key,
                 temperature=0.2  # 분류 작업에 적합한 낮은 temperature
             )
 

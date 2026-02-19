@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Upload, FileSpreadsheet, RefreshCw, AlertCircle, ChevronRight, BarChart3, Search, Download, Check, Database, Copy } from 'lucide-react';
+import { Upload, FileSpreadsheet, RefreshCw, AlertCircle, ChevronRight, BarChart3, Search, Download, Check, Database, Copy, GitCompare, X } from 'lucide-react';
 import { RagRegistrationModal } from '../RagRegistrationModal';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -62,9 +62,19 @@ interface DiffItem {
     policy_interpretation?: string;
 }
 
+interface MissingRecord {
+    index: number;
+    message: string;
+    label: string;
+    code: string;
+    reason: string;
+}
+
 interface CompareResponse {
     summary: SummaryMetrics;
     diffs: DiffItem[];
+    missing_in_human: MissingRecord[];
+    missing_in_llm: MissingRecord[];
     auto_summary: string;
 }
 
@@ -141,6 +151,7 @@ export default function ValidatorPage() {
     const [filter, setFilter] = useState<'ALL' | 'FN' | 'FP'>('ALL');
     const [searchTerm, setSearchTerm] = useState('');
     const [copied, setCopied] = useState(false);
+    const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
 
     // RAG Save State
     const [ragSaveStatus, setRagSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
@@ -333,14 +344,24 @@ export default function ValidatorPage() {
                             Configuration
                         </h2>
                         {data && (
-                            <button
-                                onClick={(e) => { e.stopPropagation(); handleSaveJson(); }}
-                                className="px-3 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all bg-slate-900 text-white hover:bg-slate-800 shadow-sm animate-in fade-in slide-in-from-left-2"
-                                title="분석 결과 JSON 저장"
-                            >
-                                <Download size={12} />
-                                Save Result
-                            </button>
+                            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2">
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); handleSaveJson(); }}
+                                    className="px-3 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all bg-slate-900 text-white hover:bg-slate-800 shadow-sm"
+                                    title="분석 결과 JSON 저장"
+                                >
+                                    <Download size={12} />
+                                    Save Result
+                                </button>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setIsDiffModalOpen(true); }}
+                                    className="px-3 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all bg-white text-indigo-600 border border-indigo-200 hover:bg-indigo-50 shadow-sm"
+                                    title="레코드 누락 확인 (Diff)"
+                                >
+                                    <GitCompare size={12} />
+                                    Diff
+                                </button>
+                            </div>
                         )}
                     </div>
                     <ChevronRight
@@ -956,6 +977,122 @@ export default function ValidatorPage() {
                         <Check size={14} strokeWidth={3} />
                     </div>
                     <span className="font-bold text-sm tracking-wide">{ragSaveMessage}</span>
+                </div>
+            )}
+
+            {/* Record Diff Modal */}
+            {isDiffModalOpen && data && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white w-full max-w-5xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+                        {/* Header */}
+                        <div className="px-8 py-6 border-b flex items-center justify-between bg-gray-50/50">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                                        <GitCompare className="text-indigo-600" size={24} />
+                                        Record Comparison Diff
+                                    </h3>
+                                </div>
+                                <p className="text-sm text-gray-500 mt-1">
+                                    두 엑셀 파일 간의 레코드 일치 여부를 확인합니다. (메시지 원문 및 순번 기준)
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setIsDiffModalOpen(false)}
+                                className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+                            >
+                                <X size={24} className="text-gray-500" />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 overflow-auto p-8 grid grid-cols-2 gap-8 bg-slate-50/30">
+                            {/* Missing in LLM (Only in Human) */}
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="font-bold text-amber-700 flex items-center gap-2 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-100">
+                                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                                        In Human Only ({(data.missing_in_llm || []).length})
+                                    </h4>
+                                </div>
+                                <div className="space-y-3">
+                                    {(!data.missing_in_llm || data.missing_in_llm.length === 0) ? (
+                                        <div className="py-20 text-center text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200">
+                                            누락된 레코드가 없습니다.
+                                        </div>
+                                    ) : (
+                                        <div className="grid gap-3">
+                                            {(data.missing_in_llm || []).map((rec, idx) => (
+                                                <div key={idx} className="p-4 rounded-xl border border-gray-200 bg-white hover:border-amber-200 transition-all shadow-sm group">
+                                                    <div className="flex items-start justify-between gap-2 mb-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase tracking-tighter">Human Excel</span>
+                                                            <span className="text-[10px] font-bold text-indigo-400">Row {rec.index + 1}</span>
+                                                        </div>
+                                                        <span className={cn(
+                                                            "text-[9px] font-bold px-1.5 py-0.5 rounded-full border uppercase",
+                                                            rec.label === 'o' ? "bg-rose-50 text-rose-600 border-rose-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                                                        )}>
+                                                            {rec.label === 'o' ? 'SPAM' : 'HAM'}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-sm text-gray-700 font-medium line-clamp-4 leading-relaxed group-hover:text-gray-900">{rec.message}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Missing in Human (Only in LLM) */}
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="font-bold text-violet-700 flex items-center gap-2 bg-violet-50 px-3 py-1.5 rounded-lg border border-violet-100">
+                                        <span className="w-2 h-2 rounded-full bg-violet-500 animate-pulse" />
+                                        In LLM Only ({(data.missing_in_human || []).length})
+                                    </h4>
+                                </div>
+                                <div className="space-y-3">
+                                    {(!data.missing_in_human || data.missing_in_human.length === 0) ? (
+                                        <div className="py-20 text-center text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200">
+                                            누락된 레코드가 없습니다.
+                                        </div>
+                                    ) : (
+                                        <div className="grid gap-3">
+                                            {(data.missing_in_human || []).map((rec, idx) => (
+                                                <div key={idx} className="p-4 rounded-xl border border-gray-200 bg-white hover:border-violet-200 transition-all shadow-sm group">
+                                                    <div className="flex items-start justify-between gap-2 mb-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase tracking-tighter">LLM Excel</span>
+                                                            <span className="text-[10px] font-bold text-indigo-400">Row {rec.index + 1}</span>
+                                                        </div>
+                                                        <span className={cn(
+                                                            "text-[9px] font-bold px-1.5 py-0.5 rounded-full border uppercase",
+                                                            rec.label === 'o' ? "bg-rose-50 text-rose-600 border-rose-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                                                        )}>
+                                                            {rec.label === 'o' ? 'SPAM' : 'HAM'}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-sm text-gray-700 font-medium line-clamp-4 leading-relaxed group-hover:text-gray-900">{rec.message}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-6 bg-gray-50 border-t flex justify-between items-center px-8 text-xs text-gray-400 italic">
+                            <p>* '메시지 내용'과 '동일 메시지의 출현 순서'가 일치하지 않는 경우 차이로 인식됩니다.</p>
+                            <button
+                                onClick={() => setIsDiffModalOpen(false)}
+                                className="px-8 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-lg active:scale-95"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </main>
