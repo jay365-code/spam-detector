@@ -90,9 +90,10 @@ candidates_40: {candidates_40_json}
 위 조건을 만족하는 JSON만 다시 출력해라."""
 
     def __init__(self):
+        from app.core.llm_manager import key_manager
         self.model_name = os.getenv("LLM_MODEL", "gpt-4o") 
         self.provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
-        self.api_key = os.getenv(f"{self.provider}_API_KEY")
+        self.api_key = key_manager.get_key(self.provider)
 
     def select(self, state: IBSEState, is_repair: bool = False) -> dict:
         message_id = state.get("message_id", "unknown")
