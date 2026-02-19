@@ -11,7 +11,7 @@ load_dotenv(dotenv_path=".env", override=True)
 
 def ingest_data():
     file_path = "data/spam_guide.md"
-    db_path = "../data/chroma_db"
+    db_path = "data/chroma_db"
     
     # Check API Key
     if not os.getenv("OPENAI_API_KEY"):

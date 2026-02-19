@@ -6,8 +6,7 @@ def reset_chroma_db():
     # Define path relative to this script (.../backend/reset_db.py)
     # We want .../data/chroma_db (Project Root)
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.abspath(os.path.join(current_dir, ".."))
-    db_path = os.path.join(project_root, "data", "chroma_db")
+    db_path = os.path.join(current_dir, "data", "chroma_db")
     
     print(f"Target ChromaDB Path: {db_path}")
     

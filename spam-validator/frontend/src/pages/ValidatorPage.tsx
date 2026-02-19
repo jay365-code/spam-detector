@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Upload, FileSpreadsheet, RefreshCw, AlertCircle, ChevronRight, BarChart3, Search, Download, Check, Database } from 'lucide-react';
+import { Upload, FileSpreadsheet, RefreshCw, AlertCircle, ChevronRight, BarChart3, Search, Download, Check, Database, Copy } from 'lucide-react';
 import { RagRegistrationModal } from '../RagRegistrationModal';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -140,6 +140,7 @@ export default function ValidatorPage() {
     const [selectedDiff, setSelectedDiff] = useState<DiffItem | null>(null);
     const [filter, setFilter] = useState<'ALL' | 'FN' | 'FP'>('ALL');
     const [searchTerm, setSearchTerm] = useState('');
+    const [copied, setCopied] = useState(false);
 
     // RAG Save State
     const [ragSaveStatus, setRagSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
@@ -306,6 +307,13 @@ export default function ValidatorPage() {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
+    };
+
+    // 클립보드 복사 함수
+    const handleCopy = (text: string) => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
     };
 
     return (
@@ -821,7 +829,28 @@ export default function ValidatorPage() {
                                     <div className="flex-1 overflow-y-auto space-y-6 custom-scrollbar pr-2">
                                         {/* Message Content */}
                                         <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
-                                            <h5 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Message Content</h5>
+                                            <div className="flex items-center justify-between mb-3">
+                                                <h5 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Message Content</h5>
+                                                <button
+                                                    onClick={() => handleCopy(selectedDiff.message_full)}
+                                                    className={cn(
+                                                        "p-1.5 rounded-lg transition-all flex items-center gap-1.5 text-[10px] font-bold",
+                                                        copied ? "bg-emerald-100 text-emerald-700" : "bg-white text-slate-500 hover:text-indigo-600 border border-slate-200 shadow-sm"
+                                                    )}
+                                                >
+                                                    {copied ? (
+                                                        <>
+                                                            <Check size={12} />
+                                                            Copied!
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Copy size={12} />
+                                                            Copy
+                                                        </>
+                                                    )}
+                                                </button>
+                                            </div>
                                             <p className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed font-medium">
                                                 {selectedDiff.message_full}
                                             </p>
