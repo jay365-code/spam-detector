@@ -141,162 +141,6 @@ class ExcelHandler:
                     cell.fill = spam_fill
                     cell.alignment = wrap_vcenter_align  # 채우기와 함께 정렬 유지
 
-    def process_file(self, file_path: str, output_path: str, processing_function, progress_callback=None, batch_size: int = 1):
-        """
-        Reads the Excel file, processes rows in batches, and appends results.
-        Supports optional progress reporting.
-        """
-        try:
-            # 1. Load Workbook
-            wb = load_workbook(file_path)
-            target_sheet_name = "육안분석(시뮬결과35_150)"
-            
-            if target_sheet_name not in wb.sheetnames:
-                raise ValueError(f"Sheet '{target_sheet_name}' not found.")
-            
-            ws = wb[target_sheet_name]
-            
-            # 2. Identify Headers
-            headers = [cell.value for cell in ws[1]]
-            try:
-                msg_col_idx = headers.index("메시지") + 1 # 1-based index
-            except ValueError:
-                raise ValueError("'메시지' column not found.")
-                
-            # Add or Find Output Columns (Cols setup logic same as before)
-            
-            def get_col_idx(name, default_idx):
-                try:
-                    return headers.index(name) + 1
-                except ValueError:
-                    ws.cell(row=1, column=default_idx, value=name)
-                    return default_idx
-
-            gubun_col_idx = get_col_idx("구분", len(headers) + 1)
-            code_col_idx = get_col_idx("분류", gubun_col_idx + 1)
-            prob_col_idx = get_col_idx("Probability", code_col_idx + 1)
-            reason_col_idx = get_col_idx("Reason", prob_col_idx + 1)
-            in_token_col_idx = get_col_idx("In_Token", reason_col_idx + 1)
-            out_token_col_idx = get_col_idx("Out_Token", in_token_col_idx + 1)
-
-            # 3. Iterate Rows & Batch Processing
-            total_rows = ws.max_row - 1 # Excluding header
-            logger.info(f"Processing {total_rows} rows from Excel (Batch Size: {batch_size})...")
-            
-            row_iterator = ws.iter_rows(min_row=2, max_row=ws.max_row)
-            
-            batch_buffer = [] # List of (vocab_row_idx, message_str, row_object)
-            
-            def flush_batch():
-                if not batch_buffer:
-                    return
-                
-                # Extract messages
-                messages = [item[1] for item in batch_buffer]
-                
-                # Call Processing Function (Expects List -> Returns List)
-                try:
-                    results = processing_function(messages)
-                except Exception as e:
-                    logger.error(f"Batch Processing Failed: {e}")
-                    # Create error results
-                    results = [{"is_spam": None, "reason": f"Error: {e}"} for _ in messages]
-                
-                # Map results back to rows
-                for idx, result in enumerate(results):
-                    if idx >= len(batch_buffer): break # Safety
-                    
-                    row_idx, _, _ = batch_buffer[idx] # Current Row Element
-                    
-                    # [User Request] Skip Excel Write if flagged (Short message)
-                    if result.get("exclude_from_excel"):
-                        logger.debug(f"Row {row_idx}: Skipped from Excel (exclude_from_excel=True)")
-                        # Callback은 호출하여 UI에는 표시되게 함
-                        if progress_callback:
-                            progress_callback({
-                                "current": row_idx - 1,
-                                "total": total_rows,
-                                "message": batch_buffer[idx][1],
-                                "excel_row_number": row_idx,
-                                "result": result
-                            })
-                        continue
-
-                    # Write Result
-                    if result.get("is_spam") is True:
-                        gubun_val = "o"
-                    elif result.get("is_spam") is False:
-                        gubun_val = ""
-                    else:
-                        gubun_val = "UNKNOWN"
-                        
-                    if result.get("is_spam") is False:
-                        code_val = ""
-                    else:
-                        # Extract only digits from the code (e.g. SPAM-1 -> 1)
-                        import re
-                        raw_val = str(result.get("classification_code", ""))
-                        match = re.search(r'\d+', raw_val)
-                        code_val = match.group(0) if match else raw_val
-                    prob_val = result.get("spam_probability", 0.0)
-                    reason_val = result.get("reason", "")
-                    in_token_val = result.get("input_tokens", 0)
-                    out_token_val = result.get("output_tokens", 0)
-                    
-                    ws.cell(row=row_idx, column=gubun_col_idx, value=gubun_val)
-                    ws.cell(row=row_idx, column=code_col_idx, value=code_val)
-                    ws.cell(row=row_idx, column=prob_col_idx, value=prob_val)
-                    ws.cell(row=row_idx, column=reason_col_idx, value=reason_val)
-                    ws.cell(row=row_idx, column=in_token_col_idx, value=in_token_val)
-                    ws.cell(row=row_idx, column=out_token_col_idx, value=out_token_val)
-
-                    # Callback (Progress) 
-                    if progress_callback:
-                        progress_callback({
-                            "current": row_idx - 1, # approx
-                            "total": total_rows,
-                            "message": batch_buffer[idx][1],
-                            "excel_row_number": row_idx,  # Actual Excel row number
-                            "result": result
-                        })
-
-                # Auto-Save after each batch to prevent data loss
-                try:
-                    wb.save(output_path)
-                except Exception as save_err:
-                    logger.error(f"Auto-save failed: {save_err}")
-
-                batch_buffer.clear()
-
-            # Loop
-            for i, row in enumerate(row_iterator):
-                msg_cell = row[msg_col_idx - 1]
-                message = msg_cell.value
-                current_row_idx = row[0].row 
-                
-                if not message:
-                    message_str = ""
-                else:
-                    message_str = str(message)
-                
-                batch_buffer.append((current_row_idx, message_str, row))
-                
-                if len(batch_buffer) >= batch_size:
-                    logger.info(f"Processing Batch (Row {i+1}/{total_rows})...")
-                    flush_batch()
-            
-            # Process remaining
-            if batch_buffer:
-                logger.info(f"Processing Remaining Batch...")
-                flush_batch()
-
-            # 5. Save
-            wb.save(output_path)
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error processing Excel: {e}")
-            raise e
 
     def is_short_url(self, url: str) -> bool:
         """
@@ -471,6 +315,19 @@ class ExcelHandler:
                     
                     row_idx, _, _ = batch_buffer[idx] # Current Row Element
                     
+                    # [User Request] Skip Excel Write but SHOW in UI Report
+                    if result.get("exclude_from_excel"):
+                        logger.debug(f"Row {row_idx}: Skipped from Excel (exclude_from_excel=True), but showing in UI")
+                        if progress_callback:
+                            progress_callback({
+                                "current": row_idx - 1,
+                                "total": total_rows,
+                                "message": batch_buffer[idx][1],
+                                "excel_row_number": row_idx,
+                                "result": result
+                            })
+                        continue
+
                     # Write Result
                     if result.get("is_spam") is True:
                         gubun_val = "o"
@@ -503,11 +360,11 @@ class ExcelHandler:
                     # Only collect URLs if the message is SPAM
                     if result.get("is_spam") is True:
                         # re is already imported globally
-                        url_pattern = r'(https?://\S+|www\.\S+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})'
+                        url_pattern = r'(?:https?://|www\.)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
                         urls = re.findall(url_pattern, batch_buffer[idx][1])
                         
                         for url in urls:
-                            # Clean URL (exclude trailing punctuation often caught by greedy regex)
+                            # Clean URL (exclude trailing punctuation often caught by regex)
                             url = url.rstrip('.,;!?)]}"\'')
                             
                             if not self.is_short_url(url):
@@ -522,7 +379,7 @@ class ExcelHandler:
                     if result.get("ibse_signature"):
                         # User requested "공백제거된 메시지"
                         
-                        clean_msg = re.sub(r'[ \t\r\n\f\v]+', '', batch_buffer[idx][1]) # Check if batch_buffer[idx][1] is str
+                        clean_msg = re.sub(r'[ \t\r\n\f\v]+', '', str(batch_buffer[idx][1]))
                         
                         blocklist_data.append({
                             "msg": clean_msg, 
@@ -757,16 +614,15 @@ class ExcelHandler:
 
                 # Populate Excel Rows
                 for i, result in enumerate(results):
-                    # [User Request] Skip Excel Write if flagged (Short message)
+                    # [User Request] Skip Excel Write but SHOW in UI Report
                     if result.get("exclude_from_excel"):
-                        logger.debug(f"Row {start_idx + i + 1}: Skipped from Excel (exclude_from_excel=True)")
-                        # Callback은 호출하여 UI에는 표시되게 함
+                        logger.debug(f"Row {start_idx + i + 1}: Skipped from Excel (exclude_from_excel=True), but showing in UI")
                         if progress_callback:
                             progress_callback({
                                 "current": start_idx + i + 1,
                                 "total": total_rows,
                                 "message": batch_buffer[i]["message"],
-                                "excel_row_number": None,
+                                "excel_row_number": start_idx + i + 2,
                                 "result": result
                             })
                         continue

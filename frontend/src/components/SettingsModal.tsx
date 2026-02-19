@@ -17,7 +17,8 @@ interface SettingsModalProps {
     onClose: () => void;
 }
 
-const API_BASE = 'http://localhost:8000';
+// [Fix] Remote Server Compatibility: Use window.location.hostname for API
+const API_BASE = `http://${window.location.hostname}:8000`;
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const [metadata, setMetadata] = useState<ConfigItem[]>([]);
@@ -45,7 +46,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             setError(null);
         } catch (err) {
             console.error('Failed to fetch config:', err);
-            setError('백엔드 서버에 연결할 수 없습니다. (포트 8000 확인)');
+            setError(`백엔드 서버(${API_BASE})에 연결할 수 없습니다. (포트 8000 확인)`);
         } finally {
             setLoading(false);
         }
@@ -152,7 +153,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
             <div className="bg-slate-900 w-full max-w-xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border border-slate-800 animate-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="px-6 py-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">

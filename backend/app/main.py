@@ -616,7 +616,8 @@ def process_message(message: str) -> dict:
             "spam_probability": 0.0,
             "reason": s1_reason,
             "input_tokens": 0,
-            "output_tokens": 0
+            "output_tokens": 0,
+            "exclude_from_excel": s1_result.get("exclude_from_excel", False)
         }
 
     # Stage 2: RAG + LLM + Antigravity
@@ -1142,7 +1143,7 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
             s1_results = []
             for msg in messages:
                 if not msg:
-                    s1_results.append({"is_spam": False, "detected_pattern": "Empty"})
+                    s1_results.append({"is_spam": False, "detected_pattern": "Empty", "exclude_from_excel": True})
                 else:
                     s1_results.append(rule_filter.check(msg))
             
@@ -1199,7 +1200,8 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                                 "classification_code": s1_code,
                                 "spam_probability": 0.0,
                                 "reason": s1_reason,
-                                "duration_seconds": duration
+                                "duration_seconds": duration,
+                                "exclude_from_excel": s1_res.get("exclude_from_excel", False)
                             }
                         
                         # Construct Input State
