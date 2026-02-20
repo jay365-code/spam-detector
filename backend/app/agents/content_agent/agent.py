@@ -199,8 +199,21 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 
         except Exception as e:
             error_msg = str(e).lower()
+            
+            # [Fix] Explicit type check for Google API errors (Gemini)
+            is_google_quota_error = False
+            if provider == "GEMINI":
+                try:
+                    import google.api_core.exceptions
+                    if isinstance(e, (google.api_core.exceptions.ResourceExhausted, google.api_core.exceptions.TooManyRequests)):
+                        is_google_quota_error = True
+                except ImportError:
+                    pass
+
             # Quota Exceeded / Rate Limit 체크 (429 에러)
-            if "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg:
+            # Add "resource exhausted" to string check for robustness
+            if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
+                logger.warning(f"[ContentAnalysisAgent] 429/Quota Detected. Error: {error_msg}")
                 logger.warning(f"[ContentAnalysisAgent] {provider} Quota Exceeded detected. Attempting key rotation...")
                 # [동시성 개선] 실패한 키를 넘겨주어 중복 전환 방지
                 if key_manager.rotate_key(provider, failed_key=current_api_key):
