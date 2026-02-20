@@ -129,41 +129,53 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         
         try:
             if provider == "GEMINI":
-                import google.generativeai as genai
-                import asyncio
+                from langchain_google_genai import ChatGoogleGenerativeAI
                 api_key = key_manager.get_key("GEMINI")
                 if not api_key:
                     raise ValueError("GEMINI_API_KEY is missing")
                 
                 current_api_key = api_key # 실패 시 대조용
-                genai.configure(api_key=api_key)
-                model_name = self.model_name if "gemini" in self.model_name else "gemini-1.5-flash"
-                model = genai.GenerativeModel(model_name)
-                generation_config = genai.GenerationConfig(temperature=0.2)
-                # [Safety Settings]
-                safety_settings = [
-                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-                ]
                 
-                # Use to_thread for the sync SDK call to avoid blocking the loop
-                response = await asyncio.to_thread(
-                    lambda: model.generate_content(prompt, generation_config=generation_config, safety_settings=safety_settings)
+                # [Safety Settings]
+                safety_settings = {
+                    "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
+                    "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
+                    "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
+                    "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+                }
+                
+                model_name = self.model_name if "gemini" in self.model_name else "gemini-1.5-flash"
+                
+                # Use LangChain wrapper for thread-safety (avoids global genai.configure)
+                llm = ChatGoogleGenerativeAI(
+                    model=model_name,
+                    google_api_key=api_key,
+                    temperature=0.2,
+                    safety_settings=safety_settings,
+                    convert_system_message_to_human=True
                 )
                 
                 try:
-                    content = response.text
-                except ValueError:
-                    logger.warning("[Gemini] Response blocked by safety filters. Returning fallback SPAM verdict.")
-                    content = json.dumps({
-                        "label": "SPAM",
-                        "spam_probability": 0.99,
-                        "classification_code": "3",
-                        "reason": "Security Filter Blocked: Content was flagged as prohibited (likely highly offensive or explicit), which strongly indicates SPAM.",
-                        "signals": {"harm_anchor": True}
-                    })
+                    response = await llm.ainvoke([{"role": "user", "content": prompt}])
+                    content = response.content
+                except Exception as e:
+                    # Check for safety filter block which might raise specific exceptions or return empty/stopped response
+                    # LangChain might raise an error for blocked content or return a finish_reason
+                    # For now, let's catch generic errors and let the outer loop handle quota, 
+                    # but if it's a safety block (often 400 or specific error), we might want to handle it.
+                    # Assuming outer loop handles exceptions, but specific safety fallback logic:
+                    err_str = str(e).lower()
+                    if "safety" in err_str or "blocked" in err_str:
+                        logger.warning("[Gemini] Response blocked by safety filters. Returning fallback SPAM verdict.")
+                        content = json.dumps({
+                            "label": "SPAM",
+                            "spam_probability": 0.99,
+                            "classification_code": "3",
+                            "reason": "Security Filter Blocked: Content was flagged as prohibited (likely highly offensive or explicit), which strongly indicates SPAM.",
+                            "signals": {"harm_anchor": True}
+                        })
+                    else:
+                        raise e
                 
             elif provider == "CLAUDE":
                 import anthropic

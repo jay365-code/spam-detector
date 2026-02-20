@@ -149,15 +149,33 @@ candidates_40: {candidates_40_json}
                     content = response.choices[0].message.content
                     
                 elif self.provider == "GEMINI":
-                    import google.generativeai as genai
-                    genai.configure(api_key=self.api_key)
-                    model = genai.GenerativeModel(
-                        self.model_name if "gemini" in self.model_name else "gemini-1.5-flash",
-                        generation_config={"response_mime_type": "application/json"}
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                    
+                    # [Safety Settings]
+                    safety_settings = {
+                        "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
+                        "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
+                        "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
+                        "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+                    }
+                    
+                    llm = ChatGoogleGenerativeAI(
+                        model=self.model_name if "gemini" in self.model_name else "gemini-1.5-flash",
+                        google_api_key=self.api_key,
+                        temperature=0.1,
+                        safety_settings=safety_settings,
+                        convert_system_message_to_human=True
                     )
-                    full_prompt = f"{system_prompt}\n\n{user_prompt}"
-                    response = model.generate_content(full_prompt)
-                    content = response.text
+                    
+                    # System prompt handling
+                    from langchain_core.messages import SystemMessage, HumanMessage
+                    messages = [
+                        SystemMessage(content=system_prompt),
+                        HumanMessage(content=user_prompt)
+                    ]
+                    
+                    response = llm.invoke(messages)
+                    content = response.content
                     
                 elif self.provider == "CLAUDE":
                     import anthropic

@@ -108,27 +108,10 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
     
     try:
         # Lazy import gemini
-        import google.generativeai as genai
-        
-        # Gemini API 설정
-        api_key = key_manager.get_key("GEMINI")
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY is not set")
-        
-        genai.configure(api_key=api_key)
         
         # 모델 선택 (환경변수에서 가져오거나 기본값 사용)
         model_name = os.getenv("LLM_MODEL", "gemini-2.0-flash")
-        model = genai.GenerativeModel(model_name)
-        
-        # Base64 이미지를 바이트로 변환
-        image_bytes = base64.b64decode(screenshot_b64)
-        
-        # 이미지 데이터 구성
-        image_part = {
-            "mime_type": "image/jpeg",
-            "data": image_bytes
-        }
+
         
         # Format code map for prompt (SPAM 코드만 사용, HAM 코드 제외)
         spam_codes_only = {k: v for k, v in SPAM_CODE_MAP.items() if not k.startswith("HAM")}
@@ -187,11 +170,7 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
         }}
         """
         
-        # Generation config
-        generation_config = genai.GenerationConfig(
-            temperature=0,
-            response_mime_type="application/json"
-        )
+
         
         # Vision API 호출 with Retry
         @retry(
@@ -204,16 +183,27 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
         async def call_vision_api():
             # Check for rotation inside retry if possible, or just use current key
             api_key = key_manager.get_key("GEMINI")
-            genai.configure(api_key=api_key)
+            
+            # Use LangChain wrapper for threat-safety (local client instance)
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            from langchain_core.messages import HumanMessage
+            
+            llm = ChatGoogleGenerativeAI(
+                model=model_name,
+                google_api_key=api_key,
+                temperature=0,
+                convert_system_message_to_human=True
+            )
             
             try:
-                return await asyncio.get_running_loop().run_in_executor(
-                    None,
-                    lambda: model.generate_content(
-                        [prompt, image_part],
-                        generation_config=generation_config
-                    )
+                message = HumanMessage(
+                    content=[
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": f"data:image/jpeg;base64,{screenshot_b64}"}
+                    ]
                 )
+                
+                return await llm.ainvoke([message])
             except Exception as e:
                 error_msg = str(e).lower()
                 
