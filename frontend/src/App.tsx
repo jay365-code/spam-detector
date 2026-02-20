@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CheckCircle, AlertCircle, User, Database, Pencil, X, Save, Loader2, Search, FileText, FolderOpen, Settings } from 'lucide-react';
 import { FileUpload } from './components/FileUpload';
 import { StatusPanel } from './components/StatusPanel';
@@ -795,22 +795,22 @@ function App() {
             <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
               Spam Detector AI
             </h1>
-            <button
-              onClick={() => setIsRagManagerOpen(true)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors text-sm"
-              title="RAG 데이터 관리"
-            >
-              <Database className="w-4 h-4 text-blue-400" />
-              <span className="text-slate-300">스팸 RAG</span>
-            </button>
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors text-sm"
-              title="런타임 환경설정"
-            >
-              <Settings className="w-4 h-4 text-purple-400" />
-              <span className="text-slate-300">Settings</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setIsRagManagerOpen(true)}
+                className="flex items-center justify-center p-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors"
+                title="스팸 RAG"
+              >
+                <Database className="w-4 h-4 text-blue-400" />
+              </button>
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="flex items-center justify-center p-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors"
+                title="Settings"
+              >
+                <Settings className="w-4 h-4 text-purple-400" />
+              </button>
+            </div>
           </div>
 
           <div className="w-full flex gap-6 items-start justify-center px-4">
