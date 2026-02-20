@@ -127,54 +127,89 @@ candidates_40: {candidates_40_json}
         return self._call_llm(system_prompt, user_prompt)
 
     def _call_llm(self, system_prompt: str, user_prompt: str) -> dict:
-        try:
-            if self.provider == "OPENAI":
-                from openai import OpenAI
-                client = OpenAI(api_key=self.api_key)
-                response = client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    response_format={"type": "json_object"},
-                    temperature=0.1
-                )
-                content = response.choices[0].message.content
+        from app.core.llm_manager import key_manager
+        import time
+
+        max_retries = 10 # Safety break, though rotation should limit it
+        
+        while True:
+            try:
+                if self.provider == "OPENAI":
+                    from openai import OpenAI
+                    client = OpenAI(api_key=self.api_key)
+                    response = client.chat.completions.create(
+                        model=self.model_name,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        response_format={"type": "json_object"},
+                        temperature=0.1
+                    )
+                    content = response.choices[0].message.content
+                    
+                elif self.provider == "GEMINI":
+                    import google.generativeai as genai
+                    genai.configure(api_key=self.api_key)
+                    model = genai.GenerativeModel(
+                        self.model_name if "gemini" in self.model_name else "gemini-1.5-flash",
+                        generation_config={"response_mime_type": "application/json"}
+                    )
+                    full_prompt = f"{system_prompt}\n\n{user_prompt}"
+                    response = model.generate_content(full_prompt)
+                    content = response.text
+                    
+                elif self.provider == "CLAUDE":
+                    import anthropic
+                    client = anthropic.Anthropic(api_key=self.api_key)
+                    model = self.model_name if "claude" in self.model_name else "claude-3-haiku-20240307"
+                    response = client.messages.create(
+                        model=model,
+                        max_tokens=1024,
+                        system=system_prompt,
+                        messages=[
+                            {"role": "user", "content": user_prompt}
+                        ]
+                    )
+                    content = response.content[0].text
+                    
+                else:
+                    return {"error": f"Unsupported Provider: {self.provider}"}
                 
-            elif self.provider == "GEMINI":
-                import google.generativeai as genai
-                genai.configure(api_key=self.api_key)
-                model = genai.GenerativeModel(
-                    self.model_name if "gemini" in self.model_name else "gemini-1.5-flash",
-                    generation_config={"response_mime_type": "application/json"}
-                )
-                full_prompt = f"{system_prompt}\n\n{user_prompt}"
-                response = model.generate_content(full_prompt)
-                content = response.text
+                return self._parse_json(content)
                 
-            elif self.provider == "CLAUDE":
-                import anthropic
-                client = anthropic.Anthropic(api_key=self.api_key)
-                model = self.model_name if "claude" in self.model_name else "claude-3-haiku-20240307"
-                response = client.messages.create(
-                    model=model,
-                    max_tokens=1024,
-                    system=system_prompt,
-                    messages=[
-                        {"role": "user", "content": user_prompt}
-                    ]
-                )
-                content = response.content[0].text
+            except Exception as e:
+                error_msg = str(e).lower()
+                provider = self.provider
+
+                # [Concurrency Fix] Explicit type check for Google API errors (Gemini)
+                is_google_quota_error = False
+                if provider == "GEMINI":
+                    try:
+                        import google.api_core.exceptions
+                        if isinstance(e, (google.api_core.exceptions.ResourceExhausted, google.api_core.exceptions.TooManyRequests)):
+                            is_google_quota_error = True
+                    except ImportError:
+                        pass
+
+                # Quota Exceeded / Rate Limit check (429 error)
+                if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
+                    logger.warning(f"[LLMSelector] 429/Quota Detected. Error: {error_msg}")
+                    logger.warning(f"[LLMSelector] {provider} Quota Exceeded detected. Attempting key rotation...")
+                    
+                    current_key = self.api_key
+                    
+                    if key_manager.rotate_key(provider, failed_key=current_key):
+                        logger.info(f"[LLMSelector] Rotated to next {provider} key. Retrying...")
+                        self.api_key = key_manager.get_key(provider)
+                        time.sleep(1) # Short delay before retry
+                        continue
+                    else:
+                        logger.error(f"[LLMSelector] All {provider} keys exhausted or rotation failed.")
+                        return {"error": str(e), "decision": "unextractable"}
                 
-            else:
-                return {"error": f"Unsupported Provider: {self.provider}"}
-            
-            return self._parse_json(content)
-            
-        except Exception as e:
-            logger.error(f"LLM Call Error: {e}")
-            return {"error": str(e), "decision": "unextractable"}
+                logger.error(f"LLM Call Error: {e}")
+                return {"error": str(e), "decision": "unextractable"}
 
     def _parse_json(self, content: str) -> dict:
         try:

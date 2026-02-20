@@ -1,0 +1,446 @@
+2026-02-13 20:29:41 | INFO     | app.core.logging_config | setup_logging:223 | 로깅 초기화 완료 | Console=DEBUG | File=DEBUG | JSON=ON
+2026-02-13 20:29:45 | INFO     | app.main | _log_env_config:173 | 📋 [Config] .env loaded:
+  LLM_PROVIDER=GEMINI
+  OPENAI_API_KEY=***
+  GEMINI_API_KEY=***
+  CLAUDE_API_KEY=***
+  LLM_MODEL=gemini-3-flash-preview
+  RAG_ON=1
+  LLM_BATCH_SIZE=30
+  LOG_LEVEL_CONSOLE=DEBUG
+  LOG_LEVEL_FILE=DEBUG
+  LOG_JSON_ENABLED=1
+  LOG_CONSOLE_ENABLED=1
+  SPAM_RAG_ENABLED=1
+  RAG_DISTANCE_THRESHOLD=0.45
+  MAX_BROWSER_CONCURRENCY=20
+  ALPHANUMERIC_OBFUSCATION_RATIO_THRESHOLD=0.55
+2026-02-13 20:29:45 | INFO     | app.main | startup_event:196 | 🔥 [Startup] Warming up AI Components (Vector DB & LLM)...
+2026-02-13 20:29:45 | INFO     | app.services.spam_rag_service | __init__:27 | SpamRagService initialized (Collection: spam_rag_intent)
+2026-02-13 20:29:45 | INFO     | app.services.spam_rag_service | _get_db:50 | [SpamRagService] Importing Chroma...
+2026-02-13 20:29:46 | INFO     | app.services.spam_rag_service | _get_db:54 | [SpamRagService] Imported Chroma in 1.1192s
+2026-02-13 20:29:46 | INFO     | app.services.spam_rag_service | _get_db:58 | [SpamRagService] Connecting to ChromaDB at C:\Users\leejo\Project\AI Agent\Spam Detector\backend\app\services\../../data/chroma_db
+2026-02-13 20:29:46 | INFO     | app.services.spam_rag_service | _get_embedding_function:32 | [SpamRagService] Importing OpenAIEmbeddings...
+2026-02-13 20:30:11 | INFO     | app.services.spam_rag_service | _get_embedding_function:36 | [SpamRagService] Imported OpenAIEmbeddings in 24.6078s
+2026-02-13 20:30:11 | INFO     | app.services.spam_rag_service | _get_embedding_function:38 | [SpamRagService] Initializing OpenAIEmbeddings helper...
+2026-02-13 20:30:12 | INFO     | app.services.spam_rag_service | _get_embedding_function:41 | [SpamRagService] Initialized OpenAIEmbeddings helper in 1.1927s
+2026-02-13 20:30:12 | INFO     | app.services.spam_rag_service | _get_db:66 | [SpamRagService] Connected to ChromaDB in 26.1236s
+2026-02-13 20:30:12 | INFO     | app.main | startup_event:206 |    -> SpamRagService Warmed up.
+2026-02-13 20:30:12 | INFO     | app.agents.content_agent.agent | _get_vector_db:26 | [ContentAnalysisAgent] Lazy loading Vector DB...
+2026-02-13 20:30:12 | INFO     | app.agents.content_agent.agent | _get_vector_db:31 | [ContentAnalysisAgent] Imports took 0.0297s
+2026-02-13 20:30:12 | INFO     | app.agents.content_agent.agent | _get_vector_db:33 | ChromaDB 초기화 중...
+2026-02-13 20:30:13 | INFO     | app.agents.content_agent.agent | _get_vector_db:40 | [ContentAnalysisAgent] ChromaDB initialized in 0.6882s
+2026-02-13 20:30:13 | INFO     | app.main | startup_event:213 |    -> ContentAnalysisAgent Warmed up.
+2026-02-13 20:30:13 | INFO     | app.main | startup_event:218 | ✅ Server Application Started! (Startup took 27.97s) | Global ThreadPool: 70 workers.
+2026-02-13 20:30:26 | INFO     | app.main | connect:74 | WebSocket Connected: Client client-4nlo51xud
+2026-02-13 20:31:34 | INFO     | app.main | websocket_endpoint:667 | Received from client-4nlo51xud: {'type': 'CHAT_MESSAGE', 'content': '(광고)김미김미 늦었지만 새해복많이받으세요 건강하세요 --장대구-- 무료거부0801395051', 'mode': 'Unified'}
+2026-02-13 20:31:34 | INFO     | app.main | websocket_endpoint:677 | 
+============================================================
+[Chat] Mode: Unified
+[Chat] 메시지 원문:
+  (광고)김미김미 늦었지만 새해복많이받으세요 건강하세요 --장대구-- 무료거부0801395051
+============================================================
+2026-02-13 20:31:34 | DEBUG    | app.agents.content_agent.agent | acheck:606 | 분석 시작 (async) | msg=(광고)김미김미 늦었지만 새해복많이받으세요 건강하세요 --장대구-- 무료거부0801395051
+2026-02-13 20:31:46 | INFO     | app.agents.content_agent.agent | acheck:624 | Intent Summary: Marketing Advertisement / Rapport building through seasonal greetings and personal aliases / Implicit brand exposure and...
+2026-02-13 20:31:46 | DEBUG    | app.agents.content_agent.agent | _retrieve_context:97 | Using Full Spam Guide Text (RAG Disabled)
+2026-02-13 20:31:46 | DEBUG    | app.services.spam_rag_service | search_similar:140 | Searching similar intent: 'Marketing Advertisement / Rapp...'
+2026-02-13 20:31:46 | DEBUG    | app.services.spam_rag_service | search_similar_batch:190 | Searching similar intent: 'Marketing Advertisement / Rapp...'
+2026-02-13 20:31:48 | INFO     | app.agents.content_agent.agent | _retrieve_context:105 | Spam RAG: 2건 검색됨
+2026-02-13 20:31:48 | INFO     | app.agents.content_agent.agent | acheck:640 | RAG Metrics | Top1=0.1196 | Top2=0.1255 | Gap=0.0060
+2026-02-13 20:31:48 | DEBUG    | app.agents.content_agent.agent | acheck:646 | Building prompt...
+2026-02-13 20:31:48 | INFO     | app.agents.content_agent.agent | _build_prompt:450 |     [RAG Examples] Filtering with threshold: 0.45
+2026-02-13 20:31:48 | INFO     | app.agents.content_agent.agent | _build_prompt:475 |     [RAG Examples] 2 examples included in prompt (threshold: 0.45)
+2026-02-13 20:31:48 | DEBUG    | app.agents.content_agent.agent | _build_prompt:478 |     [RAG Examples Injected Content]:
+
+[Reference Context - Similar Intent Examples]
+아래는 유사한 의도(Intent)를 가진 과거 메시지 판정 결과입니다. 참고 자료로만 활용하세요.
+
+예시 1 (유사도: 0.120):
+  메시지: "(광고)  26년도 항상 건강하시고, 새해 복 많이 받으세요.^^ -광수-  무료수신거부 080-888-8489"
+  판정: SPAM (code: 1)
+  카테고리: 성인 / 유흥
+  근거: 유흥업소 호객 연락 / 의례적인 인사말+유명인 / 암묵적 재방문 및 회신 유도
+
+예시 2 (유사도: 0.126):
+  메시지: "2026년 병오년 새해! 건강하시고 복마니 받으세요 ♧일산 킹사다리협회"
+  판정: HAM (code: )
+  카테고리: 정상 광고/마케팅
+  근거: 협회 회원에게 신년 인사 / 회원사 관리 / 신년 인사
+
+2026-02-13 20:31:48 | INFO     | app.agents.content_agent.agent | acheck:660 | 프롬프트 생성 완료 | RAG Guide=O | rag_retrieved=2, rag_injected=2
+2026-02-13 20:31:48 | INFO     | app.agents.content_agent.agent | acheck:661 | RAG Details | injected_labels=SPAM:1/HAM:1 | injected_ids=['rag_093d2ce3', 'rag_9a7d9036']
+2026-02-13 20:31:48 | DEBUG    | app.agents.content_agent.agent | acheck:663 | Prompt built, length: 6456 chars
+2026-02-13 20:31:48 | DEBUG    | app.agents.content_agent.agent | acheck:665 | Calling LLM...
+2026-02-13 20:32:18 | DEBUG    | app.agents.content_agent.agent | acheck:674 | LLM 응답: ```json
+{
+  "label": "SPAM",
+  "ham_code": "null",
+  "spam_code": "1",
+  "spam_probability": 0.9,
+  "reason": "해당 메시지는 과거 유사 사례(예시 1)와 동일한 구조를 가진 전형적인 유흥업소 호객 메시지입니다. '김미김미'는 특정 지역에서 널리 알려진 유흥업소(나이트클럽 등)의 명칭이며, '장대구'라는 발신자명은 지역명(대구)과 결합된 형태의 가명으로 판단됩니다. 가이드 5.2항(성인/유흥)의 '불분명한 상호 + 개인 성명' 패턴에 부합하며, 의...
+2026-02-13 20:32:18 | INFO     | app.agents.content_agent.agent | acheck:681 | 판정완료 | SPAM | code=1 | prob=0.9
+2026-02-13 20:32:18 | INFO     | app.agents.content_agent.agent | acheck:682 |   - Reason: 해당 메시지는 과거 유사 사례(예시 1)와 동일한 구조를 가진 전형적인 유흥업소 호객 메시지입니다. '김미김미'는 특정 지역에서 널리 알려진 유흥업소(나이트클럽 등)의 명칭이며, '장대구'라는 발신자명은 지역명(대구)과 결합된 형태의 가명으로 판단됩니다. 가이드 5.2항(성인/유흥)의 '불분명한 상호 + 개인 성명' 패턴에 부합하며, 의례적인 신년 인사를 가장하여 수신자에게 재방문을 유도하거나 관계를 유지하려는 유해 목적(harm_anchor)이 명확하므로 SPAM으로 판정합니다.
+2026-02-13 20:32:18 | INFO     | app.agents.ibse_agent.service | process_message:80 | Starting IBSE Analysis for 69888708-51b8-4512-aaff-dbb75b7cd372 (LangGraph)
+2026-02-13 20:32:18 | INFO     | app.agents.ibse_agent.service | process_message:87 | IBSE Node Finished: generate_candidates
+2026-02-13 20:32:31 | INFO     | app.agents.ibse_agent.service | process_message:87 | IBSE Node Finished: select_signature
+2026-02-13 20:32:31 | INFO     | app.agents.ibse_agent.service | process_message:87 | IBSE Node Finished: validate
+2026-02-13 20:40:18 | INFO     | app.main | websocket_endpoint:667 | Received from client-4nlo51xud: {'type': 'CHAT_MESSAGE', 'content': '????? ?????????????????????????????https://v????.im/flrvl2', 'mode': 'Unified'}
+2026-02-13 20:40:18 | INFO     | app.main | websocket_endpoint:677 | 
+============================================================
+[Chat] Mode: Unified
+[Chat] 메시지 원문:
+  ????? ?????????????????????????????https://v????.im/flrvl2
+============================================================
+2026-02-13 20:48:40 | INFO     | app.main | disconnect:91 | WebSocket Disconnected: Client client-4nlo51xud
+2026-02-13 20:48:40 | INFO     | app.main | shutdown_event:222 | Server shutting down...
+2026-02-13 20:48:40 | INFO     | app.main | shutdown_event:226 | Global ThreadPoolExecutor shutdown.
+2026-02-13 20:48:57 | INFO     | app.core.logging_config | setup_logging:223 | 로깅 초기화 완료 | Console=DEBUG | File=DEBUG | JSON=ON
+2026-02-13 20:49:15 | INFO     | app.main | _log_env_config:173 | 📋 [Config] .env loaded:
+  LLM_PROVIDER=GEMINI
+  OPENAI_API_KEY=***
+  GEMINI_API_KEY=***
+  CLAUDE_API_KEY=***
+  LLM_MODEL=gemini-3-flash-preview
+  RAG_ON=1
+  LLM_BATCH_SIZE=30
+  LOG_LEVEL_CONSOLE=DEBUG
+  LOG_LEVEL_FILE=DEBUG
+  LOG_JSON_ENABLED=1
+  LOG_CONSOLE_ENABLED=1
+  SPAM_RAG_ENABLED=1
+  RAG_DISTANCE_THRESHOLD=0.45
+  MAX_BROWSER_CONCURRENCY=20
+  ALPHANUMERIC_OBFUSCATION_RATIO_THRESHOLD=0.55
+2026-02-13 20:49:15 | INFO     | app.main | startup_event:196 | 🔥 [Startup] Warming up AI Components (Vector DB & LLM)...
+2026-02-13 20:49:15 | INFO     | app.services.spam_rag_service | __init__:27 | SpamRagService initialized (Collection: spam_rag_intent)
+2026-02-13 20:49:15 | INFO     | app.services.spam_rag_service | _get_db:50 | [SpamRagService] Importing Chroma...
+2026-02-13 20:49:21 | INFO     | app.services.spam_rag_service | _get_db:54 | [SpamRagService] Imported Chroma in 5.4989s
+2026-02-13 20:49:21 | INFO     | app.services.spam_rag_service | _get_db:58 | [SpamRagService] Connecting to ChromaDB at C:\Users\leejo\Project\AI Agent\Spam Detector\backend\app\services\../../data/chroma_db
+2026-02-13 20:49:21 | INFO     | app.services.spam_rag_service | _get_embedding_function:32 | [SpamRagService] Importing OpenAIEmbeddings...
+2026-02-13 20:49:49 | INFO     | app.services.spam_rag_service | _get_embedding_function:36 | [SpamRagService] Imported OpenAIEmbeddings in 28.1117s
+2026-02-13 20:49:49 | INFO     | app.services.spam_rag_service | _get_embedding_function:38 | [SpamRagService] Initializing OpenAIEmbeddings helper...
+2026-02-13 20:49:51 | INFO     | app.services.spam_rag_service | _get_embedding_function:41 | [SpamRagService] Initialized OpenAIEmbeddings helper in 2.2014s
+2026-02-13 20:49:51 | INFO     | app.services.spam_rag_service | _get_db:66 | [SpamRagService] Connected to ChromaDB in 30.6258s
+2026-02-13 20:49:51 | INFO     | app.main | startup_event:206 |    -> SpamRagService Warmed up.
+2026-02-13 20:49:51 | INFO     | app.agents.content_agent.agent | _get_vector_db:26 | [ContentAnalysisAgent] Lazy loading Vector DB...
+2026-02-13 20:49:51 | INFO     | app.agents.content_agent.agent | _get_vector_db:31 | [ContentAnalysisAgent] Imports took 0.0190s
+2026-02-13 20:49:51 | INFO     | app.agents.content_agent.agent | _get_vector_db:33 | ChromaDB 초기화 중...
+2026-02-13 20:49:53 | INFO     | app.agents.content_agent.agent | _get_vector_db:40 | [ContentAnalysisAgent] ChromaDB initialized in 2.0337s
+2026-02-13 20:49:53 | INFO     | app.main | startup_event:213 |    -> ContentAnalysisAgent Warmed up.
+2026-02-13 20:49:53 | INFO     | app.main | startup_event:218 | ✅ Server Application Started! (Startup took 38.22s) | Global ThreadPool: 70 workers.
+2026-02-13 20:49:54 | INFO     | app.main | connect:74 | WebSocket Connected: Client client-4nlo51xud
+2026-02-13 20:49:59 | INFO     | app.main | websocket_endpoint:667 | Received from client-4nlo51xud: {'type': 'CHAT_MESSAGE', 'content': '????? ?????????????????????????????https://v????.im/flrvl2', 'mode': 'Unified'}
+2026-02-13 20:49:59 | INFO     | app.main | websocket_endpoint:677 | 
+============================================================
+[Chat] Mode: Unified
+[Chat] 메시지 원문:
+  ????? ?????????????????????????????https://v????.im/flrvl2
+============================================================
+2026-02-13 20:49:59 | DEBUG    | app.agents.content_agent.agent | acheck:606 | 분석 시작 (async) | msg=????? ?????????????????????????????https://v????.im/flrvl2
+2026-02-13 20:50:07 | INFO     | app.agents.content_agent.agent | acheck:624 | Intent Summary: Phishing or Malicious Link Distribution / Use of garbled text and a shortened URL to bypass filters / Request to click a...
+2026-02-13 20:50:07 | DEBUG    | app.agents.content_agent.agent | _retrieve_context:97 | Using Full Spam Guide Text (RAG Disabled)
+2026-02-13 20:50:07 | DEBUG    | app.services.spam_rag_service | search_similar:140 | Searching similar intent: 'Phishing or Malicious Link Dis...'
+2026-02-13 20:50:07 | DEBUG    | app.services.spam_rag_service | search_similar_batch:190 | Searching similar intent: 'Phishing or Malicious Link Dis...'
+2026-02-13 20:50:08 | INFO     | app.agents.content_agent.agent | _retrieve_context:105 | Spam RAG: 2건 검색됨
+2026-02-13 20:50:08 | INFO     | app.agents.content_agent.agent | acheck:640 | RAG Metrics | Top1=0.1385 | Top2=0.2060 | Gap=0.0675
+2026-02-13 20:50:08 | DEBUG    | app.agents.content_agent.agent | acheck:646 | Building prompt...
+2026-02-13 20:50:08 | INFO     | app.agents.content_agent.agent | _build_prompt:450 |     [RAG Examples] Filtering with threshold: 0.45
+2026-02-13 20:50:08 | INFO     | app.agents.content_agent.agent | _build_prompt:475 |     [RAG Examples] 2 examples included in prompt (threshold: 0.45)
+2026-02-13 20:50:08 | DEBUG    | app.agents.content_agent.agent | _build_prompt:478 |     [RAG Examples Injected Content]:
+
+[Reference Context - Similar Intent Examples]
+아래는 유사한 의도(Intent)를 가진 과거 메시지 판정 결과입니다. 참고 자료로만 활용하세요.
+
+예시 1 (유사도: 0.139):
+  메시지: "A 77 muⓩ.so/anicsn016a"
+  판정: SPAM (code: 3)
+  카테고리: 도박 / 게임
+  근거: 도박 사이트 유도 / 의미 없는 문자열+난독화 도메인 / 링크 클릭(접속) 유도
+
+예시 2 (유사도: 0.206):
+  메시지: "쓰벅 새해 복 많이 받으세요 표인트u 13:00~15:00 2026 새해 이벤트 푸짐한 혜택 vo.la/26년은역시스벅"
+  판정: SPAM (code: 2)
+  카테고리: 피싱 / 스미싱
+  근거: 유명 브랜드 사칭 / 새해 이벤트와 포인트 혜택을 미끼로 한 링크 클릭 유도 / 외부 사이트 접속 요청
+
+2026-02-13 20:50:08 | INFO     | app.agents.content_agent.agent | acheck:660 | 프롬프트 생성 완료 | RAG Guide=O | rag_retrieved=2, rag_injected=2
+2026-02-13 20:50:08 | INFO     | app.agents.content_agent.agent | acheck:661 | RAG Details | injected_labels=SPAM:2/HAM:0 | injected_ids=['rag_234c5f11', 'rag_ee709e13']
+2026-02-13 20:50:08 | DEBUG    | app.agents.content_agent.agent | acheck:663 | Prompt built, length: 6478 chars
+2026-02-13 20:50:08 | DEBUG    | app.agents.content_agent.agent | acheck:665 | Calling LLM...
+2026-02-13 20:50:18 | DEBUG    | app.agents.content_agent.agent | acheck:674 | LLM 응답: ```json
+{
+"label": "SPAM",
+"ham_code": "null",
+"spam_code": "0",
+"spam_probability": 0.95,
+"reason": "메시지 전체가 물음표(?)로 도배되어 문장 구조가 완전히 파괴되었으며, URL 도메인(v????.im)까지 특수문자로 난독화되어 있습니다. 이는 필터링 시스템을 우회하려는 명백한 '회피 의도(Obfuscation)'로 판단됩니다. 스팸 가이드 2.2항에 따라 내용이 구체적으로 파악되지 않더라도, 이러한 고도의 난독화 및 회피 시도 자체가 유해 목적(ha...
+2026-02-13 20:50:18 | INFO     | app.agents.content_agent.agent | acheck:681 | 판정완료 | SPAM | code=0 | prob=0.95
+2026-02-13 20:50:18 | INFO     | app.agents.content_agent.agent | acheck:682 |   - Reason: 메시지 전체가 물음표(?)로 도배되어 문장 구조가 완전히 파괴되었으며, URL 도메인(v????.im)까지 특수문자로 난독화되어 있습니다. 이는 필터링 시스템을 우회하려는 명백한 '회피 의도(Obfuscation)'로 판단됩니다. 스팸 가이드 2.2항에 따라 내용이 구체적으로 파악되지 않더라도, 이러한 고도의 난독화 및 회피 시도 자체가 유해 목적(harm_anchor=true)의 증거가 됩니다. 과거 유사 사례(예시 1)에서도 의미 없는 문자열과 난독화된 도메인의 조합을 스팸으로 판정한 바 있습니다.
+2026-02-13 20:50:18 | INFO     | app.agents.url_agent.nodes | extract_node:410 | [URL Agent] Extracted URLs: ['https://v????.im/flrvl2']
+2026-02-13 20:50:18 | INFO     | app.agents.url_agent.agent | acheck:194 | [ISAA] EXTRACT -> Completed node: extract
+2026-02-13 20:50:18 | INFO     | app.agents.url_agent.nodes | scrape_node:428 | [URL Agent] Scraping URL: https://v????.im/flrvl2
+2026-02-13 20:50:19 | DEBUG    | app.agents.url_agent.tools | scrape_url:480 | Attempt 1 for https://v????.im/flrvl2. Loop: 2442385483472
+2026-02-13 20:50:19 | DEBUG    | app.agents.url_agent.tools | scrape_url:484 | Checking browser state... (Headless: True)
+2026-02-13 20:50:19 | INFO     | app.agents.url_agent.tools | start:197 | [PlaywrightManager] Initialized concurrency semaphore with limit: 20
+2026-02-13 20:50:31 | DEBUG    | app.agents.url_agent.tools | start:205 | Launching new browser instance (Headless: True)...
+2026-02-13 20:50:32 | DEBUG    | app.agents.url_agent.tools | scrape_url:490 | Creating mobile context (iPhone emulation)...
+2026-02-13 20:50:32 | DEBUG    | app.agents.url_agent.tools | scrape_url:499 | Mobile context created (iPhone 14 Pro emulation).
+2026-02-13 20:50:34 | DEBUG    | app.agents.url_agent.tools | scrape_url:507 | Page created with enhanced stealth. Navigating to https://v????.im/flrvl2...
+2026-02-13 20:50:41 | DEBUG    | app.agents.url_agent.tools | scrape_url:623 | Closing context.
+2026-02-13 20:50:41 | ERROR    | app.agents.url_agent.tools | scrape_url:635 | Scraping error
+Traceback (most recent call last):
+  File "C:\Users\leejo\Project\AI Agent\Spam Detector\backend\app\agents\url_agent\tools.py", line 510, in scrape_url
+    response = await page.goto(url, wait_until="domcontentloaded", timeout=10000)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\leejo\Project\AI Agent\Spam Detector\.venv\Lib\site-packages\playwright\async_api\_generated.py", line 9041, in goto
+    await self._impl_obj.goto(
+  File "C:\Users\leejo\Project\AI Agent\Spam Detector\.venv\Lib\site-packages\playwright\_impl\_page.py", line 552, in goto
+    return await self._main_frame.goto(**locals_to_params(locals()))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\leejo\Project\AI Agent\Spam Detector\.venv\Lib\site-packages\playwright\_impl\_frame.py", line 153, in goto
+    await self._channel.send(
+  File "C:\Users\leejo\Project\AI Agent\Spam Detector\.venv\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\leejo\Project\AI Agent\Spam Detector\.venv\Lib\site-packages\playwright\_impl\_connection.py", line 559, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.Error: Page.goto: net::ERR_NAME_NOT_RESOLVED at https://v/????.im/flrvl2
+Call log:
+  - navigating to "https://v/????.im/flrvl2", waiting until "domcontentloaded"
+
+2026-02-13 20:50:41 | DEBUG    | app.agents.url_agent.tools | scrape_url:480 | Attempt 2 for https://v????.im/flrvl2. Loop: 2442385483472
+2026-02-13 20:50:41 | DEBUG    | app.agents.url_agent.tools | scrape_url:484 | Checking browser state... (Headless: True)
+2026-02-13 20:50:41 | DEBUG    | app.agents.url_agent.tools | scrape_url:490 | Creating mobile context (iPhone emulation)...
+2026-02-13 20:50:42 | DEBUG    | app.agents.url_agent.tools | scrape_url:499 | Mobile context created (iPhone 14 Pro emulation).
+2026-02-13 20:50:42 | DEBUG    | app.agents.url_agent.tools | scrape_url:507 | Page created with enhanced stealth. Navigating to https://v????.im/flrvl2...
+2026-02-13 20:50:46 | DEBUG    | app.agents.url_agent.tools | scrape_url:623 | Closing context.
+2026-02-13 20:50:46 | ERROR    | app.agents.url_agent.tools | scrape_url:635 | Scraping error
+Traceback (most recent call last):
+  File "C:\Users\leejo\Project\AI Agent\Spam Detector\backend\app\agents\url_agent\tools.py", line 510, in scrape_url
+    response = await page.goto(url, wait_until="domcontentloaded", timeout=10000)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\leejo\Project\AI Agent\Spam Detector\.venv\Lib\site-packages\playwright\async_api\_generated.py", line 9041, in goto
+    await self._impl_obj.goto(
+  File "C:\Users\leejo\Project\AI Agent\Spam Detector\.venv\Lib\site-packages\playwright\_impl\_page.py", line 552, in goto
+    return await self._main_frame.goto(**locals_to_params(locals()))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\leejo\Project\AI Agent\Spam Detector\.venv\Lib\site-packages\playwright\_impl\_frame.py", line 153, in goto
+    await self._channel.send(
+  File "C:\Users\leejo\Project\AI Agent\Spam Detector\.venv\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\leejo\Project\AI Agent\Spam Detector\.venv\Lib\site-packages\playwright\_impl\_connection.py", line 559, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.Error: Page.goto: net::ERR_NAME_NOT_RESOLVED at https://v/????.im/flrvl2
+Call log:
+  - navigating to "https://v/????.im/flrvl2", waiting until "domcontentloaded"
+
+2026-02-13 20:50:46 | INFO     | app.agents.url_agent.nodes | scrape_node:444 | [URL Agent] Scrape Result: status=error, final_url=https://v????.im/flrvl2, title=, captcha=None, text_len=0
+2026-02-13 20:50:46 | INFO     | app.agents.url_agent.nodes | scrape_node:452 | [URL Agent] Content Preview: ...
+2026-02-13 20:50:46 | INFO     | app.agents.url_agent.agent | acheck:194 | [ISAA] SCRAPE -> Completed node: scrape
+2026-02-13 20:50:46 | INFO     | app.agents.url_agent.nodes | analyze_node:478 | URL 분석 시작 | msg=????? ?????????????????????????????https://v????.im/flrvl2
+2026-02-13 20:50:46 | WARNING  | app.agents.url_agent.nodes | analyze_node:482 | 스크래핑 실패: Page.goto: net::ERR_NAME_NOT_RESOLVED at https://v/????.im/flrvl2
+Call log:
+  - navigating to "https://v/????.im/flrvl2", waiting until "domcontentloaded"
+
+2026-02-13 20:50:46 | INFO     | app.agents.url_agent.agent | acheck:194 | [ISAA] ANALYZE -> Completed node: analyze
+2026-02-13 20:50:46 | INFO     | app.agents.url_agent.nodes | select_link_node:696 | [URL Agent] All URLs visited. No SPAM found.
+2026-02-13 20:50:46 | INFO     | app.agents.url_agent.agent | acheck:194 | [ISAA] SELECT_LINK -> Completed node: select_link
+2026-02-13 20:50:46 | INFO     | app.agents.ibse_agent.service | process_message:46 | DEBUG URL Match: 'https://'
+2026-02-13 20:50:46 | INFO     | app.agents.ibse_agent.service | process_message:50 | Skipping LLM for 81e8dd7d-3f1e-40a9-8782-a08737f82214: URL detected (Short or Normal).
+2026-02-13 20:50:57 | INFO     | app.agents.content_agent.agent | generate_final_summary:879 | Final Summary: 요청하신 분석 결과를 바탕으로 정리한 최종 판정입니다.
+
+🚫 **최종 판정: 스팸(SPAM) 메시지입니다.**
+
+**종합 분석:** 메시지 전체가 물음표로 도배되어 문장 구조를 알 수 없으며, 연결된 URL 도메인(v????.im) 역시 특수문자로 교묘하게 가려져 있습니다. 이는 보안 시스템의 감시를 피하기 위한 전형적인 '난독화 수법'입니다. 비록 URL 스캔 결과에서 즉각적인 악성 코드가 검출되지 않았더라도, 발신 의도를 숨기려는 이러한 시도 자체가 매우 위험한 스팸의 증거입니다.
+
+**대응 지침:** 해당 링크를 절대 클릭하지 마십시오. 메시지를 즉시 삭제하고, 해당 발신 번호를 스팸으로 신고 및 차단하여 추가 피해를 예방하시기 바랍니다.
+2026-02-13 20:51:15 | INFO     | app.main | websocket_endpoint:667 | Received from client-4nlo51xud: {'type': 'CHAT_MESSAGE', 'content': 'Паспорт. Айди с 2 сторон. Фото визы', 'mode': 'Unified'}
+2026-02-13 20:51:15 | INFO     | app.main | websocket_endpoint:677 | 
+============================================================
+[Chat] Mode: Unified
+[Chat] 메시지 원문:
+  Паспорт. Айди с 2 сторон. Фото визы
+============================================================
+2026-02-13 20:51:15 | DEBUG    | app.agents.content_agent.agent | acheck:606 | 분석 시작 (async) | msg=Паспорт. Айди с 2 сторон. Фото визы
+2026-02-13 20:51:19 | INFO     | app.agents.content_agent.agent | acheck:624 | Intent Summary: Identity Document Collection / Request for sensitive personal identification / Request to provide digital copies of pass...
+2026-02-13 20:51:19 | DEBUG    | app.agents.content_agent.agent | _retrieve_context:97 | Using Full Spam Guide Text (RAG Disabled)
+2026-02-13 20:51:19 | DEBUG    | app.services.spam_rag_service | search_similar:140 | Searching similar intent: 'Identity Document Collection /...'
+2026-02-13 20:51:19 | DEBUG    | app.services.spam_rag_service | search_similar_batch:190 | Searching similar intent: 'Identity Document Collection /...'
+2026-02-13 20:51:22 | INFO     | app.agents.content_agent.agent | _retrieve_context:105 | Spam RAG: 2건 검색됨
+2026-02-13 20:51:22 | INFO     | app.agents.content_agent.agent | acheck:640 | RAG Metrics | Top1=0.2864 | Top2=0.3579 | Gap=0.0715
+2026-02-13 20:51:22 | DEBUG    | app.agents.content_agent.agent | acheck:646 | Building prompt...
+2026-02-13 20:51:22 | INFO     | app.agents.content_agent.agent | _build_prompt:450 |     [RAG Examples] Filtering with threshold: 0.45
+2026-02-13 20:51:22 | INFO     | app.agents.content_agent.agent | _build_prompt:475 |     [RAG Examples] 2 examples included in prompt (threshold: 0.45)
+2026-02-13 20:51:22 | DEBUG    | app.agents.content_agent.agent | _build_prompt:478 |     [RAG Examples Injected Content]:
+
+[Reference Context - Similar Intent Examples]
+아래는 유사한 의도(Intent)를 가진 과거 메시지 판정 결과입니다. 참고 자료로만 활용하세요.
+
+예시 1 (유사도: 0.286):
+  메시지: "(맹준호 조//건하고 성xx 한거 넘겨도되제)"
+  판정: HAM (code: )
+  카테고리: 개인 메시지
+  근거: Intent: 개인 추심
+Tactics: 채무자 이름 + 협박, 폭언
+Actions: 채무 변재 강요, 회신 유도
+
+예시 2 (유사도: 0.358):
+  메시지: "김상무입니다. 연락을 안주시네요^^ Ksang666 여기로 텔레주시고 마지막 안내입니다 연락두절이라고판단하면 추심 쑤셔박습니다."
+  판정: HAM (code: )
+  카테고리: 정상 광고/마케팅
+  근거: Intent: 채무 미이행자에게 연락을 유도하여 채무 대응을 압박
+Tactics: 위협적 표현 사용, 연락방법 제시를 통한 직접 연락 요구, “마지막 안내”, “연락두절 판단” 등 심리적 압박
+
+2026-02-13 20:51:22 | INFO     | app.agents.content_agent.agent | acheck:660 | 프롬프트 생성 완료 | RAG Guide=O | rag_retrieved=2, rag_injected=2
+2026-02-13 20:51:22 | INFO     | app.agents.content_agent.agent | acheck:661 | RAG Details | injected_labels=SPAM:0/HAM:2 | injected_ids=['rag_d088ac31', 'rag_9282e242']
+2026-02-13 20:51:22 | DEBUG    | app.agents.content_agent.agent | acheck:663 | Prompt built, length: 6528 chars
+2026-02-13 20:51:22 | DEBUG    | app.agents.content_agent.agent | acheck:665 | Calling LLM...
+2026-02-13 20:51:44 | DEBUG    | app.agents.content_agent.agent | acheck:674 | LLM 응답: ```json
+{
+  "label": "HAM",
+  "ham_code": "HAM-1",
+  "spam_code": null,
+  "spam_probability": 0.1,
+  "reason": "해당 메시지는 러시아어로 '여권. 양면 ID. 비자 사진'이라는 의미로, 특정 서류의 사진을 요청하는 내용입니다. 가이드 1.1 및 1.2에 의거하여, 메시지 내에 도박, 성인, 불법 금융 등의 유해 목적이 명확하게 드러나지 않습니다. 또한 가이드 2.2의 피싱 판정 기준인 '사칭', '비현실적 보상', '긴급성 유발' 등의 요소가 포...
+2026-02-13 20:51:44 | INFO     | app.agents.content_agent.agent | acheck:681 | 판정완료 | HAM | code=HAM-1 | prob=0.1
+2026-02-13 20:51:44 | INFO     | app.agents.content_agent.agent | acheck:682 |   - Reason: 해당 메시지는 러시아어로 '여권. 양면 ID. 비자 사진'이라는 의미로, 특정 서류의 사진을 요청하는 내용입니다. 가이드 1.1 및 1.2에 의거하여, 메시지 내에 도박, 성인, 불법 금융 등의 유해 목적이 명확하게 드러나지 않습니다. 또한 가이드 2.2의 피싱 판정 기준인 '사칭', '비현실적 보상', '긴급성 유발' 등의 요소가 포함되어 있지 않아 유해 의도(harm_anchor)를 확정할 수 없습니다. 과거 유사 사례(예시 1, 2)에서 협박이나 추심 관련 메시지도 개인 간의 트랜잭션으로 보아 HAM으로 판정한 것과 같이, 본 메시지 역시 개인 간의 서류 요청으로 해석될 여지가 크며 의도가 불확실한 경우 HAM으로 판정한다는 원칙에 따라 처리합니다.
+2026-02-13 20:52:50 | INFO     | app.main | disconnect:91 | WebSocket Disconnected: Client client-4nlo51xud
+2026-02-13 20:52:50 | INFO     | app.main | shutdown_event:222 | Server shutting down...
+2026-02-13 20:52:50 | INFO     | app.main | shutdown_event:226 | Global ThreadPoolExecutor shutdown.
+2026-02-13 20:53:12 | INFO     | app.core.logging_config | setup_logging:223 | 로깅 초기화 완료 | Console=DEBUG | File=DEBUG | JSON=ON
+2026-02-13 20:53:21 | INFO     | app.main | _log_env_config:173 | 📋 [Config] .env loaded:
+  LLM_PROVIDER=GEMINI
+  OPENAI_API_KEY=***
+  GEMINI_API_KEY=***
+  CLAUDE_API_KEY=***
+  LLM_MODEL=gemini-3-flash-preview
+  RAG_ON=1
+  LLM_BATCH_SIZE=30
+  LOG_LEVEL_CONSOLE=DEBUG
+  LOG_LEVEL_FILE=DEBUG
+  LOG_JSON_ENABLED=1
+  LOG_CONSOLE_ENABLED=1
+  SPAM_RAG_ENABLED=1
+  RAG_DISTANCE_THRESHOLD=0.45
+  MAX_BROWSER_CONCURRENCY=20
+  ALPHANUMERIC_OBFUSCATION_RATIO_THRESHOLD=0.55
+2026-02-13 20:53:21 | INFO     | app.main | startup_event:196 | 🔥 [Startup] Warming up AI Components (Vector DB & LLM)...
+2026-02-13 20:53:21 | INFO     | app.services.spam_rag_service | __init__:27 | SpamRagService initialized (Collection: spam_rag_intent)
+2026-02-13 20:53:21 | INFO     | app.services.spam_rag_service | _get_db:50 | [SpamRagService] Importing Chroma...
+2026-02-13 20:53:24 | INFO     | app.services.spam_rag_service | _get_db:54 | [SpamRagService] Imported Chroma in 3.2654s
+2026-02-13 20:53:24 | INFO     | app.services.spam_rag_service | _get_db:58 | [SpamRagService] Connecting to ChromaDB at C:\Users\leejo\Project\AI Agent\Spam Detector\backend\app\services\../../data/chroma_db
+2026-02-13 20:53:24 | INFO     | app.services.spam_rag_service | _get_embedding_function:32 | [SpamRagService] Importing OpenAIEmbeddings...
+2026-02-13 20:53:52 | INFO     | app.services.spam_rag_service | _get_embedding_function:36 | [SpamRagService] Imported OpenAIEmbeddings in 28.5375s
+2026-02-13 20:53:52 | INFO     | app.services.spam_rag_service | _get_embedding_function:38 | [SpamRagService] Initializing OpenAIEmbeddings helper...
+2026-02-13 20:53:58 | INFO     | app.services.spam_rag_service | _get_embedding_function:41 | [SpamRagService] Initialized OpenAIEmbeddings helper in 5.4627s
+2026-02-13 20:53:58 | INFO     | app.services.spam_rag_service | _get_db:66 | [SpamRagService] Connected to ChromaDB in 34.4831s
+2026-02-13 20:53:58 | INFO     | app.main | startup_event:206 |    -> SpamRagService Warmed up.
+2026-02-13 20:53:58 | INFO     | app.agents.content_agent.agent | _get_vector_db:26 | [ContentAnalysisAgent] Lazy loading Vector DB...
+2026-02-13 20:53:58 | INFO     | app.agents.content_agent.agent | _get_vector_db:31 | [ContentAnalysisAgent] Imports took 0.0240s
+2026-02-13 20:53:58 | INFO     | app.agents.content_agent.agent | _get_vector_db:33 | ChromaDB 초기화 중...
+2026-02-13 20:54:02 | INFO     | app.agents.content_agent.agent | _get_vector_db:40 | [ContentAnalysisAgent] ChromaDB initialized in 3.8724s
+2026-02-13 20:54:02 | INFO     | app.main | startup_event:213 |    -> ContentAnalysisAgent Warmed up.
+2026-02-13 20:54:02 | INFO     | app.main | startup_event:218 | ✅ Server Application Started! (Startup took 41.67s) | Global ThreadPool: 70 workers.
+2026-02-13 20:54:04 | INFO     | app.main | connect:74 | WebSocket Connected: Client client-4nlo51xud
+2026-02-13 20:54:07 | INFO     | app.main | websocket_endpoint:667 | Received from client-4nlo51xud: {'type': 'CHAT_MESSAGE', 'content': 'asg998 w - - - -', 'mode': 'Unified'}
+2026-02-13 20:54:07 | INFO     | app.main | websocket_endpoint:677 | 
+============================================================
+[Chat] Mode: Unified
+[Chat] 메시지 원문:
+  asg998 w - - - -
+============================================================
+2026-02-13 20:54:07 | DEBUG    | app.agents.content_agent.agent | acheck:606 | 분석 시작 (async) | msg=asg998 w - - - -
+2026-02-13 20:54:27 | INFO     | app.agents.content_agent.agent | acheck:624 | Intent Summary: Online Gambling or Betting Platform Interaction / Use of platform-specific shorthand and placeholders / Request for syst...
+2026-02-13 20:54:27 | DEBUG    | app.agents.content_agent.agent | _retrieve_context:97 | Using Full Spam Guide Text (RAG Disabled)
+2026-02-13 20:54:27 | DEBUG    | app.services.spam_rag_service | search_similar:140 | Searching similar intent: 'Online Gambling or Betting Pla...'
+2026-02-13 20:54:27 | DEBUG    | app.services.spam_rag_service | search_similar_batch:190 | Searching similar intent: 'Online Gambling or Betting Pla...'
+2026-02-13 20:54:29 | INFO     | app.agents.content_agent.agent | _retrieve_context:105 | Spam RAG: 2건 검색됨
+2026-02-13 20:54:29 | INFO     | app.agents.content_agent.agent | acheck:640 | RAG Metrics | Top1=0.1980 | Top2=0.2031 | Gap=0.0051
+2026-02-13 20:54:29 | DEBUG    | app.agents.content_agent.agent | acheck:646 | Building prompt...
+2026-02-13 20:54:29 | INFO     | app.agents.content_agent.agent | _build_prompt:450 |     [RAG Examples] Filtering with threshold: 0.45
+2026-02-13 20:54:29 | INFO     | app.agents.content_agent.agent | _build_prompt:475 |     [RAG Examples] 2 examples included in prompt (threshold: 0.45)
+2026-02-13 20:54:29 | DEBUG    | app.agents.content_agent.agent | _build_prompt:478 |     [RAG Examples Injected Content]:
+
+[Reference Context - Similar Intent Examples]
+아래는 유사한 의도(Intent)를 가진 과거 메시지 판정 결과입니다. 참고 자료로만 활용하세요.
+
+예시 1 (유사도: 0.198):
+  메시지: "26년 1월 1일 새해 신정 스폿쿠폰 있습니다 A..i be ,,t"
+  판정: SPAM (code: 3)
+  카테고리: 도박 / 게임
+  근거: 도박 사이트 알림 / 쿠폰 증정 + 사이트 난독화 / 도박 사이트 클릭 유도
+
+예시 2 (유사도: 0.203):
+  메시지: "(ca) :OO/ O:OO o% 1 O BK74O"
+  판정: SPAM (code: 2)
+  카테고리: 피싱 / 스미싱
+  근거: Intent: 피싱 또는 사기 공격을 위한 초기 접촉 및 반응 탐색
+Tactics: 숫자·문자 혼합 난독화, 시간·비율·코드처럼 보이게 위장, 의미 없는 패턴으로 필터 회피 시도
+Action: 사용자의 호기심 또는 회신 유도 (후속 공격 준비)
+
+2026-02-13 20:54:29 | INFO     | app.agents.content_agent.agent | acheck:660 | 프롬프트 생성 완료 | RAG Guide=O | rag_retrieved=2, rag_injected=2
+2026-02-13 20:54:29 | INFO     | app.agents.content_agent.agent | acheck:661 | RAG Details | injected_labels=SPAM:2/HAM:0 | injected_ids=['rag_c5ae539f', 'rag_7fb5fdbf']
+2026-02-13 20:54:29 | DEBUG    | app.agents.content_agent.agent | acheck:663 | Prompt built, length: 6489 chars
+2026-02-13 20:54:29 | DEBUG    | app.agents.content_agent.agent | acheck:665 | Calling LLM...
+2026-02-13 20:54:39 | DEBUG    | app.agents.content_agent.agent | acheck:674 | LLM 응답: ```json
+{
+  "label": "SPAM",
+  "ham_code": null,
+  "spam_code": "0",
+  "spam_probability": 0.9,
+  "reason": "해당 메시지는 'asg998'이라는 알 수 없는 문자열과 특수문자('-')가 무의미하게 나열된 형태로, 가이드 2.2에서 정의한 '30자 이내 난독화' 및 '문장 구조 파괴'에 해당합니다. 가이드에 따르면 내용이 파악되지 않더라도 이러한 고도의 난독화 및 회피 시도 자체가 유해 의도(harm_anchor = true)로 간주됩니다. 이는 과...
+2026-02-13 20:54:39 | INFO     | app.agents.content_agent.agent | acheck:681 | 판정완료 | SPAM | code=0 | prob=0.9
+2026-02-13 20:54:39 | INFO     | app.agents.content_agent.agent | acheck:682 |   - Reason: 해당 메시지는 'asg998'이라는 알 수 없는 문자열과 특수문자('-')가 무의미하게 나열된 형태로, 가이드 2.2에서 정의한 '30자 이내 난독화' 및 '문장 구조 파괴'에 해당합니다. 가이드에 따르면 내용이 파악되지 않더라도 이러한 고도의 난독화 및 회피 시도 자체가 유해 의도(harm_anchor = true)로 간주됩니다. 이는 과거 유사 사례(예시 2)에서 나타난 '의미 없는 패턴으로 필터 회피 시도'와 동일한 맥락의 스팸으로 판단됩니다.
+2026-02-13 20:54:39 | INFO     | app.agents.ibse_agent.service | process_message:80 | Starting IBSE Analysis for f37abef1-0c42-4b74-b842-b3b884ad5fbd (LangGraph)
+2026-02-13 20:54:39 | INFO     | app.agents.ibse_agent.service | process_message:87 | IBSE Node Finished: generate_candidates
+2026-02-13 20:54:45 | INFO     | app.agents.ibse_agent.service | process_message:87 | IBSE Node Finished: select_signature
+2026-02-13 20:54:45 | INFO     | app.agents.ibse_agent.service | process_message:87 | IBSE Node Finished: validate
+2026-02-13 20:54:51 | INFO     | app.main | websocket_endpoint:667 | Received from client-4nlo51xud: {'type': 'CHAT_MESSAGE', 'content': 'ulsan 남구 한태중 차량 대기중 총출근 30명 010-8146-1369', 'mode': 'Unified'}
+2026-02-13 20:54:51 | INFO     | app.main | websocket_endpoint:677 | 
+============================================================
+[Chat] Mode: Unified
+[Chat] 메시지 원문:
+  ulsan 남구 한태중 차량 대기중 총출근 30명 010-8146-1369
+============================================================
+2026-02-13 20:54:51 | DEBUG    | app.agents.content_agent.agent | acheck:606 | 분석 시작 (async) | msg=ulsan 남구 한태중 차량 대기중 총출근 30명 010-8146-1369
+2026-02-13 20:54:55 | INFO     | app.agents.content_agent.agent | acheck:624 | Intent Summary: Manpower and Logistics Status Reporting / Detailing operational readiness and personnel availability at a specific locat...
+2026-02-13 20:54:55 | DEBUG    | app.agents.content_agent.agent | _retrieve_context:97 | Using Full Spam Guide Text (RAG Disabled)
+2026-02-13 20:54:55 | DEBUG    | app.services.spam_rag_service | search_similar:140 | Searching similar intent: 'Manpower and Logistics Status ...'
+2026-02-13 20:54:55 | DEBUG    | app.services.spam_rag_service | search_similar_batch:190 | Searching similar intent: 'Manpower and Logistics Status ...'
+2026-02-13 20:54:55 | INFO     | app.agents.content_agent.agent | _retrieve_context:105 | Spam RAG: 2건 검색됨
+2026-02-13 20:54:55 | INFO     | app.agents.content_agent.agent | acheck:640 | RAG Metrics | Top1=0.3539 | Top2=0.3628 | Gap=0.0089
+2026-02-13 20:54:55 | DEBUG    | app.agents.content_agent.agent | acheck:646 | Building prompt...
+2026-02-13 20:54:55 | INFO     | app.agents.content_agent.agent | _build_prompt:450 |     [RAG Examples] Filtering with threshold: 0.45
+2026-02-13 20:54:55 | INFO     | app.agents.content_agent.agent | _build_prompt:475 |     [RAG Examples] 2 examples included in prompt (threshold: 0.45)
+2026-02-13 20:54:55 | DEBUG    | app.agents.content_agent.agent | _build_prompt:478 |     [RAG Examples Injected Content]:
+
+[Reference Context - Similar Intent Examples]
+아래는 유사한 의도(Intent)를 가진 과거 메시지 판정 결과입니다. 참고 자료로만 활용하세요.
+
+예시 1 (유사도: 0.354):
+  메시지: "친구빨리 24시간 어플로 호출하세요 어플주소입니다 http://sc.iconrpc.com/?ID=0137"
+  판정: HAM (code: )
+  카테고리: 정상 광고/마케팅
+  근거: 어플 설치 광고 / 신속하고 친근한 대리 운전 강조 / 다운로드 URL 클릭 유도
+
+예시 2 (유사도: 0.363):
+  메시지: "◆NEW◆ 14:30~16:30 .com"
+  판정: SPAM (code: 2)
+  카테고리: 피싱 / 스미싱
+  근거: Phishing Attempt / Obfuscated Teaser Message / Minimal teaser text to bypass filters, Artificial urgency via time window, Partial domain exposure to trigger curiosity-driven access / Induce user to access an external phishing website via incomplete domain reference
+
+2026-02-13 20:54:55 | INFO     | app.agents.content_agent.agent | acheck:660 | 프롬프트 생성 완료 | RAG Guide=O | rag_retrieved=2, rag_injected=2
+2026-02-13 20:54:55 | INFO     | app.agents.content_agent.agent | acheck:661 | RAG Details | injected_labels=SPAM:1/HAM:1 | injected_ids=['rag_ffbbe2e2', 'rag_55d6a259']
+2026-02-13 20:54:55 | DEBUG    | app.agents.content_agent.agent | acheck:663 | Prompt built, length: 6662 chars
+2026-02-13 20:54:55 | DEBUG    | app.agents.content_agent.agent | acheck:665 | Calling LLM...
+2026-02-13 20:55:07 | DEBUG    | app.agents.content_agent.agent | acheck:674 | LLM 응답: ```json
+{
+  "label": "HAM",
+  "ham_code": "null",
+  "spam_code": "null",
+  "spam_probability": 0.1,
+  "reason": "해당 메시지는 울산 남구 지역의 특정 작업 현장 또는 인력 사무소의 출근 인원(30명)과 차량 대기 상태를 보고하는 업무적 성격의 알림으로 판단됩니다. 가이드 1.1 및 2.2에 명시된 도박, 성인, 사기, 피싱 등 유해 목적(harm_anchor)이 텍스트 상에서 직접적으로 확인되지 않습니다. 또한, 필터링을 피하기 위한 의도적인 ...
+2026-02-13 20:55:07 | INFO     | app.agents.content_agent.agent | acheck:681 | 판정완료 | HAM | code= | prob=0.1
+2026-02-13 20:55:07 | INFO     | app.agents.content_agent.agent | acheck:682 |   - Reason: 해당 메시지는 울산 남구 지역의 특정 작업 현장 또는 인력 사무소의 출근 인원(30명)과 차량 대기 상태를 보고하는 업무적 성격의 알림으로 판단됩니다. 가이드 1.1 및 2.2에 명시된 도박, 성인, 사기, 피싱 등 유해 목적(harm_anchor)이 텍스트 상에서 직접적으로 확인되지 않습니다. 또한, 필터링을 피하기 위한 의도적인 난독화나 회피 시도가 없으며 문장이 명확합니다. '의도가 불확실하면 HAM'이라는 원칙과 '오탐 민원 방지'를 최우선으로 하는 가이드에 근거하여 HAM으로 판정합니다.
+2026-02-13 21:00:34 | INFO     | app.main | disconnect:91 | WebSocket Disconnected: Client client-4nlo51xud

@@ -52,7 +52,6 @@ Status: Active (Single Source of Truth)
 - **"30자 이내 난독화"** 해당 시 무조건 SPAM
 
 예시:
-  - ❌ "20~5000 4 5 카" → 단순 의미 불명 → HAM
   - ❌ "안녕하세요" → 정상 짧은 문장 → HAM
   - ✅ "벳삼삼 가입" → 도박 의도 명백 → SPAM
   - ✅ "Fre222 시간 2용" → 필터 회피 목적 난독화 → SPAM

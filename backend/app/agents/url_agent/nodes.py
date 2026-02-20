@@ -216,7 +216,18 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
                 )
             except Exception as e:
                 error_msg = str(e).lower()
-                if "quota" in error_msg or "429" in error_msg:
+                
+                # [Fix] Explicit type check for Google API errors (Gemini)
+                is_google_quota_error = False
+                try:
+                    import google.api_core.exceptions
+                    if isinstance(e, (google.api_core.exceptions.ResourceExhausted, google.api_core.exceptions.TooManyRequests)):
+                        is_google_quota_error = True
+                except ImportError:
+                    pass
+
+                if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
+                    logger.warning(f"[URL Agent] Vision API Quota Detected. Error: {error_msg}")
                     logger.warning("[URL Agent] Vision API Quota Exceeded. Rotating key...")
                     # [동시성 개선] 실패한 키 전달
                     key_manager.rotate_key("GEMINI", failed_key=api_key)
@@ -621,7 +632,19 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                 return await llm.ainvoke(prompt)
             except Exception as e:
                 error_msg = str(e).lower()
-                if "quota" in error_msg or "429" in error_msg or "rate" in error_msg:
+                
+                # [Fix] Explicit type check for Google API errors (Gemini)
+                is_google_quota_error = False
+                if provider == "GEMINI":
+                    try:
+                        import google.api_core.exceptions
+                        if isinstance(e, (google.api_core.exceptions.ResourceExhausted, google.api_core.exceptions.TooManyRequests)):
+                            is_google_quota_error = True
+                    except ImportError:
+                        pass
+
+                if is_google_quota_error or "quota" in error_msg or "429" in error_msg or "rate" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
+                    logger.warning(f"[URL Agent] {provider} Quota Detected. Error: {error_msg}")
                     logger.warning(f"[URL Agent] {provider} Quota Exceeded. Rotating key...")
                     # [동시성 개선] 실패한 키 전달
                     key_manager.rotate_key(provider, failed_key=api_key)

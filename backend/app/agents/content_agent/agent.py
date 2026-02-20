@@ -868,7 +868,41 @@ Step 4. SPAM 확정 조건:
                 reraise=True
             )
             async def call_summary_llm():
-                return await llm.ainvoke([HumanMessage(content=prompt)])
+                try:
+                    return await llm.ainvoke([HumanMessage(content=prompt)])
+                except Exception as e:
+                    error_msg = str(e).lower()
+                    provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
+                    
+                    # [Fix] Explicit type check for Google API errors (Gemini)
+                    is_google_quota_error = False
+                    if provider == "GEMINI":
+                        try:
+                            import google.api_core.exceptions
+                            if isinstance(e, (google.api_core.exceptions.ResourceExhausted, google.api_core.exceptions.TooManyRequests)):
+                                is_google_quota_error = True
+                        except ImportError:
+                            pass
+
+                    if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
+                        logger.warning(f"[ContentAgent] Summary Generation Quota Detected. Error: {error_msg}")
+                        logger.warning(f"[ContentAgent] {provider} Quota Exceeded. Rotating key...")
+                        
+                        # Get current key to mark as failed
+                        current_key = key_manager.get_key(provider)
+                        key_manager.rotate_key(provider, failed_key=current_key)
+                        
+                        # IMPORTANT: Since llm instance is created outside, we might need to recreate it or 
+                        # just rely on the fact that next call to _get_chat_model (if we were calling it inside) would get new key.
+                        # BUT here `llm` is already instantiated `llm = self._get_chat_model()`.
+                        # We need to refresh `llm` instance with new key!
+                        # However, we cannot easily reassign outer scope `llm` variable from inner function without `nonlocal`
+                        # OR we can just call `self._get_chat_model().ainvoke` directly inside here.
+                        
+                        new_llm = self._get_chat_model()
+                        return await new_llm.ainvoke([HumanMessage(content=prompt)])
+                        
+                    raise e
                 
             response = await call_summary_llm()
             
