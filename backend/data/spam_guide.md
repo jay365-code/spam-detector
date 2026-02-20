@@ -44,14 +44,6 @@ Status: Active (Single Source of Truth)
 
 ---
 
-### 1.4 외국어 메시지 처리 원칙 (Foreign Language Policy)
-
-- **Safe Clean Foreign**: 한글이 전혀 없고 영문/외국어가 문장 형태로 길게 나열된 경우(40자 이상) `HAM-5`로 판정한다. (일반인은 외국어 메시지에 경계심을 갖기 때문)
-- **Obfuscated Foreign (Critical)**: 필터 회피 목적이나 의도 숨기기를 위해 외국어와 숫자, 기호를 교묘하게 섞은 난독화는 **무조건 SPAM**으로 판정한다.
-- **Short/Ambiguous Foreign**: 짧은 외국어(인증코드 등)는 패턴으로 판단하지 않고 AI 분석(의도 분석) 단계를 거친다.
-
----
-
 ### 1.3 민원 방지 및 난독화 처리 원칙
 
 - **의도가 불확실하면 HAM** (단, 회피 의도가 없는 경우에 한함)
@@ -66,6 +58,13 @@ Status: Active (Single Source of Truth)
   - ✅ "Fre222 시간 2용" → 필터 회피 목적 난독화 → SPAM
   - ✅ "ㅇF 까지! ㅌ" → 의도적 난독화 → SPAM
 
+---
+
+### 1.4 외국어 메시지 처리 원칙 (Foreign Language Policy)
+
+- **Safe Clean Foreign**: 한글이 전혀 없고 영문/외국어가 문장 형태로 길게 나열된 경우(40자 이상) `HAM-5`로 판정한다. (일반인은 외국어 메시지에 경계심을 갖기 때문)
+- **Obfuscated Foreign (Critical)**: 필터 회피 목적이나 의도 숨기기를 위해 외국어와 숫자, 기호를 교묘하게 섞은 난독화는 **무조건 SPAM**으로 판정한다.
+- **Short/Ambiguous Foreign**: 짧은 외국어(인증코드 등)는 패턴으로 판단하지 않고 AI 분석(의도 분석) 단계를 거친다.
 
 ---
 
