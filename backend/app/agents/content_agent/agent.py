@@ -6,11 +6,16 @@ load_dotenv(override=True) # Load .env file (override system variables)
 import json
 import logging
 import time
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception, before_sleep_log
 from app.core.logging_config import get_logger
 from app.core.llm_manager import key_manager
 
 logger = get_logger(__name__)
+
+
+class QuotaExhaustedNoRetryError(Exception):
+    """모든 키 quota 소진 시 즉시 중단 (tenacity 재시도 제외)"""
+    pass
 # from openai import OpenAI  <-- Removed global import
 
 
@@ -36,11 +41,13 @@ def _normalize_llm_content(content) -> str:
 
 class ContentAnalysisAgent: # Renamed from RagBasedFilter
     def __init__(self):
-        # Initialize LLM (Get model from env)
-        self.model_name = os.getenv("LLM_MODEL", "gpt-4o-mini")
-        self.vector_db = None
         self.vector_db = None
         self._full_guide_cache = None
+
+    @property
+    def model_name(self) -> str:
+        """런타임에 LLM_MODEL 반영 (설정 변경 시 즉시 적용)"""
+        return os.getenv("LLM_MODEL", "gpt-4o-mini")
 
     def _get_vector_db(self):
         if self.vector_db is None:
@@ -147,6 +154,10 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         """
         content = ""
         provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
+
+        # [병렬 처리] 다른 스레드가 이미 모든 키를 소진했으면 즉시 중단 (불필요한 API 호출 방지)
+        if key_manager.is_quota_exhausted(provider):
+            raise QuotaExhaustedNoRetryError(f"{provider} quota exhausted (all keys). No retry.")
         
         try:
             if provider == "GEMINI":
@@ -166,6 +177,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 }
                 
                 model_name = self.model_name if "gemini" in self.model_name else "gemini-1.5-flash"
+                logger.info(f"[ContentAnalysisAgent] Calling Gemini model: {model_name}")
                 
                 # Use LangChain wrapper for thread-safety (avoids global genai.configure)
                 llm = ChatGoogleGenerativeAI(
@@ -246,13 +258,17 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             # Quota Exceeded / Rate Limit 체크 (429 에러)
             # Add "resource exhausted" to string check for robustness
             if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
+                req_model = self.model_name if "gemini" in self.model_name else "gemini-1.5-flash"
+                logger.warning(f"[ContentAnalysisAgent] 429/Quota Detected. Requested model: {req_model}")
                 logger.warning(f"[ContentAnalysisAgent] 429/Quota Detected. Error: {error_msg}")
                 logger.warning(f"[ContentAnalysisAgent] {provider} Quota Exceeded detected. Attempting key rotation...")
                 # [동시성 개선] 실패한 키를 넘겨주어 중복 전환 방지
                 if key_manager.rotate_key(provider, failed_key=current_api_key):
                     logger.info(f"[ContentAnalysisAgent] Rotated to next {provider} key. Retrying...")
+                    raise e
                 else:
                     logger.error(f"[ContentAnalysisAgent] All {provider} keys exhausted or rotation failed.")
+                    raise QuotaExhaustedNoRetryError(f"{provider} quota exhausted. No retry.") from e
             
             # Log full traceback only for non-quota errors to reduce noise
             if not (is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg):
@@ -267,7 +283,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type(Exception),
+        retry=retry_if_exception(lambda e: not isinstance(e, QuotaExhaustedNoRetryError)),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True
     )
@@ -275,6 +291,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         """
         Helper method to wrap _aquery_llm with tenacity retry logic (Async).
         Handles transient network errors like WinError 10060/10054.
+        QuotaExhaustedNoRetryError 시에는 즉시 중단 (불필요한 재시도 방지).
         """
         return await self._aquery_llm(prompt)
 
@@ -721,6 +738,9 @@ Step 4. SPAM 확정 조건:
             # Run async LLM call with retry
             try:
                 content = await self._aquery_llm_with_retry(prompt)
+            except QuotaExhaustedNoRetryError as e:
+                logger.error(f"Async LLM query failure (Quota Exhausted): {e}")
+                return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": f"Error: {e}"}
             except Exception as e:
                 logger.error(f"Async LLM query failure: {e}")
                 return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": f"Error: {e}"}

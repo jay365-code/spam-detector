@@ -14,6 +14,7 @@ class LLMKeyManager:
     _lock = threading.Lock()
     _keys_pool: Dict[str, List[str]] = {}
     _current_index: Dict[str, int] = {}
+    _quota_exhausted: Dict[str, bool] = {}
 
     def __new__(cls):
         if cls._instance is None:
@@ -34,6 +35,7 @@ class LLMKeyManager:
             
             self._keys_pool[p] = keys
             self._current_index[p] = 0
+            self._quota_exhausted[p] = False
             
             if keys:
                 logger.info(f"[KeyManager] Initialized {p} with {len(keys)} key(s).")
@@ -69,6 +71,7 @@ class LLMKeyManager:
         
         if len(keys) <= 1:
             logger.warning(f"[KeyManager] {provider} has only one/no key. Cannot rotate.")
+            self._quota_exhausted[provider] = True
             return False
             
         with self._lock:
@@ -87,7 +90,41 @@ class LLMKeyManager:
             logger.info(f"[KeyManager] Rotated {provider} key to index {new_idx} (Key: {masked_key})")
             
             # 인덱스가 0으로 돌아왔다면 한 바퀴 다 돈 것임
+            if new_idx == 0:
+                self._quota_exhausted[provider] = True
+                logger.warning(f"[KeyManager] {provider} all keys exhausted (full circle).")
             return new_idx != 0
+
+    def is_quota_exhausted(self, provider: str) -> bool:
+        """해당 공급자의 모든 키가 quota 소진되었는지 여부 (병렬 처리 시 즉시 중단용)"""
+        provider = provider.upper()
+        return self._quota_exhausted.get(provider, False)
+
+    def reset_quota_exhausted(self, provider: str = None) -> dict:
+        """
+        Quota Exhausted 플래그 해제 (UI 버튼으로 재시도 가능하게).
+        :param provider: None이면 모든 공급자, "GEMINI" 등 특정 공급자만
+        :return: {"reset": [provider list], "message": str}
+        """
+        if provider:
+            provider = provider.upper()
+            if provider in self._quota_exhausted:
+                self._quota_exhausted[provider] = False
+                logger.info(f"[KeyManager] Reset quota_exhausted for {provider}.")
+                return {"reset": [provider], "message": f"{provider} quota exhausted 플래그 해제됨."}
+            return {"reset": [], "message": f"{provider} not found."}
+        # 모든 공급자 리셋
+        for p in self._quota_exhausted:
+            self._quota_exhausted[p] = False
+        logger.info("[KeyManager] Reset quota_exhausted for all providers.")
+        return {"reset": list(self._quota_exhausted.keys()), "message": "모든 공급자 quota exhausted 플래그 해제됨."}
+
+    def get_quota_status(self) -> dict:
+        """각 공급자별 quota exhausted 상태 조회 (UI용)"""
+        return {
+            p: self._quota_exhausted.get(p, False)
+            for p in ["GEMINI", "OPENAI", "CLAUDE"]
+        }
 
     def get_active_info(self, provider: str) -> dict:
         """현재 상태 정보 반환"""

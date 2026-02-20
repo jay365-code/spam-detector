@@ -12,10 +12,10 @@ LLM_PROVIDERS = ["GEMINI", "OPENAI", "CLAUDE"]
 # id: .env의 LLM_MODEL에 설정될 실제 값
 LLM_MODELS = {
     "GEMINI": [
-        {"name": "Gemini 1.5 Flash", "id": "gemini-1.5-flash"},
-        {"name": "Gemini 1.5 Pro", "id": "gemini-1.5-pro"},
-        {"name": "Gemini 2.0 Flash (Preview)", "id": "gemini-2.0-flash-exp"},
         {"name": "Gemini 3.0 Flash Preview (Recommended)", "id": "gemini-3-flash-preview"},
+        {"name": "Gemini 3.1 Pro Preview", "id": "gemini-3.1-pro-preview"},
+        {"name": "Gemini 2.5 Flash", "id": "gemini-2.5-flash"},
+        {"name": "Gemini 2.5 Flash Lite", "id": "gemini-2.5-flash-lite"},
     ],
     "OPENAI": [
         {"name": "GPT-4o (High Quality)", "id": "gpt-4o"},

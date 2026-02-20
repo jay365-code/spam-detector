@@ -5,6 +5,21 @@ from typing import List, Optional
 from .state import IBSEState, Candidate
 
 # Logger Setup
+
+
+def _normalize_llm_content(content) -> str:
+    """Gemini 등 list 형태 content를 str로 변환"""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list) and content:
+        first = content[0]
+        if isinstance(first, dict) and first.get("type") == "text":
+            return first.get("text", "") or ""
+        if isinstance(first, str):
+            return first
+    return str(content)
 import logging
 logger = logging.getLogger(__name__)
 
@@ -91,9 +106,17 @@ candidates_40: {candidates_40_json}
 
     def __init__(self):
         from app.core.llm_manager import key_manager
-        self.model_name = os.getenv("LLM_MODEL", "gpt-4o") 
-        self.provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
-        self.api_key = key_manager.get_key(self.provider)
+        self._key_manager = key_manager
+
+    @property
+    def model_name(self) -> str:
+        """런타임에 LLM_MODEL 반영 (설정 변경 시 즉시 적용)"""
+        return os.getenv("LLM_MODEL", "gpt-4o")
+
+    @property
+    def provider(self) -> str:
+        """런타임에 LLM_PROVIDER 반영"""
+        return os.getenv("LLM_PROVIDER", "OPENAI").upper()
 
     def select(self, state: IBSEState, is_repair: bool = False) -> dict:
         message_id = state.get("message_id", "unknown")
@@ -133,6 +156,12 @@ candidates_40: {candidates_40_json}
         max_retries = 10 # Safety break, though rotation should limit it
         
         while True:
+            # [병렬 처리] 다른 컴포넌트가 이미 모든 키를 소진했으면 즉시 중단
+            if key_manager.is_quota_exhausted(self.provider):
+                logger.warning(f"[LLMSelector] {self.provider} quota already exhausted. Skipping.")
+                return {"error": "Quota exhausted", "decision": "unextractable"}
+            # [KeyManager 동기화] 호출 시마다 현재 키 사용 (Content Agent 등과 index 공유)
+            self.api_key = key_manager.get_key(self.provider)
             try:
                 if self.provider == "OPENAI":
                     from openai import OpenAI
@@ -175,7 +204,7 @@ candidates_40: {candidates_40_json}
                     ]
                     
                     response = llm.invoke(messages)
-                    content = response.content
+                    content = _normalize_llm_content(response.content)
                     
                 elif self.provider == "CLAUDE":
                     import anthropic

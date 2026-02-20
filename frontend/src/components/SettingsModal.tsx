@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, RefreshCw, Settings, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { X, Save, RefreshCw, Settings, ShieldAlert, CheckCircle2, Zap } from 'lucide-react';
 
 interface ConfigItem {
     key: string;
@@ -29,11 +29,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const [saving, setSaving] = useState(false);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [quotaStatus, setQuotaStatus] = useState<Record<string, boolean>>({});
+    const [quotaResetting, setQuotaResetting] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
             fetchConfig();
             fetchModels();
+            fetchQuotaStatus();
         }
     }, [isOpen]);
 
@@ -60,6 +63,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             setModels(data);
         } catch (err) {
             console.error('Failed to fetch models:', err);
+        }
+    };
+
+    const fetchQuotaStatus = async () => {
+        try {
+            const res = await fetch(`${API_BASE}/api/config/quota-status`);
+            const data = await res.json();
+            if (data.success && data.quota_status) setQuotaStatus(data.quota_status);
+        } catch (err) {
+            console.error('Failed to fetch quota status:', err);
+        }
+    };
+
+    const handleResetQuota = async (provider?: string) => {
+        setQuotaResetting(true);
+        try {
+            const res = await fetch(`${API_BASE}/api/config/reset-quota`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(provider ? { provider } : {}),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.message || '리셋 실패');
+            await fetchQuotaStatus();
+        } catch (err) {
+            console.error('Failed to reset quota:', err);
+            alert('Quota 리셋에 실패했습니다.');
+        } finally {
+            setQuotaResetting(false);
         }
     };
 
@@ -229,6 +261,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                             ))}
                         </div>
                     )}
+
+                    {/* Quota Exhausted 리셋 */}
+                    <div className="flex flex-col gap-3 rounded-2xl p-4 border border-amber-500/20 bg-amber-500/5">
+                        <div className="flex items-center gap-2">
+                            <Zap className="text-amber-500 shrink-0" size={18} />
+                            <span className="text-xs font-bold text-amber-400">LLM Quota Exhausted</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                            API quota 초과 시 모든 LLM 호출이 차단됩니다. 새 키를 추가했거나 시간이 지나면 아래 버튼으로 리셋하세요.
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                            {Object.entries(quotaStatus).map(([p, exhausted]) => (
+                                <span
+                                    key={p}
+                                    className={`inline-flex items-center px-2 py-1 rounded-lg text-[10px] font-bold ${exhausted ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-slate-600/30 text-slate-400 border border-slate-600/50'}`}
+                                >
+                                    {p}: {exhausted ? 'Exhausted' : 'OK'}
+                                </span>
+                            ))}
+                        </div>
+                        <button
+                            onClick={() => handleResetQuota()}
+                            disabled={quotaResetting}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${quotaResetting ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-amber-600 hover:bg-amber-500 text-white'}`}
+                        >
+                            {quotaResetting ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
+                            Quota 리셋
+                        </button>
+                    </div>
 
                     <div className="bg-blue-500/5 rounded-2xl p-4 border border-blue-500/10 flex gap-3">
                         <ShieldAlert className="text-blue-500 shrink-0" size={18} />

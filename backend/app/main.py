@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Form, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Form, BackgroundTasks, Body
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -330,6 +330,27 @@ async def update_config(request: ConfigUpdate):
     except Exception as e:
         logger.error(f"Config update failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/config/quota-status")
+async def get_quota_status():
+    """LLM 공급자별 Quota Exhausted 상태 조회 (설정 UI용)"""
+    from app.core.llm_manager import key_manager
+    return {"success": True, "quota_status": key_manager.get_quota_status()}
+
+
+class ResetQuotaRequest(BaseModel):
+    provider: str | None = None  # None이면 전체 리셋
+
+
+@app.post("/api/config/reset-quota")
+async def reset_quota(request: ResetQuotaRequest | None = Body(default=None)):
+    """Quota Exhausted 플래그 수동 리셋 (설정 UI 버튼용)"""
+    from app.core.llm_manager import key_manager
+    provider = request.provider if request else None
+    result = key_manager.reset_quota_exhausted(provider)
+    return {"success": True, **result}
+
 
 # ========== Spam RAG API (Reference Examples) ==========
 from app.services.spam_rag_service import get_spam_rag_service
