@@ -1198,19 +1198,7 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                         # Set Batch ID for this context (automatically prefixes all logs in this task)
                         batch_id_context.set(f"Batch {index+1}")
                         
-                        # Construct context Just-In-Time (JIT)
-                        try:
-                            # Use list wrap [message] to reuse batch logic for single item
-                            jit_contexts = await rag_filter.prepare_batch_contexts([message])
-                            context_data = jit_contexts[0] if jit_contexts else None
-                        except Exception as e:
-                            logger.error(f"Context Prep Error: {e}")
-                            context_data = None
-
-                        # 배치 Item 시작 로그
-                        logger.info(f"분석 시작 | msg={message[:80]}{'...' if len(message) > 80 else ''}")
-                        
-                        # Rule-based HAM (e.g., Non-Korean message) - Skip Graph
+                        # Rule-based HAM (e.g., Non-Korean message, short msgs) - Skip Graph completely
                         if s1_res.get("is_spam") is False:
                             s1_code = s1_res.get("classification_code")
                             s1_reason = s1_res.get("reason", "Rule-based HAM")
@@ -1224,6 +1212,18 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                                 "duration_seconds": duration,
                                 "exclude_from_excel": s1_res.get("exclude_from_excel", False)
                             }
+                            
+                        # Construct context Just-In-Time (JIT)
+                        try:
+                            # Use list wrap [message] to reuse batch logic for single item
+                            jit_contexts = await rag_filter.prepare_batch_contexts([message])
+                            context_data = jit_contexts[0] if jit_contexts else None
+                        except Exception as e:
+                            logger.error(f"Context Prep Error: {e}")
+                            context_data = None
+
+                        # 배치 Item 시작 로그
+                        logger.info(f"분석 시작 | msg={message[:80]}{'...' if len(message) > 80 else ''}")
                         
                         # Construct Input State
                         input_state = {
