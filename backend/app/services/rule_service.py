@@ -267,7 +267,10 @@ class RuleBasedFilter:
             }
         """
         # 0. 메시지 최소 길이 체크 (SKIP 대상)
-        if message and len(message) < self.min_message_length:
+        # 단, 한글이 포함된 경우(Short Korean Spam)는 예외적으로 허용 (LLM 분석 유도)
+        has_korean = self.get_korean_ratio(message) > 0
+        
+        if message and len(message) < self.min_message_length and not has_korean:
             return {
                 "is_spam": False,
                 "reason": f"Short message (Length: {len(message)} < {self.min_message_length}) - Skipped",

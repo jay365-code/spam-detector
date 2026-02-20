@@ -13,6 +13,27 @@ from app.core.llm_manager import key_manager
 logger = get_logger(__name__)
 # from openai import OpenAI  <-- Removed global import
 
+
+def _normalize_llm_content(content) -> str:
+    """
+    LLM 응답 content를 항상 str로 변환.
+    Gemini(LangChain) 등은 content를 list [{"type":"text","text":"..."}] 형태로 반환할 수 있음.
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list) and content:
+        first = content[0]
+        if isinstance(first, dict) and first.get("type") == "text":
+            return first.get("text", "") or ""
+        if isinstance(first, str):
+            return first
+        # LangChain AIMessageChunk 등: .get("text") 또는 .text
+        return str(getattr(first, "text", first) if hasattr(first, "text") else first)
+    return str(content)
+
+
 class ContentAnalysisAgent: # Renamed from RagBasedFilter
     def __init__(self):
         # Initialize LLM (Get model from env)
@@ -157,7 +178,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 
                 try:
                     response = await llm.ainvoke([{"role": "user", "content": prompt}])
-                    content = response.content
+                    content = _normalize_llm_content(response.content)
                 except Exception as e:
                     # Check for safety filter block which might raise specific exceptions or return empty/stopped response
                     # LangChain might raise an error for blocked content or return a finish_reason
@@ -336,9 +357,10 @@ Step 4. SPAM 확정 조건:
 """
 
 
-    def _parse_response(self, content: str, provider: str) -> dict:
+    def _parse_response(self, content, provider: str) -> dict:
         import re
-        
+
+        content = _normalize_llm_content(content)
         result_json = None
 
         # 1. Try to find JSON block wrapped in ```json ... ```

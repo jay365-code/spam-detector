@@ -17,6 +17,22 @@ from app.core.logging_config import get_logger
 # 중앙 집중식 로거 사용
 logger = get_logger(__name__)
 
+
+def _normalize_query_text(q) -> str:
+    """의도 요약을 str로 정규화. LLM이 list [{\"type\":\"text\",\"text\":\"...\"}] 형태로 반환할 수 있음."""
+    if q is None:
+        return ""
+    if isinstance(q, str):
+        return q
+    if isinstance(q, list) and q:
+        first = q[0]
+        if isinstance(first, dict) and first.get("type") == "text":
+            return first.get("text", "") or ""
+        if isinstance(first, str):
+            return first
+    return str(q)
+
+
 class SpamRagService:
     def __init__(self):
         # [Schema Update] v1.1 Intent-based RAG Collection
@@ -120,10 +136,10 @@ class SpamRagService:
             **final_metadata
         }
     
-    def search_similar(self, query_intent_summary: str, k: int = 3) -> Dict[str, Any]:
+    def search_similar(self, query_intent_summary, k: int = 3) -> Dict[str, Any]:
         """
         유사 의도 검색 (Returns RAG Contract with Stats)
-        
+        query_intent_summary: str 또는 list(dict) - LLM 구조화 출력 지원
         Returns:
             {
                 "metric": "cosine_distance",
@@ -137,6 +153,7 @@ class SpamRagService:
                 }
             }
         """
+        query_intent_summary = _normalize_query_text(query_intent_summary)
         logger.debug(f"Searching similar intent: '{query_intent_summary[:30]}...'")
         
         response = {
@@ -176,14 +193,18 @@ class SpamRagService:
             logger.error(f"[SpamRagService] Search error: {e}")
             return response
 
-    def search_similar_batch(self, query_intent_summaries: List[str], k: int = 3) -> List[Dict[str, Any]]:
+    def search_similar_batch(self, query_intent_summaries: List, k: int = 3) -> List[Dict[str, Any]]:
         """
         [Batch Optimization] 여러 의도 요약에 대해 일괄 검색 수행
         Embedding API 호출을 1회로 최소화함.
+        query_intent_summaries: str 리스트 또는 list(dict) 리스트 - LLM 구조화 출력 지원
         """
         results = []
         if not query_intent_summaries:
             return results
+
+        # LLM 구조화 출력(list/dict)을 str로 정규화
+        query_intent_summaries = [_normalize_query_text(q) for q in query_intent_summaries]
 
         # [User Request] Log for each item to match Chat Mode behavior
         for summary in query_intent_summaries:
