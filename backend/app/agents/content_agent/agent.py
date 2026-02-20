@@ -43,6 +43,8 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
     def __init__(self):
         self.vector_db = None
         self._full_guide_cache = None
+        # [Optimization] Cache LLM clients by provider and api_key to prevent synchronous instantiation delays 
+        self._llm_clients = {}
 
     @property
     def model_name(self) -> str:
@@ -148,6 +150,62 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 logger.error(f"    [Error] Failed to load spam_guide.md: {e2}")
                 return "스팸 판단 기준: 도박, 성인, 사기, 불법 대출 의도가 명확하면 SPAM, 그렇지 않으면 HAM."
 
+    def _get_cached_client(self, provider: str, api_key: str, model_name: str):
+        """
+        Retrieves or creates an LLM client instance, ensuring max_retries=0 is set
+        to prevent internal SDK blocking during 429 errors.
+        """
+        cache_key = f"{provider}_{api_key}_{model_name}"
+        if cache_key in self._llm_clients:
+            return self._llm_clients[cache_key]
+
+        logger.info(f"[ContentAnalysisAgent] Instantiating new LLM client for {provider} ({model_name})")
+        
+        if provider == "GEMINI":
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            
+            # [Safety Settings]
+            safety_settings = {
+                "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
+                "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
+                "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
+                "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+            }
+            
+            # [CRITICAL] max_retries=0 disables Langchain's internal exponential backoff
+            # This allows our LLMKeyManager to rotate keys immediately on 429 quota exhaustion
+            client = ChatGoogleGenerativeAI(
+                model=model_name,
+                google_api_key=api_key,
+                temperature=0.2,
+                safety_settings=safety_settings,
+                convert_system_message_to_human=True,
+                max_retries=0 
+            )
+            
+        elif provider == "CLAUDE":
+            from langchain_anthropic import ChatAnthropic
+            
+            client = ChatAnthropic(
+                model=model_name, 
+                anthropic_api_key=api_key, 
+                temperature=0.2,
+                max_retries=0
+            )
+            
+        else: # OPENAI
+            from langchain_openai import ChatOpenAI
+            
+            client = ChatOpenAI(
+                model=model_name, 
+                api_key=api_key, 
+                temperature=0.2,
+                max_retries=0
+            )
+
+        self._llm_clients[cache_key] = client
+        return client
+
     async def _aquery_llm(self, prompt: str) -> str:
         """
         Executes the LLM call based on the provider (Async version).
@@ -161,35 +219,19 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         
         try:
             if provider == "GEMINI":
-                from langchain_google_genai import ChatGoogleGenerativeAI
                 api_key = key_manager.get_key("GEMINI")
                 if not api_key:
                     raise ValueError("GEMINI_API_KEY is missing")
                 
                 current_api_key = api_key # 실패 시 대조용
-                
-                # [Safety Settings]
-                safety_settings = {
-                    "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
-                    "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
-                    "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
-                    "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
-                }
-                
                 model_name = self.model_name if "gemini" in self.model_name else "gemini-1.5-flash"
-                logger.info(f"[ContentAnalysisAgent] Calling Gemini model: {model_name}")
                 
-                # Use LangChain wrapper for thread-safety (avoids global genai.configure)
-                llm = ChatGoogleGenerativeAI(
-                    model=model_name,
-                    google_api_key=api_key,
-                    temperature=0.2,
-                    safety_settings=safety_settings,
-                    convert_system_message_to_human=True
-                )
+                # Fetch cached client (bypasses synchronous init delays + max_retries=0)
+                llm = self._get_cached_client(provider, current_api_key, model_name)
                 
                 try:
-                    response = await llm.ainvoke([{"role": "user", "content": prompt}])
+                    from langchain_core.messages import HumanMessage
+                    response = await llm.ainvoke([HumanMessage(content=prompt)])
                     content = _normalize_llm_content(response.content)
                 except Exception as e:
                     # Check for safety filter block which might raise specific exceptions or return empty/stopped response
@@ -211,36 +253,30 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                         raise e
                 
             elif provider == "CLAUDE":
-                import anthropic
                 claude_key = key_manager.get_key("CLAUDE")
                 if not claude_key:
                     raise ValueError("CLAUDE_API_KEY is missing")
                     
-                client = anthropic.AsyncAnthropic(api_key=claude_key)
+                current_api_key = claude_key
                 model_name = self.model_name if "claude" in self.model_name else "claude-3-haiku-20240307"
                 
-                response = await client.messages.create(
-                    model=model_name,
-                    max_tokens=1024,
-                    temperature=0.2,
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                content = response.content[0].text
+                llm = self._get_cached_client(provider, current_api_key, model_name)
+                from langchain_core.messages import HumanMessage
+                response = await llm.ainvoke([HumanMessage(content=prompt)])
+                content = _normalize_llm_content(response.content)
                 
             else: # OPENAI
-                from openai import AsyncOpenAI
                 api_key = key_manager.get_key("OPENAI")
                 if not api_key:
                     raise ValueError("OPENAI_API_KEY is missing")
                     
                 current_api_key = api_key # 실패 시 대조용
-                async_client = AsyncOpenAI(api_key=api_key)
-                response = await async_client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.2
-                )
-                content = response.choices[0].message.content.strip()
+                model_name = self.model_name
+                
+                llm = self._get_cached_client(provider, current_api_key, model_name)
+                from langchain_core.messages import HumanMessage
+                response = await llm.ainvoke([HumanMessage(content=prompt)])
+                content = _normalize_llm_content(response.content)
                 
         except Exception as e:
             error_msg = str(e).lower()

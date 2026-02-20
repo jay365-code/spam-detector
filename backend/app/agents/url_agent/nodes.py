@@ -74,10 +74,12 @@ async def close_playwright():
         await _playwright_manager.stop()
         _playwright_manager = None
 
+# [Optimization] Global cache for LLM clients to prevent synchronous initialization delays
+_llm_clients = {}
 
 def get_llm():
     """
-    .env 설정에 따른 LLM 인스턴스 반환
+    .env 설정에 따른 LLM 인스턴스 반환 (캐싱 처리 및 max_retries=0 적용)
     """
     # Lazy imports for LLM providers
     from langchain_core.prompts import PromptTemplate
@@ -85,19 +87,28 @@ def get_llm():
     provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
     model_name = os.getenv("LLM_MODEL", "gpt-4o-mini")
     
+    # 캐시 키 생성
+    api_key = key_manager.get_key(provider)
+    cache_key = f"{provider}_{api_key}_{model_name}"
+    
+    global _llm_clients
+    if cache_key in _llm_clients:
+        return _llm_clients[cache_key]
+        
+    logger.info(f"[URL Agent] Instantiating new LLM client for {provider} ({model_name})")
+    
     if provider == "GEMINI":
         from langchain_google_genai import ChatGoogleGenerativeAI
-        api_key = key_manager.get_key("GEMINI")
-        return ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=0, convert_system_message_to_human=True)
+        client = ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=0, convert_system_message_to_human=True, max_retries=0)
     elif provider == "CLAUDE":
         from langchain_anthropic import ChatAnthropic
-        api_key = key_manager.get_key("CLAUDE")
-        return ChatAnthropic(model=model_name, anthropic_api_key=api_key, temperature=0)
+        client = ChatAnthropic(model=model_name, anthropic_api_key=api_key, temperature=0, max_retries=0)
     else:
         from langchain_openai import ChatOpenAI
-        api_key = key_manager.get_key("OPENAI")
-        return ChatOpenAI(model=model_name, api_key=api_key, temperature=0.1)
-
+        client = ChatOpenAI(model=model_name, api_key=api_key, temperature=0.1, max_retries=0)
+        
+    _llm_clients[cache_key] = client
+    return client
 
 async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content_context: Dict[str, Any] = None) -> Dict[str, Any]:
     """
@@ -183,17 +194,26 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
         async def call_vision_api():
             # Check for rotation inside retry if possible, or just use current key
             api_key = key_manager.get_key("GEMINI")
+            cache_key = f"GEMINI_VISION_{api_key}_{model_name}"
             
-            # Use LangChain wrapper for threat-safety (local client instance)
-            from langchain_google_genai import ChatGoogleGenerativeAI
+            global _llm_clients
+            if cache_key in _llm_clients:
+                llm = _llm_clients[cache_key]
+            else:
+                # Use LangChain wrapper for threat-safety (local client instance)
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                logger.info(f"[URL Agent] Instantiating new Vision LLM client for GEMINI ({model_name})")
+                
+                llm = ChatGoogleGenerativeAI(
+                    model=model_name,
+                    google_api_key=api_key,
+                    temperature=0,
+                    convert_system_message_to_human=True,
+                    max_retries=0
+                )
+                _llm_clients[cache_key] = llm
+                
             from langchain_core.messages import HumanMessage
-            
-            llm = ChatGoogleGenerativeAI(
-                model=model_name,
-                google_api_key=api_key,
-                temperature=0,
-                convert_system_message_to_human=True
-            )
             
             try:
                 message = HumanMessage(
