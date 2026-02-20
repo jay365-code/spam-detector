@@ -233,7 +233,12 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 else:
                     logger.error(f"[ContentAnalysisAgent] All {provider} keys exhausted or rotation failed.")
             
-            logger.exception(f"{provider} Async API Error")
+            # Log full traceback only for non-quota errors to reduce noise
+            if not (is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg):
+                logger.exception(f"{provider} Async API Error")
+            else:
+                 logger.warning(f"{provider} Async API Error (Quota/Rate Limit): {error_msg}")
+                 
             raise e
         
         return content
