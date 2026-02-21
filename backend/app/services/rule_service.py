@@ -270,10 +270,14 @@ class RuleBasedFilter:
         # 이제 한글 포함 여부와 무관하게 무조건 지정된 길이 미만이면 SKIP 처리함 (요청 반영)
         has_korean = self.get_korean_ratio(message) > 0
         
-        if message and len(message) < self.min_message_length:
+        # 공백과 줄바꿈을 제외한 실제 의미 있는 문자 길이 계산
+        import re
+        visible_len = len(re.sub(r'\s+', '', message)) if message else 0
+        
+        if message and visible_len < self.min_message_length:
             return {
                 "is_spam": False,
-                "reason": f"Short message (Length: {len(message)} < {self.min_message_length}) - Skipped",
+                "reason": f"Short message (Visible Length: {visible_len} < {self.min_message_length}) - Skipped",
                 "detected_pattern": "short_message",
                 "classification_code": "SKIP",
                 "exclude_from_excel": True  # 엑셀 저장에서 제외 플래그
