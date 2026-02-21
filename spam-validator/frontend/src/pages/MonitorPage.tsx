@@ -84,7 +84,9 @@ export default function MonitorPage() {
     const [visibleMetrics, setVisibleMetrics] = useState<{ [key: string]: boolean }>({
         accuracy: true,
         kappa: true,
-        mcc: true
+        mcc: true,
+        precision: true,
+        recall: true
     });
     const [loading, setLoading] = useState(false);
     const [trendData, setTrendData] = useState<TrendResponse | null>(null);
@@ -192,7 +194,21 @@ export default function MonitorPage() {
                     </h3>
                     <div className="h-[350px]">
                         <ResponsiveContainer width="100%" height="100%">
-                            <ComposedChart data={trendData?.daily_summaries} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
+                            <ComposedChart
+                                data={trendData?.daily_summaries?.map(day => {
+                                    const tp = day.tp || 0;
+                                    const fp = day.fp || 0;
+                                    const fn = day.fn || 0;
+                                    const precision = tp + fp > 0 ? tp / (tp + fp) : 0;
+                                    const recall = tp + fn > 0 ? tp / (tp + fn) : 0;
+                                    return {
+                                        ...day,
+                                        precision,
+                                        recall
+                                    };
+                                })}
+                                margin={{ top: 20, right: 0, left: 0, bottom: 0 }}
+                            >
                                 <defs>
                                     <linearGradient id="colorAccuracy" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2} />
@@ -296,6 +312,28 @@ export default function MonitorPage() {
                                     dot={{ r: 4, fill: '#fff', stroke: '#14b8a6', strokeWidth: 2 }}
                                     activeDot={{ r: 6, strokeWidth: 0, fill: '#14b8a6' }}
                                     hide={!visibleMetrics.mcc}
+                                />
+                                <Line
+                                    type="monotone"
+                                    yAxisId="right"
+                                    dataKey="precision"
+                                    name="Precision"
+                                    stroke="#f59e0b"
+                                    strokeWidth={3}
+                                    dot={{ r: 4, fill: '#fff', stroke: '#f59e0b', strokeWidth: 2 }}
+                                    activeDot={{ r: 6, strokeWidth: 0, fill: '#f59e0b' }}
+                                    hide={!visibleMetrics.precision}
+                                />
+                                <Line
+                                    type="monotone"
+                                    yAxisId="right"
+                                    dataKey="recall"
+                                    name="Recall"
+                                    stroke="#3b82f6"
+                                    strokeWidth={3}
+                                    dot={{ r: 4, fill: '#fff', stroke: '#3b82f6', strokeWidth: 2 }}
+                                    activeDot={{ r: 6, strokeWidth: 0, fill: '#3b82f6' }}
+                                    hide={!visibleMetrics.recall}
                                 />
                             </ComposedChart>
                         </ResponsiveContainer>
