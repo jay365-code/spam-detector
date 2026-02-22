@@ -95,6 +95,23 @@ class LLMKeyManager:
                 logger.warning(f"[KeyManager] {provider} all keys exhausted (full circle).")
             return new_idx != 0
 
+    def set_current_index(self, provider: str, index: int) -> bool:
+        """
+        수동으로 특정 인덱스의 키를 사용하도록 설정합니다 (UI에서 강제 지정용).
+        """
+        provider = provider.upper()
+        keys = self._keys_pool.get(provider, [])
+        if not keys or index < 0 or index >= len(keys):
+            logger.error(f"[KeyManager] Invalid index {index} for {provider}. (Total keys: {len(keys)})")
+            return False
+
+        with self._lock:
+            self._current_index[provider] = index
+            self._quota_exhausted[provider] = False  # 새 키를 설정했으므로 Exhausted 해제
+            masked_key = f"{self.get_key(provider)[:10]}..."
+            logger.info(f"[KeyManager] Manually set {provider} key to index {index} (Key: {masked_key})")
+            return True
+
     def is_quota_exhausted(self, provider: str) -> bool:
         """해당 공급자의 모든 키가 quota 소진되었는지 여부 (병렬 처리 시 즉시 중단용)"""
         provider = provider.upper()
@@ -122,7 +139,11 @@ class LLMKeyManager:
     def get_quota_status(self) -> dict:
         """각 공급자별 quota exhausted 상태 조회 (UI용)"""
         return {
-            p: self._quota_exhausted.get(p, False)
+            p: {
+                "exhausted": self._quota_exhausted.get(p, False),
+                "total": len(self._keys_pool.get(p, [])),
+                "current_index": self._current_index.get(p, 0)
+            }
             for p in ["GEMINI", "OPENAI", "CLAUDE"]
         }
 

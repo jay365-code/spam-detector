@@ -580,9 +580,24 @@ export default function MonitorPage() {
                                         <td className="px-5 py-4 text-center">
                                             <span className="px-1.5 py-0.5 bg-slate-100 rounded text-xs font-mono text-slate-500">{diff.source}</span>
                                         </td>
-                                        <td className="px-5 py-4">
-                                            <p className="text-slate-800 font-medium line-clamp-2">{diff.message_preview}</p>
-                                            <div className="flex gap-2 mt-1">
+                                        <td className="px-5 py-4 relative group">
+                                            {/* Default clamped preview */}
+                                            <p className="text-slate-800 font-medium line-clamp-2 text-xs">
+                                                {diff.message_preview}
+                                            </p>
+
+                                            {/* Full Text Tooltip on Hover */}
+                                            <div className="hidden group-hover:block absolute top-0 left-0 z-50 w-[450px] p-4 bg-white border border-slate-200 rounded-xl shadow-2xl transition-all">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-[10px] uppercase font-bold text-slate-400">Full Message</span>
+                                                    <span className="text-[10px] text-slate-400 font-mono">{diff.message_full?.length || 0} chars</span>
+                                                </div>
+                                                <p className="text-slate-800 text-xs whitespace-pre-wrap leading-relaxed max-h-[300px] overflow-y-auto">
+                                                    {diff.message_full || diff.message_preview}
+                                                </p>
+                                            </div>
+
+                                            <div className="flex gap-2 mt-1.5 relative z-0">
                                                 {diff.llm_code && diff.llm_code !== '0' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-100">AI Code: {diff.llm_code}</span>}
                                                 {diff.diff_type === 'FN' && diff.human_code && (
                                                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-100">

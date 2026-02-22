@@ -29,8 +29,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const [saving, setSaving] = useState(false);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [quotaStatus, setQuotaStatus] = useState<Record<string, boolean>>({});
+    const [quotaStatus, setQuotaStatus] = useState<Record<string, any>>({});
     const [quotaResetting, setQuotaResetting] = useState(false);
+    const [pendingIndices, setPendingIndices] = useState<Record<string, number>>({});
 
     useEffect(() => {
         if (isOpen) {
@@ -99,12 +100,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         setSaving(true);
         setSuccess(false);
         try {
+            // 1. Save general settings
             const res = await fetch(`${API_BASE}/api/config`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ settings: values }),
             });
             if (!res.ok) throw new Error('Save failed');
+
+            // 2. Save pending key indices if any
+            if (Object.keys(pendingIndices).length > 0) {
+                const resIdx = await fetch(`${API_BASE}/api/config/set-key-index`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ indices: pendingIndices }),
+                });
+                if (!resIdx.ok) throw new Error('Key index save failed');
+                setPendingIndices({});
+                await fetchQuotaStatus(); // Refresh to reflect new index/exhaustion state
+            }
+
             setSuccess(true);
             setTimeout(() => setSuccess(false), 3000);
         } catch (err) {
@@ -272,14 +287,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                             API quota 초과 시 모든 LLM 호출이 차단됩니다. 새 키를 추가했거나 시간이 지나면 아래 버튼으로 리셋하세요.
                         </p>
                         <div className="flex flex-wrap items-center gap-2">
-                            {Object.entries(quotaStatus).map(([p, exhausted]) => (
-                                <span
-                                    key={p}
-                                    className={`inline-flex items-center px-2 py-1 rounded-lg text-[10px] font-bold ${exhausted ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-slate-600/30 text-slate-400 border border-slate-600/50'}`}
-                                >
-                                    {p}: {exhausted ? 'Exhausted' : 'OK'}
-                                </span>
-                            ))}
+                            {Object.entries(quotaStatus).map(([p, info]) => {
+                                const isExhausted = typeof info === 'boolean' ? info : info?.exhausted;
+                                const tot = info?.total || 1;
+                                // Use pending change if exists, else current index
+                                const curIdx = pendingIndices[p] !== undefined ? pendingIndices[p] : (info?.current_index || 0);
+                                const dropdownOptions = Array.from({ length: tot }, (_, i) => i);
+                                return (
+                                    <span
+                                        key={p}
+                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10.5px] font-bold ${isExhausted ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-slate-600/30 text-slate-400 border border-slate-600/50'}`}
+                                    >
+                                        <span>{p}: {isExhausted ? 'Exhausted' : 'OK'}</span>
+                                        {tot > 1 ? (
+                                            <select
+                                                value={curIdx}
+                                                onChange={(e) => setPendingIndices({ ...pendingIndices, [p]: parseInt(e.target.value, 10) })}
+                                                className="opacity-90 font-mono tracking-tighter bg-black/40 px-1 py-0.5 rounded-sm text-[9px] outline-none cursor-pointer border hover:border-slate-500 border-transparent transition-colors"
+                                            >
+                                                {dropdownOptions.map(idx => (
+                                                    <option key={idx} value={idx} className="bg-slate-800 text-white">
+                                                        Key {idx + 1}/{tot}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        ) : (
+                                            tot >= 1 && <span className="opacity-75 font-mono tracking-tighter bg-black/20 px-1 py-0.5 rounded-sm text-[9px]">(Key {curIdx + 1}/{tot})</span>
+                                        )}
+                                    </span>
+                                )
+                            })}
                         </div>
                         <button
                             onClick={() => handleResetQuota()}

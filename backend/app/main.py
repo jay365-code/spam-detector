@@ -352,6 +352,22 @@ async def reset_quota(request: ResetQuotaRequest | None = Body(default=None)):
     return {"success": True, **result}
 
 
+class SetKeyIndexRequest(BaseModel):
+    indices: dict[str, int]  # { "GEMINI": 1, "OPENAI": 0, ... }
+
+
+@app.post("/api/config/set-key-index")
+async def set_key_index(request: SetKeyIndexRequest = Body(...)):
+    """특정 LLM 공급자의 사용 키 인덱스를 수동 지정 (설정 UI용)"""
+    from app.core.llm_manager import key_manager
+    results = {}
+    for provider, idx in request.indices.items():
+        success = key_manager.set_current_index(provider, idx)
+        results[provider] = {"success": success, "index": idx}
+        
+    return {"success": True, "results": results}
+
+
 # ========== Spam RAG API (Reference Examples) ==========
 from app.services.spam_rag_service import get_spam_rag_service
 
