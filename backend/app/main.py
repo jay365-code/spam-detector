@@ -682,6 +682,11 @@ def process_message(message: str) -> dict:
             "output_tokens": output_tokens
         }
 
+    # [Early Exit] Quota Exhausted/Exceeded 발생 시 후속 작업(URL, IBSE) 생략
+    if "quota exhausted" in final_reason.lower() or "quota exceeded" in final_reason.lower() or "429" in final_reason:
+        logger.warning(f"    -> LLM Quota Exhausted/Exceeded detected. Bypassing URL and IBSE stages.")
+        return build_result(final_is_spam, final_code, final_reason)
+
     # Logic Update:
     # If Stage 2 is SPAM -> Finalize as SPAM (skip Stage 3)
     if final_is_spam:
@@ -961,6 +966,17 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 msg_text = f"✅ **정상 문자**\n- 사유: {content_reason}\n\n"
                             
                             await send_text_chunk(msg_text)
+
+                            # [Early Exit] Quota Exhausted/Exceeded 발생 시 후속 작업(URL, IBSE) 생략
+                            content_reason_str = (content_reason or "").lower()
+                            if "quota exhausted" in content_reason_str or "quota exceeded" in content_reason_str or "429" in content_reason_str:
+                                logger.warning(f"[WebSocket] LLM Quota Exhausted/Exceeded detected. Bypassing URL and IBSE stages for client {client_id}.")
+                                await send_text_chunk("⚠️ **참고**: API Quota 초과로 인해 URL 심층 분석 및 시그니처 추출이 생략되었습니다.\n\n")
+                                await manager.send_personal_message({
+                                    "type": "CHAT_STREAM_END",
+                                    "content": ""
+                                }, client_id)
+                                continue
 
                             # Step B: Conditional URL Check
                             # Check URL if Content is Spam OR if Content is Safe but URL exists
