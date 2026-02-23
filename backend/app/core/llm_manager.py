@@ -89,11 +89,15 @@ class LLMKeyManager:
             masked_key = f"{self.get_key(provider)[:10]}..."
             logger.info(f"[KeyManager] Rotated {provider} key to index {new_idx} (Key: {masked_key})")
             
-            # 인덱스가 0으로 돌아왔다면 한 바퀴 다 돈 것임
-            if new_idx == 0:
-                self._quota_exhausted[provider] = True
-                logger.warning(f"[KeyManager] {provider} all keys exhausted (full circle).")
-            return new_idx != 0
+            # 인덱스가 0으로 돌아왔다면 한 바퀴 다 돈 것임 (해당 판단은 이제 클라이언트 루프에서 담당합니다)
+            return True
+
+    def mark_exhausted(self, provider: str):
+        """특정 공급자의 모든 키가 소진되었음을 명시적으로 마킹합니다."""
+        provider = provider.upper()
+        with self._lock:
+            self._quota_exhausted[provider] = True
+            logger.error(f"[KeyManager] {provider} all keys exhausted. Marked as dead.")
 
     def set_current_index(self, provider: str, index: int) -> bool:
         """

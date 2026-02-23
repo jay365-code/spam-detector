@@ -6,9 +6,15 @@ load_dotenv(override=True) # Load .env file (override system variables)
 import json
 import logging
 import time
+import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception, before_sleep_log
 from app.core.logging_config import get_logger
 from app.core.llm_manager import key_manager
+
+# New imports added as per instruction
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 
 logger = get_logger(__name__)
 
@@ -43,6 +49,8 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
     def __init__(self):
         self.vector_db = None
         self._full_guide_cache = None
+        # [Optimization] Event-Loop Bound Cache: (provider_key_model, loop) -> client
+        self._loop_bound_clients = {}
 
     @property
     def model_name(self) -> str:
@@ -150,13 +158,22 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
 
     def _get_cached_client(self, provider: str, api_key: str, model_name: str):
         """
-        Retrieves or creates an LLM client instance, ensuring max_retries=0 is set
-        to prevent internal SDK blocking during 429 errors.
+        Retrieves or creates an LLM client instance safely bound to the current asyncio loop.
         """
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        cache_key = f"{provider}_{api_key}_{model_name}"
+        dict_key = (cache_key, current_loop)
+
+        if dict_key in self._loop_bound_clients:
+            return self._loop_bound_clients[dict_key]
+
         logger.info(f"[ContentAnalysisAgent] Instantiating new LLM client for {provider} ({model_name})")
         
         if provider == "GEMINI":
-            from langchain_google_genai import ChatGoogleGenerativeAI
             
             # [Safety Settings]
             safety_settings = {
@@ -178,7 +195,6 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             )
             
         elif provider == "CLAUDE":
-            from langchain_anthropic import ChatAnthropic
             
             client = ChatAnthropic(
                 model=model_name, 
@@ -188,7 +204,6 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             )
             
         else: # OPENAI
-            from langchain_openai import ChatOpenAI
             
             client = ChatOpenAI(
                 model=model_name, 
@@ -197,117 +212,116 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 max_retries=0
             )
 
+        self._loop_bound_clients[dict_key] = client
         return client
 
     async def _aquery_llm(self, prompt: str) -> str:
         """
-        Executes the LLM call based on the provider (Async version).
+        주어진 프롬프트를 사용하여 선택된 LLM에 질의를 보냅니다.
         """
-        content = ""
+        # [Early Exit] 타 에이전트/태스크에 의해 이미 모든 키 소진이 확인되었는지 체크
         provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
-
-        # [병렬 처리] 다른 스레드가 이미 모든 키를 소진했으면 즉시 중단 (불필요한 API 호출 방지)
         if key_manager.is_quota_exhausted(provider):
             raise QuotaExhaustedNoRetryError(f"{provider} quota exhausted (all keys). No retry.")
+        keys = key_manager._keys_pool.get(provider, [])
+        max_quota_tries = max(1, len(keys))
         
-        try:
-            if provider == "GEMINI":
-                api_key = key_manager.get_key("GEMINI")
-                if not api_key:
-                    raise ValueError("GEMINI_API_KEY is missing")
+        for attempt in range(max_quota_tries):
+            if key_manager.is_quota_exhausted(provider):
+                raise QuotaExhaustedNoRetryError(f"{provider} quota exhausted (all keys). No retry.")
                 
-                current_api_key = api_key # 실패 시 대조용
-                model_name = self.model_name if "gemini" in self.model_name else "gemini-1.5-flash"
-                
-                # Fetch cached client (bypasses synchronous init delays + max_retries=0)
-                llm = self._get_cached_client(provider, current_api_key, model_name)
-                
-                try:
+            api_key = key_manager.get_key(provider)
+            if not api_key:
+                raise ValueError(f"{provider}_API_KEY is not configured.")
+
+            try:
+                if provider == "GEMINI":
+                    # We removed the individual api_key fetches since it's fetched before the try block
+                    current_api_key = api_key
+                    model_name = self.model_name if "gemini" in self.model_name else "gemini-1.5-flash"
+                    
+                    llm = self._get_cached_client(provider, current_api_key, model_name)
+                    
+                    try:
+                        from langchain_core.messages import HumanMessage
+                        response = await llm.ainvoke([HumanMessage(content=prompt)])
+                        content = _normalize_llm_content(response.content)
+                    except Exception as e:
+                        # Check for safety filter block which might raise specific exceptions or return empty/stopped response
+                        # LangChain might raise an error for blocked content or return a finish_reason
+                        # For now, let's catch generic errors and let the outer loop handle quota, 
+                        # but if it's a safety block (often 400 or specific error), we might want to handle it.
+                        # Assuming outer loop handles exceptions, but specific safety fallback logic:
+                        err_str = str(e).lower()
+                        if "safety" in err_str or "blocked" in err_str:
+                            logger.warning("[Gemini] Response blocked by safety filters. Returning fallback SPAM verdict.")
+                            content = json.dumps({
+                                "label": "SPAM",
+                                "spam_probability": 0.99,
+                                "classification_code": "3",
+                                "reason": "Security Filter Blocked: Content was flagged as prohibited (likely highly offensive or explicit), which strongly indicates SPAM.",
+                                "signals": {"harm_anchor": True}
+                            })
+                        else:
+                            raise e
+                    
+                elif provider == "CLAUDE":
+                    current_api_key = api_key
+                    model_name = self.model_name if "claude" in self.model_name else "claude-3-haiku-20240307"
+                    
+                    llm = self._get_cached_client(provider, current_api_key, model_name)
                     from langchain_core.messages import HumanMessage
                     response = await llm.ainvoke([HumanMessage(content=prompt)])
                     content = _normalize_llm_content(response.content)
-                except Exception as e:
-                    # Check for safety filter block which might raise specific exceptions or return empty/stopped response
-                    # LangChain might raise an error for blocked content or return a finish_reason
-                    # For now, let's catch generic errors and let the outer loop handle quota, 
-                    # but if it's a safety block (often 400 or specific error), we might want to handle it.
-                    # Assuming outer loop handles exceptions, but specific safety fallback logic:
-                    err_str = str(e).lower()
-                    if "safety" in err_str or "blocked" in err_str:
-                        logger.warning("[Gemini] Response blocked by safety filters. Returning fallback SPAM verdict.")
-                        content = json.dumps({
-                            "label": "SPAM",
-                            "spam_probability": 0.99,
-                            "classification_code": "3",
-                            "reason": "Security Filter Blocked: Content was flagged as prohibited (likely highly offensive or explicit), which strongly indicates SPAM.",
-                            "signals": {"harm_anchor": True}
-                        })
-                    else:
-                        raise e
-                
-            elif provider == "CLAUDE":
-                claude_key = key_manager.get_key("CLAUDE")
-                if not claude_key:
-                    raise ValueError("CLAUDE_API_KEY is missing")
                     
-                current_api_key = claude_key
-                model_name = self.model_name if "claude" in self.model_name else "claude-3-haiku-20240307"
-                
-                llm = self._get_cached_client(provider, current_api_key, model_name)
-                from langchain_core.messages import HumanMessage
-                response = await llm.ainvoke([HumanMessage(content=prompt)])
-                content = _normalize_llm_content(response.content)
-                
-            else: # OPENAI
-                api_key = key_manager.get_key("OPENAI")
-                if not api_key:
-                    raise ValueError("OPENAI_API_KEY is missing")
+                else: # OPENAI
+                    current_api_key = api_key
+                    model_name = self.model_name
                     
-                current_api_key = api_key # 실패 시 대조용
-                model_name = self.model_name
+                    llm = self._get_cached_client(provider, current_api_key, model_name)
+                    from langchain_core.messages import HumanMessage
+                    response = await llm.ainvoke([HumanMessage(content=prompt)])
+                    content = _normalize_llm_content(response.content)
                 
-                llm = self._get_cached_client(provider, current_api_key, model_name)
-                from langchain_core.messages import HumanMessage
-                response = await llm.ainvoke([HumanMessage(content=prompt)])
-                content = _normalize_llm_content(response.content)
+                return content
                 
-        except Exception as e:
-            error_msg = str(e).lower()
-            
-            # [Fix] Explicit type check for Google API errors (Gemini)
-            is_google_quota_error = False
-            if provider == "GEMINI":
-                try:
-                    import google.api_core.exceptions
-                    if isinstance(e, (google.api_core.exceptions.ResourceExhausted, google.api_core.exceptions.TooManyRequests)):
-                        is_google_quota_error = True
-                except ImportError:
-                    pass
+            except Exception as e:
+                error_msg = str(e).lower()
+                
+                # [Fix] Explicit type check for Google API errors (Gemini)
+                is_google_quota_error = False
+                if provider == "GEMINI":
+                    try:
+                        import google.api_core.exceptions
+                        if isinstance(e, (google.api_core.exceptions.ResourceExhausted, google.api_core.exceptions.TooManyRequests)):
+                            is_google_quota_error = True
+                    except ImportError:
+                        pass
 
-            # Quota Exceeded / Rate Limit 체크 (429 에러)
-            # Add "resource exhausted" to string check for robustness
-            if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
-                req_model = self.model_name if "gemini" in self.model_name else "gemini-1.5-flash"
-                logger.warning(f"[ContentAnalysisAgent] 429/Quota Detected. Requested model: {req_model}")
-                logger.warning(f"[ContentAnalysisAgent] 429/Quota Detected. Error: {error_msg}")
-                logger.warning(f"[ContentAnalysisAgent] {provider} Quota Exceeded detected. Attempting key rotation...")
-                # [동시성 개선] 실패한 키를 넘겨주어 중복 전환 방지
-                if key_manager.rotate_key(provider, failed_key=current_api_key):
-                    logger.info(f"[ContentAnalysisAgent] Rotated to next {provider} key. Retrying...")
-                    raise e
-                else:
-                    logger.error(f"[ContentAnalysisAgent] All {provider} keys exhausted or rotation failed.")
-                    raise QuotaExhaustedNoRetryError(f"{provider} quota exhausted. No retry.") from e
-            
-            # Log full traceback only for non-quota errors to reduce noise
-            if not (is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg):
-                logger.exception(f"{provider} Async API Error")
-            else:
-                 logger.warning(f"{provider} Async API Error (Quota/Rate Limit): {error_msg}")
-                 
-            raise e
-        
-        return content
+                    # Quota Exceeded / Rate Limit 체크 (429 에러)
+                    # Add "resource exhausted" to string check for robustness
+                    if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
+                        req_model = self.model_name if "gemini" in self.model_name else "gemini-1.5-flash"
+                        logger.warning(f"[ContentAnalysisAgent] 429/Quota Detected. Requested model: {req_model}")
+                        logger.warning(f"[ContentAnalysisAgent] {provider} Quota Exceeded detected. Attempting key rotation...")
+                        
+                        # [동시성 개선] 실패한 키를 넘겨주어 중복 전환 방지
+                        key_manager.rotate_key(provider, failed_key=current_api_key)
+                        
+                        if attempt < max_quota_tries - 1:
+                            logger.info(f"[ContentAnalysisAgent] Switching to new {provider} key instantly (Attempt {attempt+1}/{max_quota_tries})...")
+                            continue
+                        else:
+                            logger.error(f"[ContentAnalysisAgent] All {provider} keys exhausted.")
+                            key_manager.mark_exhausted(provider)
+                            raise QuotaExhaustedNoRetryError(f"{provider} quota exhausted. No retry.") from e
+                    
+                    # Log full traceback only for non-quota errors to reduce noise
+                    logger.exception(f"{provider} Async API Error (Network/Transient)")
+                    raise e # let tenacity retry it
+                
+        # This will trigger if the loop finishes max_quota_tries without returning, theoretically unreached due to raise inside else
+        raise QuotaExhaustedNoRetryError(f"All {provider} keys repeatedly failed.")
 
     @retry(
         stop=stop_after_attempt(3),

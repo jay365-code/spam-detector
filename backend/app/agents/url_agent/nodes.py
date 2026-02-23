@@ -13,6 +13,16 @@ from typing import Dict, Any, List
 from urllib.parse import urlparse, quote
 import idna  # Punycode 변환용
 
+import google.api_core.exceptions
+from bs4 import BeautifulSoup
+
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage
+from langchain_core.prompts import PromptTemplate
+
+
 from .state import SpamState
 from app.core.constants import SPAM_CODE_MAP
 
@@ -74,8 +84,8 @@ async def close_playwright():
         await _playwright_manager.stop()
         _playwright_manager = None
 
-# [Optimization] Global cache removed to prevent asyncio loop collisions across Batch Gather
-
+# [Optimization] Event-Loop Bound Cache: (provider_key_model, loop) -> client
+_loop_bound_clients = {}
 
 def get_llm():
     """
@@ -88,19 +98,29 @@ def get_llm():
     model_name = os.getenv("LLM_MODEL", "gpt-4o-mini")
     
     api_key = key_manager.get_key(provider)
+    cache_key = f"{provider}_{api_key}_{model_name}"
+    
+    import asyncio
+    try:
+        current_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        current_loop = None
+        
+    dict_key = (cache_key, current_loop)
+    global _loop_bound_clients
+    if dict_key in _loop_bound_clients:
+        return _loop_bound_clients[dict_key]
     
     logger.info(f"[URL Agent] Instantiating new LLM client for {provider} ({model_name})")
     
     if provider == "GEMINI":
-        from langchain_google_genai import ChatGoogleGenerativeAI
         client = ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=0, convert_system_message_to_human=True, max_retries=0)
     elif provider == "CLAUDE":
-        from langchain_anthropic import ChatAnthropic
         client = ChatAnthropic(model=model_name, anthropic_api_key=api_key, temperature=0, max_retries=0)
     else:
-        from langchain_openai import ChatOpenAI
         client = ChatOpenAI(model=model_name, api_key=api_key, temperature=0.1, max_retries=0)
         
+    _loop_bound_clients[dict_key] = client
     return client
 
 async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content_context: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -185,56 +205,80 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
             reraise=True
         )
         async def call_vision_api():
-            # Check for rotation inside retry if possible, or just use current key
-            api_key = key_manager.get_key("GEMINI")
-            cache_key = f"GEMINI_VISION_{api_key}_{model_name}"
+            provider = "GEMINI"
+            keys = key_manager._keys_pool.get(provider, [])
+            max_quota_tries = max(1, len(keys))
             
-            global _llm_clients
-            if cache_key in _llm_clients:
-                llm = _llm_clients[cache_key]
-            else:
-                # Use LangChain wrapper for threat-safety (local client instance)
-                from langchain_google_genai import ChatGoogleGenerativeAI
-                logger.info(f"[URL Agent] Instantiating new Vision LLM client for GEMINI ({model_name})")
+            for attempt in range(max_quota_tries):
+                if key_manager.is_quota_exhausted(provider):
+                    raise Exception(f"{provider} quota exhausted (all keys). No retry.")
+                    
+                # Check for rotation inside retry if possible, or just use current key
+                api_key = key_manager.get_key(provider)
+                cache_key = f"{provider}_VISION_{api_key}_{model_name}"
                 
-                llm = ChatGoogleGenerativeAI(
-                    model=model_name,
-                    google_api_key=api_key,
-                    temperature=0,
-                    convert_system_message_to_human=True,
-                    max_retries=0
-                )
-                _llm_clients[cache_key] = llm
-                
-            from langchain_core.messages import HumanMessage
-            
-            try:
-                message = HumanMessage(
-                    content=[
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": f"data:image/jpeg;base64,{screenshot_b64}"}
-                    ]
-                )
-                
-                return await llm.ainvoke([message])
-            except Exception as e:
-                error_msg = str(e).lower()
-                
-                # [Fix] Explicit type check for Google API errors (Gemini)
-                is_google_quota_error = False
+                import asyncio
                 try:
-                    import google.api_core.exceptions
-                    if isinstance(e, (google.api_core.exceptions.ResourceExhausted, google.api_core.exceptions.TooManyRequests)):
-                        is_google_quota_error = True
-                except ImportError:
-                    pass
+                    current_loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    current_loop = None
+                    
+                dict_key = (cache_key, current_loop)
+                global _loop_bound_clients
+                if dict_key in _loop_bound_clients:
+                    llm = _loop_bound_clients[dict_key]
+                else:
+                    logger.info(f"[URL Agent] Instantiating new Vision LLM client for {provider} ({model_name})")
+                    
+                    llm = ChatGoogleGenerativeAI(
+                        model=model_name,
+                        google_api_key=api_key,
+                        temperature=0,
+                        convert_system_message_to_human=True,
+                        max_retries=0
+                    )
+                    _loop_bound_clients[dict_key] = llm
+                
+                try:
+                    message = HumanMessage(
+                        content=[
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": f"data:image/jpeg;base64,{screenshot_b64}"}
+                        ]
+                    )
+                    
+                    return await llm.ainvoke([message])
+                except Exception as e:
+                    error_msg = str(e).lower()
+                    
+                    # [Fix] Explicit type check for Google API errors (Gemini)
+                    is_google_quota_error = False
+                    try:
+                        import google.api_core.exceptions
+                        if isinstance(e, (google.api_core.exceptions.ResourceExhausted, google.api_core.exceptions.TooManyRequests)):
+                            is_google_quota_error = True
+                    except ImportError:
+                        pass
 
-                if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
-                    logger.warning(f"[URL Agent] Vision API Quota Detected. Error: {error_msg}")
-                    logger.warning("[URL Agent] Vision API Quota Exceeded. Rotating key...")
-                    # [동시성 개선] 실패한 키 전달
-                    key_manager.rotate_key("GEMINI", failed_key=api_key)
-                raise e
+                    if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
+                        logger.warning(f"[URL Agent] Vision API Quota Detected. Error: {error_msg}")
+                        logger.warning(f"[URL Agent] Vision API Quota Exceeded. Rotating key...")
+                        # [동시성 개선] 실패한 키 전달
+                        key_manager.rotate_key(provider, failed_key=api_key)
+                        
+                        if attempt < max_quota_tries - 1:
+                            logger.info(f"[URL Agent] Switching to new {provider} key instantly (Attempt {attempt+1}/{max_quota_tries})...")
+                            continue
+                        else:
+                            logger.error(f"[URL Agent] All {provider} keys exhausted.")
+                            key_manager.mark_exhausted(provider)
+                            raise Exception(f"All {provider} keys exhausted. No retry.") from e
+                    
+                    # Log full traceback only for non-quota errors to reduce noise
+                    logger.exception(f"[URL Agent] Vision API Error (Network/Transient)")
+                    raise e
+                    
+            raise Exception(f"All {provider} keys repeatedly failed.")
 
         try:
             response = await call_vision_api()
