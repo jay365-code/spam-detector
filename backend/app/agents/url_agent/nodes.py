@@ -74,8 +74,8 @@ async def close_playwright():
         await _playwright_manager.stop()
         _playwright_manager = None
 
-# [Optimization] Global cache for LLM clients to prevent synchronous initialization delays
-_llm_clients = {}
+# [Optimization] Global cache removed to prevent asyncio loop collisions across Batch Gather
+
 
 def get_llm():
     """
@@ -87,14 +87,8 @@ def get_llm():
     provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
     model_name = os.getenv("LLM_MODEL", "gpt-4o-mini")
     
-    # 캐시 키 생성
     api_key = key_manager.get_key(provider)
-    cache_key = f"{provider}_{api_key}_{model_name}"
     
-    global _llm_clients
-    if cache_key in _llm_clients:
-        return _llm_clients[cache_key]
-        
     logger.info(f"[URL Agent] Instantiating new LLM client for {provider} ({model_name})")
     
     if provider == "GEMINI":
@@ -107,7 +101,6 @@ def get_llm():
         from langchain_openai import ChatOpenAI
         client = ChatOpenAI(model=model_name, api_key=api_key, temperature=0.1, max_retries=0)
         
-    _llm_clients[cache_key] = client
     return client
 
 async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content_context: Dict[str, Any] = None) -> Dict[str, Any]:

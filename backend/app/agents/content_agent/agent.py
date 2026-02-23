@@ -43,8 +43,6 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
     def __init__(self):
         self.vector_db = None
         self._full_guide_cache = None
-        # [Optimization] Cache LLM clients by provider and api_key to prevent synchronous instantiation delays 
-        self._llm_clients = {}
 
     @property
     def model_name(self) -> str:
@@ -155,10 +153,6 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         Retrieves or creates an LLM client instance, ensuring max_retries=0 is set
         to prevent internal SDK blocking during 429 errors.
         """
-        cache_key = f"{provider}_{api_key}_{model_name}"
-        if cache_key in self._llm_clients:
-            return self._llm_clients[cache_key]
-
         logger.info(f"[ContentAnalysisAgent] Instantiating new LLM client for {provider} ({model_name})")
         
         if provider == "GEMINI":
@@ -203,7 +197,6 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 max_retries=0
             )
 
-        self._llm_clients[cache_key] = client
         return client
 
     async def _aquery_llm(self, prompt: str) -> str:
