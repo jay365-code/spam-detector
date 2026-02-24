@@ -188,7 +188,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             client = ChatGoogleGenerativeAI(
                 model=model_name,
                 google_api_key=api_key,
-                temperature=0.2,
+                temperature=0.0,
                 safety_settings=safety_settings,
                 convert_system_message_to_human=True,
                 max_retries=0 
@@ -199,7 +199,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             client = ChatAnthropic(
                 model=model_name, 
                 anthropic_api_key=api_key, 
-                temperature=0.2,
+                temperature=0.0,
                 max_retries=0
             )
             
@@ -208,7 +208,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             client = ChatOpenAI(
                 model=model_name, 
                 api_key=api_key, 
-                temperature=0.2,
+                temperature=0.0,
                 max_retries=0
             )
 
@@ -224,7 +224,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         if key_manager.is_quota_exhausted(provider):
             raise QuotaExhaustedNoRetryError(f"{provider} quota exhausted (all keys). No retry.")
         keys = key_manager._keys_pool.get(provider, [])
-        max_quota_tries = max(1, len(keys))
+        max_quota_tries = max(3, len(keys) * 3)
         
         for attempt in range(max_quota_tries):
             if key_manager.is_quota_exhausted(provider):
@@ -309,6 +309,12 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                         key_manager.rotate_key(provider, failed_key=current_api_key)
                         
                         if attempt < max_quota_tries - 1:
+                            cooldown = key_manager.get_cooldown_remaining(provider)
+                            if cooldown > 0:
+                                import asyncio
+                                logger.info(f"[ContentAnalysisAgent] Global cooldown activated. Pausing for {cooldown:.1f}s before retry...")
+                                await asyncio.sleep(cooldown)
+
                             logger.info(f"[ContentAnalysisAgent] Switching to new {provider} key instantly (Attempt {attempt+1}/{max_quota_tries})...")
                             continue
                         else:
@@ -912,21 +918,21 @@ Step 4. SPAM 확정 조건:
             return ChatGoogleGenerativeAI(
                 model=self.model_name if "gemini" in self.model_name else "gemini-1.5-flash",
                 google_api_key=api_key,
-                temperature=0.2  # 분류 작업에 적합한 낮은 temperature
+                temperature=0.0  # 분류 작업에 적합한 가장 낮은 temperature
             )
         elif provider == "CLAUDE":
             api_key = key_manager.get_key("CLAUDE")
             return ChatAnthropic(
                 model=self.model_name if "claude" in self.model_name else "claude-3-haiku-20240307",
                 anthropic_api_key=api_key,
-                temperature=0.2  # 분류 작업에 적합한 낮은 temperature
+                temperature=0.0  # 분류 작업에 적합한 가장 낮은 temperature
             )
         else: # OPENAI
             api_key = key_manager.get_key("OPENAI")
             return ChatOpenAI(
                 model=self.model_name,
                 api_key=api_key,
-                temperature=0.2  # 분류 작업에 적합한 낮은 temperature
+                temperature=0.0  # 분류 작업에 적합한 가장 낮은 temperature
             )
 
 
@@ -994,6 +1000,12 @@ Step 4. SPAM 확정 조건:
                         current_key = key_manager.get_key(provider)
                         key_manager.rotate_key(provider, failed_key=current_key)
                         
+                        cooldown = key_manager.get_cooldown_remaining(provider)
+                        if cooldown > 0:
+                            import asyncio
+                            logger.info(f"[ContentAgent] Global cooldown activated for summary. Pausing {cooldown:.1f}s...")
+                            await asyncio.sleep(cooldown)
+                            
                         # IMPORTANT: Since llm instance is created outside, we might need to recreate it or 
                         # just rely on the fact that next call to _get_chat_model (if we were calling it inside) would get new key.
                         # BUT here `llm` is already instantiated `llm = self._get_chat_model()`.

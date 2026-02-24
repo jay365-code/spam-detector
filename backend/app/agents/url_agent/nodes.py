@@ -118,7 +118,7 @@ def get_llm():
     elif provider == "CLAUDE":
         client = ChatAnthropic(model=model_name, anthropic_api_key=api_key, temperature=0, max_retries=0)
     else:
-        client = ChatOpenAI(model=model_name, api_key=api_key, temperature=0.1, max_retries=0)
+        client = ChatOpenAI(model=model_name, api_key=api_key, temperature=0.0, max_retries=0)
         
     _loop_bound_clients[dict_key] = client
     return client
@@ -207,7 +207,7 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
         async def call_vision_api():
             provider = "GEMINI"
             keys = key_manager._keys_pool.get(provider, [])
-            max_quota_tries = max(1, len(keys))
+            max_quota_tries = max(3, len(keys) * 3)
             
             for attempt in range(max_quota_tries):
                 if key_manager.is_quota_exhausted(provider):
@@ -267,7 +267,13 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
                         key_manager.rotate_key(provider, failed_key=api_key)
                         
                         if attempt < max_quota_tries - 1:
-                            logger.info(f"[URL Agent] Switching to new {provider} key instantly (Attempt {attempt+1}/{max_quota_tries})...")
+                            cooldown = key_manager.get_cooldown_remaining(provider)
+                            if cooldown > 0:
+                                import asyncio
+                                logger.info(f"[URL Agent] Global cooldown activated. Pausing {cooldown:.1f}s before retry...")
+                                await asyncio.sleep(cooldown)
+
+                            logger.info(f"[URL Agent] Switching to empty {provider} key instantly (Attempt {attempt+1}/{max_quota_tries})...")
                             continue
                         else:
                             logger.error(f"[URL Agent] All {provider} keys exhausted.")
@@ -695,6 +701,12 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                     logger.warning(f"[URL Agent] {provider} Quota Exceeded. Rotating key...")
                     # [동시성 개선] 실패한 키 전달
                     key_manager.rotate_key(provider, failed_key=api_key)
+                    
+                    cooldown = key_manager.get_cooldown_remaining(provider)
+                    if cooldown > 0:
+                        import asyncio
+                        logger.info(f"[URL Agent] Global cooldown activated for {provider}. Pausing {cooldown:.1f}s...")
+                        await asyncio.sleep(cooldown)
                 raise e
             
         response = await call_llm()

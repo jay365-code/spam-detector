@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 import threading
 from typing import List, Dict
@@ -15,6 +16,8 @@ class LLMKeyManager:
     _keys_pool: Dict[str, List[str]] = {}
     _current_index: Dict[str, int] = {}
     _quota_exhausted: Dict[str, bool] = {}
+    _last_rotation_time: Dict[str, float] = {}
+    cooldown_seconds: float = 3.0  # 글로벌 쿨다운 대기 시간 (초)
 
     def __new__(cls):
         if cls._instance is None:
@@ -36,6 +39,7 @@ class LLMKeyManager:
             self._keys_pool[p] = keys
             self._current_index[p] = 0
             self._quota_exhausted[p] = False
+            self._last_rotation_time[p] = 0.0
             
             if keys:
                 logger.info(f"[KeyManager] Initialized {p} with {len(keys)} key(s).")
@@ -84,6 +88,7 @@ class LLMKeyManager:
                 
             new_idx = (self._current_index.get(provider, 0) + 1) % len(keys)
             self._current_index[provider] = new_idx
+            self._last_rotation_time[provider] = time.time()  # 로테이션 성공 시 Timestamp 기록
             
             # 바뀐 키의 앞부분만 로그 출력
             masked_key = f"{self.get_key(provider)[:10]}..."
@@ -91,6 +96,24 @@ class LLMKeyManager:
             
             # 인덱스가 0으로 돌아왔다면 한 바퀴 다 돈 것임 (해당 판단은 이제 클라이언트 루프에서 담당합니다)
             return True
+
+    def get_cooldown_remaining(self, provider: str) -> float:
+        """
+        방금 키가 로테이션 된 경우, 남은 글로벌 쿨다운 시간을 반환합니다.
+        가장 최근 로테이션 시간(Timestamp)으로부터 cooldown_seconds 내에 있다면,
+        남은 대기 시간을 반환하고, 아니면 0.0을 반환합니다.
+        
+        :param provider: LLM 공급자 (GEMINI, OPENAI 등)
+        :return: 남은 대기 시간 (초)
+        """
+        provider = provider.upper()
+        last_time = self._last_rotation_time.get(provider, 0.0)
+        elapsed = time.time() - last_time
+        
+        if elapsed < self.cooldown_seconds:
+            return max(0.0, self.cooldown_seconds - elapsed)
+            
+        return 0.0
 
     def mark_exhausted(self, provider: str):
         """특정 공급자의 모든 키가 소진되었음을 명시적으로 마킹합니다."""

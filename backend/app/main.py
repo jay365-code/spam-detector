@@ -1449,6 +1449,8 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
         # Determine Batch Size
         batch_size_env = int(os.getenv("LLM_BATCH_SIZE", 10))
         
+        total_rows = 0
+        
         if file_ext.lower() == '.txt':
             # Process TXT
             # [Optimization] Pass a large batch_chunk_size (e.g. 1000) to ExcelHandler
@@ -1465,17 +1467,31 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                     manager=manager, client_id=client_id
                 )
             )
-            if isinstance(result, dict) and "filename" in result:
-                output_filename = result["filename"]
+            if isinstance(result, dict):
+                if "filename" in result:
+                    output_filename = result["filename"]
+                if "total_rows" in result:
+                    total_rows = result["total_rows"]
         else:
             # Process Excel
             batch_chunk_size = 1000
-            await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 None, 
                 lambda: excel_handler.process_file(input_path, output_path, process_message_with_hitl, progress_callback, batch_size=batch_chunk_size)
             )
+            if isinstance(result, dict) and "total_rows" in result:
+                total_rows = result["total_rows"]
         
-        return {"id": file_id, "filename": output_filename, "message": "Processing complete"}
+        # [Proactive Rotation] 대량 배치 완료 시 예방적 로테이션 (사용자 요청 반영)
+        # 500개 이상의 배치 처리가 오류 없이(또는 복구되며) 모두 끝난 직후, 
+        # 특정 키의 일일 할당량(RPD) 고갈을 막기 위해 선제적으로 다음 키로 회전시켜 줍니다.
+        if total_rows >= 500:
+            provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
+            from app.core.llm_manager import key_manager
+            logger.info(f"[Batch Complete] Processed {total_rows} items. Proactively rotating {provider} key to prevent RPD exhaustion.")
+            key_manager.rotate_key(provider)
+            
+        return {"id": file_id, "filename": output_filename, "message": "Processing complete", "total_processed": total_rows}
     
     except CancellationException as e:
         logger.info(f"Processing cancelled: {e}")

@@ -173,7 +173,7 @@ candidates_40: {candidates_40_json}
                             {"role": "user", "content": user_prompt}
                         ],
                         response_format={"type": "json_object"},
-                        temperature=0.1
+                        temperature=0.0
                     )
                     content = response.choices[0].message.content
                     
@@ -191,7 +191,7 @@ candidates_40: {candidates_40_json}
                     llm = ChatGoogleGenerativeAI(
                         model=self.model_name if "gemini" in self.model_name else "gemini-1.5-flash",
                         google_api_key=self.api_key,
-                        temperature=0.1,
+                        temperature=0.0,
                         safety_settings=safety_settings,
                         convert_system_message_to_human=True
                     )
@@ -249,7 +249,14 @@ candidates_40: {candidates_40_json}
                     if key_manager.rotate_key(provider, failed_key=current_key):
                         logger.info(f"[LLMSelector] Rotated to next {provider} key. Retrying...")
                         self.api_key = key_manager.get_key(provider)
-                        time.sleep(1) # Short delay before retry
+                        
+                        cooldown = key_manager.get_cooldown_remaining(provider)
+                        if cooldown > 0:
+                            logger.info(f"[LLMSelector] Global cooldown activated. Pausing {cooldown:.1f}s...")
+                            time.sleep(cooldown)
+                        else:
+                            time.sleep(1) # Short delay before retry
+                            
                         continue
                     else:
                         logger.error(f"[LLMSelector] All {provider} keys exhausted or rotation failed.")

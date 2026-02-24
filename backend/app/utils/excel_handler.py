@@ -447,7 +447,7 @@ class ExcelHandler:
 
             # 5. Save
             wb.save(output_path)
-            return True
+            return {"success": True, "total_rows": total_rows}
             
         except Exception as e:
             logger.error(f"Error processing Excel: {e}")
@@ -765,7 +765,7 @@ class ExcelHandler:
             self._create_blocklist_sheet(wb, blocklist_data)
                 
             wb.save(output_path)
-            return {"output_path": output_path, "filename": output_filename}
+            return {"output_path": output_path, "filename": output_filename, "total_rows": total_rows}
 
         except Exception as e:
             logger.error(f"Error processing KISA TXT: {e}")
