@@ -445,6 +445,12 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
             if len(parts) < 2: continue
             
             tld = parts[-1].lower()
+            domain_name = parts[-2]
+            
+            # [Heuristic Filter] 프로토콜이 명시적이지 않은데 도메인 이름 부분이 숫자단독인 경우 
+            # (예: 1.TV, 2.net 등) -> 번호 매기기 목록화 후 띄어쓰기 누락 오타일 확률이 매우 높으므로 배제
+            if domain_name.isdigit():
+                continue
             
             # 한글이 포함된 TLD인 경우 (.한국 등)
             is_korean_tld = any('\uac00' <= char <= '\ud7a3' or '\u3131' <= char <= '\u3163' for char in tld)
