@@ -4,7 +4,7 @@ import os
 import json
 import asyncio
 import logging
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_exception, before_sleep_log
 from app.core.logging_config import get_logger
 from app.core.llm_manager import key_manager
 logger = get_logger(__name__)
@@ -200,14 +200,15 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
         @retry(
             stop=stop_after_attempt(3),
             wait=wait_exponential(multiplier=1, min=2, max=10),
-            retry=retry_if_exception_type(Exception),
+            retry=retry_if_exception(lambda e: "No retry." not in str(e)),
             before_sleep=before_sleep_log(logger, logging.WARNING),
             reraise=True
         )
         async def call_vision_api():
             provider = "GEMINI"
             keys = key_manager._keys_pool.get(provider, [])
-            max_quota_tries = max(3, len(keys) * 3)
+            # User Request: Retry exactly the number of available keys to test each key once on Quota 429.
+            max_quota_tries = max(1, len(keys))
             
             for attempt in range(max_quota_tries):
                 if key_manager.is_quota_exhausted(provider):
@@ -246,8 +247,9 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
                             {"type": "image_url", "image_url": f"data:image/jpeg;base64,{screenshot_b64}"}
                         ]
                     )
-                    
-                    return await llm.ainvoke([message])
+                    response = await llm.ainvoke([message])
+                    key_manager.report_success(provider)
+                    return response
                 except Exception as e:
                     error_msg = str(e).lower()
                     
@@ -263,16 +265,14 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
                     if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
                         logger.warning(f"[URL Agent] Vision API Quota Detected. Error: {error_msg}")
                         logger.warning(f"[URL Agent] Vision API Quota Exceeded. Rotating key...")
-                        # [동시성 개선] 실패한 키 전달
-                        key_manager.rotate_key(provider, failed_key=api_key)
+                        # [동시성 개선] 실패한 키 전달 및 글로벌 소진 확인
+                        is_rotated = key_manager.rotate_key(provider, failed_key=api_key)
+                        
+                        if not is_rotated:
+                            logger.error(f"[URL Agent] Vision API Global exhaustion reached for {provider}.")
+                            raise Exception(f"{provider} vision quota globally exhausted. No retry.") from e
                         
                         if attempt < max_quota_tries - 1:
-                            cooldown = key_manager.get_cooldown_remaining(provider)
-                            if cooldown > 0:
-                                import asyncio
-                                logger.info(f"[URL Agent] Global cooldown activated. Pausing {cooldown:.1f}s before retry...")
-                                await asyncio.sleep(cooldown)
-
                             logger.info(f"[URL Agent] Switching to empty {provider} key instantly (Attempt {attempt+1}/{max_quota_tries})...")
                             continue
                         else:
@@ -679,16 +679,21 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         @retry(
             stop=stop_after_attempt(3),
             wait=wait_exponential(multiplier=1, min=2, max=10),
-            retry=retry_if_exception_type(Exception),
+            retry=retry_if_exception(lambda e: "No retry." not in str(e)),
             before_sleep=before_sleep_log(logger, logging.WARNING),
             reraise=True
         )
         async def call_llm():
             provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
+            if key_manager.is_quota_exhausted(provider):
+                raise Exception(f"{provider} quota globally exhausted. No retry.")
+                
             api_key = key_manager.get_key(provider) # 실패 시 대조를 위해 키 보관
             llm = get_llm() # Get fresh LLM (uses the same key)
             try:
-                return await llm.ainvoke(prompt)
+                response = await llm.ainvoke(prompt)
+                key_manager.report_success(provider)
+                return response
             except Exception as e:
                 error_msg = str(e).lower()
                 
@@ -705,14 +710,15 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                 if is_google_quota_error or "quota" in error_msg or "429" in error_msg or "rate" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
                     logger.warning(f"[URL Agent] {provider} Quota Detected. Error: {error_msg}")
                     logger.warning(f"[URL Agent] {provider} Quota Exceeded. Rotating key...")
-                    # [동시성 개선] 실패한 키 전달
-                    key_manager.rotate_key(provider, failed_key=api_key)
+                    # [동시성 개선] 실패한 키 전달 및 글로벌 소진 감지
+                    is_rotated = key_manager.rotate_key(provider, failed_key=api_key)
                     
-                    cooldown = key_manager.get_cooldown_remaining(provider)
-                    if cooldown > 0:
-                        import asyncio
-                        logger.info(f"[URL Agent] Global cooldown activated for {provider}. Pausing {cooldown:.1f}s...")
-                        await asyncio.sleep(cooldown)
+                    if not is_rotated:
+                            logger.error(f"[URL Agent] URL Text Analysis Global exhaustion reached for {provider}.")
+                            raise Exception(f"{provider} text quota globally exhausted. No retry.") from e
+                    
+                    # 쿨다운 대기 없이 즉시 재시도/포기 진행
+                    pass
                 raise e
             
         response = await call_llm()
@@ -787,6 +793,12 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         }
         
     except Exception as e:
+        error_msg = str(e).lower()
+        if "quota exhausted" in error_msg or "429" in error_msg:
+            # Re-raise quota errors to let the higher layer handle it (e.g. process_message fallback)
+            logger.error(f"[URL Agent] Fatal Quota Error: {e}")
+            raise e
+            
         logger.exception("URL 분석 중 오류 발생")
         return {"reason": f"Analysis Error: {e}", "is_final": False}
 

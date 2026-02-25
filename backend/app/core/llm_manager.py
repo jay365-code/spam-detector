@@ -17,6 +17,7 @@ class LLMKeyManager:
     _current_index: Dict[str, int] = {}
     _quota_exhausted: Dict[str, bool] = {}
     _last_rotation_time: Dict[str, float] = {}
+    _consecutive_failures: Dict[str, int] = {}
     cooldown_seconds: float = 3.0  # 글로벌 쿨다운 대기 시간 (초)
 
     def __new__(cls):
@@ -40,6 +41,7 @@ class LLMKeyManager:
             self._current_index[p] = 0
             self._quota_exhausted[p] = False
             self._last_rotation_time[p] = 0.0
+            self._consecutive_failures[p] = 0
             
             if keys:
                 logger.info(f"[KeyManager] Initialized {p} with {len(keys)} key(s).")
@@ -60,6 +62,17 @@ class LLMKeyManager:
             self._current_index[provider] = 0
             
         return keys[idx]
+
+    def report_success(self, provider: str):
+        """정상적인 응답을 받았을 때 연속 실패 횟수를 초기화합니다."""
+        provider = provider.upper()
+        if provider not in self._keys_pool:
+            return
+        with self._lock:
+            if self._consecutive_failures.get(provider, 0) > 0:
+                self._consecutive_failures[provider] = 0
+            if self._quota_exhausted.get(provider, False):
+                self._quota_exhausted[provider] = False
 
     def rotate_key(self, provider: str, failed_key: str = None) -> bool:
         """
@@ -86,6 +99,15 @@ class LLMKeyManager:
                 logger.info(f"[KeyManager] {provider} key already rotated by another thread. (Current: {current_key[:10]}...)")
                 return True
                 
+            # 연속 실패 횟수 증가
+            self._consecutive_failures[provider] = self._consecutive_failures.get(provider, 0) + 1
+            
+            # 모든 키가 연속으로 실패했다면 완전 고갈(Global Exhaustion) 선언
+            if self._consecutive_failures[provider] >= len(keys):
+                self._quota_exhausted[provider] = True
+                logger.error(f"[KeyManager] All {len(keys)} {provider} keys failed consecutively. Marking as globally exhausted.")
+                return False
+
             new_idx = (self._current_index.get(provider, 0) + 1) % len(keys)
             self._current_index[provider] = new_idx
             self._last_rotation_time[provider] = time.time()  # 로테이션 성공 시 Timestamp 기록
@@ -94,7 +116,6 @@ class LLMKeyManager:
             masked_key = f"{self.get_key(provider)[:10]}..."
             logger.info(f"[KeyManager] Rotated {provider} key to index {new_idx} (Key: {masked_key})")
             
-            # 인덱스가 0으로 돌아왔다면 한 바퀴 다 돈 것임 (해당 판단은 이제 클라이언트 루프에서 담당합니다)
             return True
 
     def get_cooldown_remaining(self, provider: str) -> float:
@@ -160,6 +181,7 @@ class LLMKeyManager:
         # 모든 공급자 리셋
         for p in self._quota_exhausted:
             self._quota_exhausted[p] = False
+            self._consecutive_failures[p] = 0
         logger.info("[KeyManager] Reset quota_exhausted for all providers.")
         return {"reset": list(self._quota_exhausted.keys()), "message": "모든 공급자 quota exhausted 플래그 해제됨."}
 

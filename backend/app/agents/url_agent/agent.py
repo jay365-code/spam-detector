@@ -134,6 +134,10 @@ class UrlAnalysisAgent:
             }
             
         except Exception as e:
+            error_msg = str(e).lower()
+            if "quota exhausted" in error_msg or "429" in error_msg:
+                # Re-raise to trigger global process_message quota handling
+                raise e
             print(f"ISAA Agent Error: {e}")
             return {
                 "is_spam": False,
@@ -232,6 +236,9 @@ class UrlAnalysisAgent:
                 }
             }
         except Exception as e:
+            error_msg = str(e).lower()
+            if "quota exhausted" in error_msg or "429" in error_msg:
+                raise e
             logger.error(f"ISAA Agent Async Error: {e}")
             return {
                 "is_spam": False,

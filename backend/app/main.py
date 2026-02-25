@@ -714,55 +714,65 @@ def process_message(message: str) -> dict:
     
     if has_url:
         logger.info("    [Stage 3] URL Deep Dive...")
-        isaa_result = url_filter.check(message, decoded_text=decoded_text)
-        
-        url_is_spam = isaa_result.get("is_spam")
-        reason_lower = isaa_result.get("reason", "").lower()
-        is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only"])
-        
-        if is_inconclusive or url_is_spam is None:
-             # URL 심층 분석 불가 (404, 내용 없음, 오류 등) -> 본문 분석 결과(Content Agent)를 전적으로 따름
-             logger.info("    -> URL Analysis Inconclusive/Error. Falling back to Content Agent verdict.")
-             final_reason += f" | [URL: Inaccessible/Empty - Using Content Verdict]"
-        elif url_is_spam:
-             # 1차: 실질적 유해성(Harmful Intent) 여부 확인
-             url_reason = isaa_result.get("reason", "").lower()
-             url_code = isaa_result.get('classification_code')
-             
-             # 단순 문맥 불일치(Inconsistency)나 사칭(Impersonation)만으로는 HAM을 SPAM으로 뒤집지 않음.
-             # 실질적 유해성(도박, 성인, 불법, 사기 등)이 언급되거나 관련 코드가 있는 경우에만 SPAM 전환.
-             harm_keywords = ["gambling", "adult", "phishing", "malicious", "fraud", "scam", "illegal", "유해", "도박", "성인", "피싱", "사기"]
-             has_harmful_intent = any(k in url_reason for k in harm_keywords) or (url_code and str(url_code) != "0")
-             
-             if not final_is_spam and not has_harmful_intent:
-                  # 본문은 HAM인데 URL은 단순 불일치/낚시성인 경우 -> HAM 유지 (의도 중심)
-                  logger.info("    -> URL shows inconsistency but no harmful intent. Maintaining HAM.")
-                  final_reason += " | [URL: Inconsistent but no clear harm (HAM maintained)]"
-             else:
-                  # 실제 유해성이 확인되었거나 본문이 이미 SPAM인 경우 -> SPAM 확정
-                  logger.info("    -> Suspicious URL with Harmful Intent Confirmed! Finalizing as SPAM.")
-                  final_is_spam = True
-                  final_reason += f" | [URL: DETECTED SPAM]"
-                  
-                  # 확률 업데이트
-                  url_prob = isaa_result.get("spam_probability", 0.95)
-                  if url_prob > final_prob:
-                      final_prob = url_prob
-                  
-                  # 코드 업데이트 (본문이 HAM이었거나 코드가 없으면 URL 코드 사용, 기본값 '0')
-                  if url_code and str(url_code) != "0":
-                       final_code = url_code
-                  elif not final_code or str(final_code).startswith("HAM"):
-                       final_code = "0" 
-                  
-                  logger.info(f"[URL Override] Final Verdict: SPAM, Code: {final_code}")
-        else:
-             # Confirmed Safe -> Force HAM (Override Content SPAM if confirmed as safe institution/service)
-             if final_is_spam:
-                  logger.info("    -> URL Confirmed Safe! Overriding Content SPAM to HAM.")
-                  final_is_spam = False
-                  final_reason += " | [URL: CONFIRMED SAFE (Override)]"
-                  final_code = None
+        try:
+            isaa_result = url_filter.check(message, decoded_text=decoded_text)
+                    
+            url_is_spam = isaa_result.get("is_spam")
+            reason_lower = isaa_result.get("reason", "").lower()
+            is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only"])
+            
+            if is_inconclusive or url_is_spam is None:
+                 # URL 심층 분석 불가 (404, 내용 없음, 오류 등) -> 본문 분석 결과(Content Agent)를 전적으로 따름
+                 logger.info("    -> URL Analysis Inconclusive/Error. Falling back to Content Agent verdict.")
+                 final_reason += f" | [URL: Inaccessible/Empty - Using Content Verdict]"
+            elif url_is_spam:
+                 # 1차: 실질적 유해성(Harmful Intent) 여부 확인
+                 url_reason = isaa_result.get("reason", "").lower()
+                 url_code = isaa_result.get('classification_code')
+                 
+                 # 단순 문맥 불일치(Inconsistency)나 사칭(Impersonation)만으로는 HAM을 SPAM으로 뒤집지 않음.
+                 # 실질적 유해성(도박, 성인, 불법, 사기 등)이 언급되거나 관련 코드가 있는 경우에만 SPAM 전환.
+                 harm_keywords = ["gambling", "adult", "phishing", "malicious", "fraud", "scam", "illegal", "유해", "도박", "성인", "피싱", "사기"]
+                 has_harmful_intent = any(k in url_reason for k in harm_keywords) or (url_code and str(url_code) != "0")
+                 
+                 if not final_is_spam and not has_harmful_intent:
+                      # 본문은 HAM인데 URL은 단순 불일치/낚시성인 경우 -> HAM 유지 (의도 중심)
+                      logger.info("    -> URL shows inconsistency but no harmful intent. Maintaining HAM.")
+                      final_reason += " | [URL: Inconsistent but no clear harm (HAM maintained)]"
+                 else:
+                      # 실제 유해성이 확인되었거나 본문이 이미 SPAM인 경우 -> SPAM 확정
+                      logger.info("    -> Suspicious URL with Harmful Intent Confirmed! Finalizing as SPAM.")
+                      final_is_spam = True
+                      final_reason += f" | [URL: DETECTED SPAM]"
+                      
+                      # 확률 업데이트
+                      url_prob = isaa_result.get("spam_probability", 0.95)
+                      if url_prob > final_prob:
+                          final_prob = url_prob
+                      
+                      # 코드 업데이트 (본문이 HAM이었거나 코드가 없으면 URL 코드 사용, 기본값 '0')
+                      if url_code and str(url_code) != "0":
+                           final_code = url_code
+                      elif not final_code or str(final_code).startswith("HAM"):
+                           final_code = "0" 
+                      
+                      logger.info(f"[URL Override] Final Verdict: SPAM, Code: {final_code}")
+            else:
+                 # Confirmed Safe -> Force HAM (Override Content SPAM if confirmed as safe institution/service)
+                 if final_is_spam:
+                      logger.info("    -> URL Confirmed Safe! Overriding Content SPAM to HAM.")
+                      final_is_spam = False
+                      final_reason += " | [URL: CONFIRMED SAFE (Override)]"
+                      final_code = None
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "quota" in error_msg or "429" in error_msg or "exhausted" in error_msg:
+                logger.warning(f"    -> [Stage 3] URL Agent API Quota Exhausted! Falling back to Content Agent verdict.")
+                final_reason = f"429 Quota Exhausted. Content Agent Fallback: {final_reason}"
+                return build_result(final_is_spam, final_code, final_reason)
+            else:
+                logger.error(f"URL Deep Dive Failed: {e}")
+                final_reason += f" | [URL Error: {e}]"
 
 
     logger.info("    -> Classified as HAM.")
@@ -854,22 +864,29 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                             # URL 모드에서도 난독화 체크
                             s1_url = rule_filter.check(user_msg)
                             decoded_text_url = s1_url.get("decoded_text")
-                            isaa_result = await url_filter.acheck(user_msg, status_callback=send_status, decoded_text=decoded_text_url)
-                            
-                            analysis_text = f"**[ISAA URL 분석 결과]**\n"
-                            if isaa_result["is_spam"]:
-                                analysis_text += f"🚫 **스팸 탐지됨** ({int(isaa_result.get('spam_probability',0)*100)}%)\n"
-                                analysis_text += f"- 분류: {isaa_result.get('classification_code', 'Unknown')}\n"
-                                analysis_text += f"- 사유: {isaa_result.get('reason')}\n"
-                            else:
-                                analysis_text += f"✅ **정상 URL**\n- 사유: {isaa_result.get('reason')}\n"
+                            try:
+                                isaa_result = await url_filter.acheck(user_msg, status_callback=send_status, decoded_text=decoded_text_url)
                                 
-                            details = isaa_result.get("details", {})
-                            analysis_text += f"\n**[상세 분석 정보]**\n"
-                            analysis_text += f"- URL 경로: {details.get('extracted_url', 'N/A')} → {details.get('final_url', 'N/A')}\n"
-                            analysis_text += f"- 팝업/캡차: {details.get('popup_count', 0)}개 / {'있음' if details.get('captcha_detected') else '없음'}\n"
+                                analysis_text = f"**[ISAA URL 분석 결과]**\n"
+                                if isaa_result["is_spam"]:
+                                    analysis_text += f"🚫 **스팸 탐지됨** ({int(isaa_result.get('spam_probability',0)*100)}%)\n"
+                                    analysis_text += f"- 분류: {isaa_result.get('classification_code', 'Unknown')}\n"
+                                    analysis_text += f"- 사유: {isaa_result.get('reason')}\n"
+                                else:
+                                    analysis_text += f"✅ **정상 URL**\n- 사유: {isaa_result.get('reason')}\n"
+                                    
+                                details = isaa_result.get("details", {})
+                                analysis_text += f"\n**[상세 분석 정보]**\n"
+                                analysis_text += f"- URL 경로: {details.get('extracted_url', 'N/A')} → {details.get('final_url', 'N/A')}\n"
+                                analysis_text += f"- 팝업/캡차: {details.get('popup_count', 0)}개 / {'있음' if details.get('captcha_detected') else '없음'}\n"
 
-                            await send_text_chunk(analysis_text)
+                                await send_text_chunk(analysis_text)
+                            except Exception as e:
+                                error_msg = str(e).lower()
+                                if "quota" in error_msg or "429" in error_msg or "exhausted" in error_msg:
+                                    await send_text_chunk("\n⚠️ **오류**: API Quota 초과(429)로 인해 분석 불가.\n")
+                                else:
+                                    await send_text_chunk(f"\n⚠️ **URL 분석 오류**: {e}\n")
 
                         # 3. TEXT Mode (Content Only) - Isolated!
                         elif mode == "TEXT":
@@ -999,16 +1016,30 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                             if has_url:
                                 await send_text_chunk("---\n")
                                 # Content Agent 결과를 URL Agent에 전달 (연관성 확보)
-                                isaa_result = await url_filter.acheck(user_msg, status_callback=send_status, content_context=s2_result, decoded_text=decoded_text)
-                                
-                                url_text = f"**[URL 분석]** {'🚫 위험' if isaa_result.get('is_spam') else '✅ 안전'}\n"
-                                url_text += f"- 사유: {isaa_result.get('reason')}\n"
-                                await send_text_chunk(url_text)
-                                
-                                # Bidirectional Override Logic
-                                url_is_spam = isaa_result.get('is_spam')
-                                reason_lower = isaa_result.get("reason", "").lower()
-                                is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only", "no url found", "no url extracted", "no url to scrape"]) or url_is_spam is None
+                                try:
+                                    isaa_result = await url_filter.acheck(user_msg, status_callback=send_status, content_context=s2_result, decoded_text=decoded_text)
+                                    url_text = f"**[URL 분석]** {'🚫 위험' if isaa_result.get('is_spam') else '✅ 안전'}\n"
+                                    url_text += f"- 사유: {isaa_result.get('reason')}\n"
+                                    await send_text_chunk(url_text)
+                                    
+                                    # Bidirectional Override Logic
+                                    url_is_spam = isaa_result.get('is_spam')
+                                    reason_lower = isaa_result.get("reason", "").lower()
+                                    is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only", "no url found", "no url extracted", "no url to scrape"]) or url_is_spam is None
+                                except Exception as e:
+                                    error_msg = str(e).lower()
+                                    if "quota" in error_msg or "429" in error_msg or "exhausted" in error_msg:
+                                        logger.warning(f"[WebSocket] URL Agent API Quota Exhausted! Falling back to Content Agent verdict.")
+                                        await send_text_chunk("\n⚠️ **참고**: API Quota 초과(429)로 인해 URL 심층 분석이 실패했습니다. 텍스트 분석 결과만 유지합니다.\n")
+                                        isaa_result = None
+                                        url_is_spam = None
+                                        is_inconclusive = True
+                                    else:
+                                        logger.error(f"[WebSocket] URL Deep Dive Failed: {e}")
+                                        await send_text_chunk(f"\n⚠️ **URL 분석 오류**: {e}\n")
+                                        isaa_result = None
+                                        url_is_spam = None
+                                        is_inconclusive = True
                                 
                                 if is_inconclusive:
                                      # URL 심층 분석 불가 -> 본문 결과(Content Agent) 폴백 지지
@@ -1326,6 +1357,13 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                             logger.info(f"Cancelled before start.")
                             return index, {"is_spam": None, "reason": "Cancelled"}
                             
+                        from app.core.llm_manager import key_manager
+                        provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
+                        if key_manager.is_quota_exhausted(provider):
+                            logger.info(f"Batch {index+1} skipped due to global Quota Exhaustion.")
+                            return index, {"is_spam": None, "reason": f"Skipped (Global {provider} Quota Exhausted)"}
+
+                            
                         # Smart Concurrency: Check for URL (including obfuscated)
                         is_url_msg = has_potential_url(msg)
                         selected_sem = sem_browser if is_url_msg else sem_llm
@@ -1337,6 +1375,10 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                             if manager.is_cancelled(client_id):
                                 logger.info(f"Cancelled after semaphore acquisition.")
                                 return index, {"is_spam": None, "reason": "Cancelled"}
+                                
+                            if key_manager.is_quota_exhausted(provider):
+                                logger.info(f"Batch {index+1} aborted after queueing due to Quota Exhaustion.")
+                                return index, {"is_spam": None, "reason": f"Aborted (Global {provider} Quota Exhausted)"}
                                 
                             logger.debug(f"Acquired {queue_type} semaphore. Starting process...")
                             idx, res = await process_single_item(index, msg, s1)

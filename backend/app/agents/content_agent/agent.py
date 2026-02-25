@@ -224,7 +224,8 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         if key_manager.is_quota_exhausted(provider):
             raise QuotaExhaustedNoRetryError(f"{provider} quota exhausted (all keys). No retry.")
         keys = key_manager._keys_pool.get(provider, [])
-        max_quota_tries = max(3, len(keys) * 3)
+        # User Request: Retry exactly the number of available keys to test each key once on Quota 429.
+        max_quota_tries = max(1, len(keys))
         
         for attempt in range(max_quota_tries):
             if key_manager.is_quota_exhausted(provider):
@@ -282,7 +283,8 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                     from langchain_core.messages import HumanMessage
                     response = await llm.ainvoke([HumanMessage(content=prompt)])
                     content = _normalize_llm_content(response.content)
-                
+                # All providers
+                key_manager.report_success(provider)
                 return content
                 
             except Exception as e:
@@ -305,16 +307,14 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                         logger.warning(f"[ContentAnalysisAgent] 429/Quota Detected. Requested model: {req_model}")
                         logger.warning(f"[ContentAnalysisAgent] {provider} Quota Exceeded detected. Attempting key rotation...")
                         
-                        # [동시성 개선] 실패한 키를 넘겨주어 중복 전환 방지
-                        key_manager.rotate_key(provider, failed_key=current_api_key)
+                        # [동시성 개선] 실패한 키를 넘겨주어 중복 전환 방지 및 글로벌 고갈 감지
+                        is_rotated = key_manager.rotate_key(provider, failed_key=current_api_key)
+                        
+                        if not is_rotated:
+                            logger.error(f"[ContentAnalysisAgent] Global exhaustion reached for {provider}.")
+                            raise QuotaExhaustedNoRetryError(f"{provider} quota globally exhausted. No retry.") from e
                         
                         if attempt < max_quota_tries - 1:
-                            cooldown = key_manager.get_cooldown_remaining(provider)
-                            if cooldown > 0:
-                                import asyncio
-                                logger.info(f"[ContentAnalysisAgent] Global cooldown activated. Pausing for {cooldown:.1f}s before retry...")
-                                await asyncio.sleep(cooldown)
-
                             logger.info(f"[ContentAnalysisAgent] Switching to new {provider} key instantly (Attempt {attempt+1}/{max_quota_tries})...")
                             continue
                         else:
@@ -710,8 +710,13 @@ Step 4. SPAM 확정 조건:
             return result
             
         except Exception as e:
-            logger.exception("LLM 분석 중 오류 발생")
-            return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": "Error (LLM Fail)"}
+            error_msg = str(e).lower()
+            if "quota" in error_msg or "exhausted" in error_msg or "429" in error_msg:
+                logger.error(f"LLM 분석 중 Quota 소진 오류 발생: {e}")
+                return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": f"Quota Exhausted Error: {e}"}
+            else:
+                logger.exception("LLM 분석 중 오류 발생")
+                return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": f"Error (LLM Fail): {e}"}
 
     from typing import Callable, Awaitable, Optional
 
@@ -973,11 +978,17 @@ Step 4. SPAM 확정 조건:
             @retry(
                 stop=stop_after_attempt(3),
                 wait=wait_exponential(multiplier=1, min=2, max=10),
+                retry=retry_if_exception(lambda e: not isinstance(e, QuotaExhaustedNoRetryError)),
                 reraise=True
             )
             async def call_summary_llm():
                 try:
-                    return await llm.ainvoke([HumanMessage(content=prompt)])
+                    provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
+                    if key_manager.is_quota_exhausted(provider):
+                        raise QuotaExhaustedNoRetryError(f"{provider} quota globally exhausted. No retry.")
+                    response = await llm.ainvoke([HumanMessage(content=prompt)])
+                    key_manager.report_success(provider)
+                    return response
                 except Exception as e:
                     error_msg = str(e).lower()
                     provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
@@ -998,14 +1009,14 @@ Step 4. SPAM 확정 조건:
                         
                         # Get current key to mark as failed
                         current_key = key_manager.get_key(provider)
-                        key_manager.rotate_key(provider, failed_key=current_key)
+                        is_rotated = key_manager.rotate_key(provider, failed_key=current_key)
                         
-                        cooldown = key_manager.get_cooldown_remaining(provider)
-                        if cooldown > 0:
-                            import asyncio
-                            logger.info(f"[ContentAgent] Global cooldown activated for summary. Pausing {cooldown:.1f}s...")
-                            await asyncio.sleep(cooldown)
-                            
+                        if not is_rotated:
+                            logger.error(f"[ContentAgent] Global exhaustion reached for {provider} during summary.")
+                            raise QuotaExhaustedNoRetryError(f"{provider} quota globally exhausted. No retry.") from e
+                        
+                        # 쿨다운 대기 없이 즉시 다음 키로 시도
+                        pass
                         # IMPORTANT: Since llm instance is created outside, we might need to recreate it or 
                         # just rely on the fact that next call to _get_chat_model (if we were calling it inside) would get new key.
                         # BUT here `llm` is already instantiated `llm = self._get_chat_model()`.
@@ -1014,7 +1025,9 @@ Step 4. SPAM 확정 조건:
                         # OR we can just call `self._get_chat_model().ainvoke` directly inside here.
                         
                         new_llm = self._get_chat_model()
-                        return await new_llm.ainvoke([HumanMessage(content=prompt)])
+                        response = await new_llm.ainvoke([HumanMessage(content=prompt)])
+                        key_manager.report_success(provider)
+                        return response
                         
                     raise e
                 

@@ -128,6 +128,12 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         msg = state.get("message", "")
         s1 = state.get("s1_result", {})
         
+        # [Fallback] If Content Agent failed due to Quota Error, halt the pipeline immediately 
+        c_reason = c_res.get("reason", "").lower()
+        if "quota" in c_reason or "exhausted" in c_reason or "429" in c_reason:
+            logger.warning(f"[Graph Router] Halting pipeline due to Quota Error in Content Agent.")
+            return "aggregator_node"
+            
         routes = []
         
         # Check URL existence (Pre-check) to avoid unnecessary agent call
