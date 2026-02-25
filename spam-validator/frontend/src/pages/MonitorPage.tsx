@@ -6,12 +6,20 @@ import {
 } from 'recharts';
 import {
     FolderSearch, RefreshCw, ChevronRight, AlertCircle, BarChart3,
-    ArrowLeft, Search, CheckCircle2
+    ArrowLeft, Search, CheckCircle2, X
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { FolderPickerModal } from '../FolderPickerModal';
 import { useEffect } from 'react'; // Added useEffect import
+
+interface Memo {
+    id: string;
+    date: string;
+    item: string;
+    memo: string;
+    updated_at: string;
+}
 
 // --- Utility ---
 function cn(...inputs: ClassValue[]) {
@@ -93,6 +101,14 @@ export default function MonitorPage() {
     const [error, setError] = useState<string | null>(null);
     const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
 
+    // Memo State
+    const [memos, setMemos] = useState<Memo[]>([]);
+    const [isMemoModalOpen, setIsMemoModalOpen] = useState(false);
+    const [activeMemoDate, setActiveMemoDate] = useState<string>('');
+    const [activeMemoItem, setActiveMemoItem] = useState<string>('');
+    const [activeMemoContent, setActiveMemoContent] = useState<string>('');
+    const [isSavingMemo, setIsSavingMemo] = useState(false);
+
     // Detail View State
     // Detail View State
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -127,15 +143,93 @@ export default function MonitorPage() {
         setSelectedDate(null);
 
         try {
-            const res = await axios.get(`http://localhost:8001/api/monitor/trend`, {
-                params: { folder_path: folderPath }
-            });
-            setTrendData(res.data);
+            const [trendRes, memosRes] = await Promise.all([
+                axios.get(`http://localhost:8001/api/monitor/trend`, {
+                    params: { folder_path: folderPath }
+                }),
+                axios.get(`http://localhost:8001/api/monitor/memos`, {
+                    params: { folder_path: folderPath }
+                }).catch(() => ({ data: [] })) // Ignore error if memos.json doesn't exist yet
+            ]);
+
+            setTrendData(trendRes.data);
+            setMemos(memosRes.data || []);
         } catch (err: any) {
             console.error(err);
             setError(err.response?.data?.detail || "Failed to load trend data.");
         } finally {
             setLoading(false);
+        }
+    };
+
+    // Memo Actions
+    const handleGraphClick = (e: any) => {
+        if (!e || !e.activeLabel) return;
+        const clickedDate = e.activeLabel;
+        setActiveMemoDate(clickedDate);
+        setActiveMemoItem('General');
+
+        // Find existing memo for General by default
+        const existing = memos.find(m => m.date === clickedDate && m.item === 'General');
+        setActiveMemoContent(existing ? existing.memo : '');
+
+        setIsMemoModalOpen(true);
+    };
+
+    const handleSaveMemo = async () => {
+        if (!activeMemoItem || !activeMemoDate) return;
+        setIsSavingMemo(true);
+        try {
+            const res = await axios.post('http://localhost:8001/api/monitor/memos', {
+                date: activeMemoDate,
+                item: activeMemoItem,
+                memo: activeMemoContent
+            }, {
+                params: { folder_path: folderPath }
+            });
+
+            setMemos(prev => {
+                const filtered = prev.filter(m => !(m.date === activeMemoDate && m.item === activeMemoItem));
+                if (activeMemoContent.trim() === '') {
+                    // If emptied, we effectively delete it (or leave it empty). 
+                    // We should ideally call delete API, but saving empty string works as a clear.
+                    if (res.data.id) {
+                        axios.delete(`http://localhost:8001/api/monitor/memos/${res.data.id}`, {
+                            params: { folder_path: folderPath }
+                        }).catch(console.error);
+                    }
+                    return filtered;
+                }
+                return [...filtered, res.data];
+            });
+            setIsMemoModalOpen(false);
+        } catch (err) {
+            console.error("Failed to save memo", err);
+            alert("Failed to save memo");
+        } finally {
+            setIsSavingMemo(false);
+        }
+    };
+
+    const handleDeleteMemo = async () => {
+        const existing = memos.find(m => m.date === activeMemoDate && m.item === activeMemoItem);
+        if (!existing) {
+            setIsMemoModalOpen(false);
+            return;
+        }
+
+        setIsSavingMemo(true);
+        try {
+            await axios.delete(`http://localhost:8001/api/monitor/memos/${existing.id}`, {
+                params: { folder_path: folderPath }
+            });
+            setMemos(prev => prev.filter(m => m.id !== existing.id));
+            setIsMemoModalOpen(false);
+        } catch (err) {
+            console.error("Failed to delete memo", err);
+            alert("Failed to delete memo");
+        } finally {
+            setIsSavingMemo(false);
         }
     };
 
@@ -183,14 +277,78 @@ export default function MonitorPage() {
 
     // --- Renderers ---
 
+    // Build custom tooltip function
+    const CustomTooltip = ({ active, payload, label }: any) => {
+        if (active && payload && payload.length) {
+            // Check memos for this date
+            const dateMemos = memos.filter(m => m.date === label);
+
+            return (
+                <div className="bg-white/95 p-4 border border-slate-200 shadow-xl rounded-xl backdrop-blur-md">
+                    <p className="font-bold text-slate-800 mb-2 border-b border-slate-100 pb-2">{label}</p>
+                    {payload.map((entry: any, index: number) => {
+                        let valStr = entry.value;
+                        if (typeof valStr === 'number') {
+                            valStr = entry.name === 'Accuracy' ? `${(valStr * 100).toFixed(1)}%` : valStr.toFixed(4);
+                        }
+
+                        // Check if memo exists for this specific item or 'General'
+                        const hasMemo = dateMemos.some(m => m.item === entry.name);
+
+                        return (
+                            <div key={`item-${index}`} className="flex items-center justify-between text-sm py-1 gap-4">
+                                <span className="flex items-center gap-2" style={{ color: entry.color }}>
+                                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }}></span>
+                                    {entry.name}:
+                                    {hasMemo && <span title="Has Memo" className="w-1.5 h-1.5 bg-yellow-400 rounded-full inline-block ml-1 ring-1 ring-yellow-500"></span>}
+                                </span>
+                                <span className="font-semibold">{valStr}</span>
+                            </div>
+                        );
+                    })}
+                    {dateMemos.length > 0 && (
+                        <div className="mt-3 pt-2 border-t border-slate-100 text-xs text-slate-500 max-w-[200px]">
+                            <div className="font-semibold flex items-center gap-1 mb-1 text-slate-600">
+                                📝 Memos
+                            </div>
+                            {dateMemos.map(m => (
+                                <div key={m.id} className="truncate" title={m.memo}>
+                                    <span className="font-medium">[{m.item}]</span> {m.memo}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+        return null;
+    };
+
+    const renderCustomDot = (props: any, metricName: string) => {
+        const { cx, cy, stroke, payload } = props;
+        const hasMemo = memos.some(m => m.date === payload.date && (m.item === metricName || m.item === 'General'));
+
+        return (
+            <g key={`dot-${payload.date}-${metricName}`}>
+                {/* Always draw standard dot */}
+                <circle cx={cx} cy={cy} r={4} fill="#fff" stroke={stroke} strokeWidth={2} />
+                {/* Draw inner highlight if memo exists */}
+                {hasMemo && (
+                    <circle cx={cx} cy={cy} r={2.5} fill="#facc15" stroke="none" />
+                )}
+            </g>
+        );
+    };
+
     const renderTrendView = () => (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Charts Section */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Combined Chart (Kappa + MCC + Accuracy) */}
-                <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative group">
                     <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
                         <BarChart3 size={16} /> Performance Trends
+                        <span className="text-xs font-normal text-slate-400 normal-case ml-2">(Click data points to add memos)</span>
                     </h3>
                     <div className="h-[350px]">
                         <ResponsiveContainer width="100%" height="100%">
@@ -208,6 +366,7 @@ export default function MonitorPage() {
                                     };
                                 })}
                                 margin={{ top: 20, right: 0, left: 0, bottom: 0 }}
+                                onClick={handleGraphClick}
                             >
                                 <defs>
                                     <linearGradient id="colorAccuracy" x1="0" y1="0" x2="0" y2="1">
@@ -245,22 +404,7 @@ export default function MonitorPage() {
                                     tickFormatter={(value) => value.toFixed(1)}
                                     label={{ value: "Kappa / MCC", angle: 90, position: 'insideRight', fontSize: 11, fill: '#64748b', fontWeight: 600 }}
                                 />
-                                <Tooltip
-                                    contentStyle={{
-                                        borderRadius: '16px',
-                                        border: '1px solid #f1f5f9',
-                                        boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
-                                        padding: '12px 16px'
-                                    }}
-                                    labelFormatter={(label) => formatDate(label)}
-                                    formatter={(value: any, name: any) => {
-                                        if (value === undefined || value === null) return [value, name];
-                                        const num = Number(value);
-                                        if (isNaN(num)) return [value, name];
-                                        if (name === 'Accuracy') return [`${(num * 100).toFixed(1)}%`, name];
-                                        return [num.toFixed(4), name];
-                                    }}
-                                />
+                                <Tooltip content={<CustomTooltip />} />
                                 <Legend
                                     onClick={handleLegendClick}
                                     cursor="pointer"
@@ -275,7 +419,7 @@ export default function MonitorPage() {
                                     fill="url(#colorAccuracy)"
                                     stroke="#6366f1"
                                     strokeWidth={3}
-                                    dot={{ r: 4, fill: '#fff', stroke: '#6366f1', strokeWidth: 2 }}
+                                    dot={(props) => renderCustomDot(props, 'Accuracy')}
                                     activeDot={{ r: 6, strokeWidth: 2, fill: '#fff', stroke: '#6366f1' }}
                                     hide={!visibleMetrics.accuracy}
                                 />
@@ -286,7 +430,7 @@ export default function MonitorPage() {
                                     name="Kappa"
                                     stroke="#d946ef"
                                     strokeWidth={3}
-                                    dot={{ r: 4, fill: '#fff', stroke: '#d946ef', strokeWidth: 2 }}
+                                    dot={(props) => renderCustomDot(props, 'Kappa')}
                                     activeDot={{ r: 6, strokeWidth: 0, fill: '#d946ef' }}
                                     hide={!visibleMetrics.kappa}
                                 />
@@ -309,7 +453,7 @@ export default function MonitorPage() {
                                     name="MCC"
                                     stroke="#14b8a6"
                                     strokeWidth={3}
-                                    dot={{ r: 4, fill: '#fff', stroke: '#14b8a6', strokeWidth: 2 }}
+                                    dot={(props) => renderCustomDot(props, 'MCC')}
                                     activeDot={{ r: 6, strokeWidth: 0, fill: '#14b8a6' }}
                                     hide={!visibleMetrics.mcc}
                                 />
@@ -320,7 +464,7 @@ export default function MonitorPage() {
                                     name="Precision"
                                     stroke="#f59e0b"
                                     strokeWidth={3}
-                                    dot={{ r: 4, fill: '#fff', stroke: '#f59e0b', strokeWidth: 2 }}
+                                    dot={(props) => renderCustomDot(props, 'Precision')}
                                     activeDot={{ r: 6, strokeWidth: 0, fill: '#f59e0b' }}
                                     hide={!visibleMetrics.precision}
                                 />
@@ -331,7 +475,7 @@ export default function MonitorPage() {
                                     name="Recall"
                                     stroke="#3b82f6"
                                     strokeWidth={3}
-                                    dot={{ r: 4, fill: '#fff', stroke: '#3b82f6', strokeWidth: 2 }}
+                                    dot={(props) => renderCustomDot(props, 'Recall')}
                                     activeDot={{ r: 6, strokeWidth: 0, fill: '#3b82f6' }}
                                     hide={!visibleMetrics.recall}
                                 />
@@ -690,6 +834,75 @@ export default function MonitorPage() {
                 onSelect={handleFolderPicked}
                 initialPath={folderPath}
             />
+            {/* Memo Modal */}
+            {isMemoModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            <h2 className="text-xl font-bold text-slate-800">
+                                Add Memo - {activeMemoDate}
+                            </h2>
+                            <button onClick={() => setIsMemoModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">Item</label>
+                                <select
+                                    value={activeMemoItem}
+                                    onChange={(e) => {
+                                        setActiveMemoItem(e.target.value);
+                                        const existing = memos.find(m => m.date === activeMemoDate && m.item === e.target.value);
+                                        setActiveMemoContent(existing ? existing.memo : '');
+                                    }}
+                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-slate-700 outline-none"
+                                >
+                                    <option value="General">General</option>
+                                    <option value="Accuracy">Accuracy</option>
+                                    <option value="Kappa">Kappa</option>
+                                    <option value="MCC">MCC</option>
+                                    <option value="Precision">Precision</option>
+                                    <option value="Recall">Recall</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">Memo (Leave empty to delete)</label>
+                                <textarea
+                                    value={activeMemoContent}
+                                    onChange={(e) => setActiveMemoContent(e.target.value)}
+                                    placeholder="Write your analysis notes here..."
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-slate-700 outline-none min-h-[120px] resize-y"
+                                ></textarea>
+                            </div>
+                        </div>
+                        <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-between gap-3">
+                            <button
+                                onClick={handleDeleteMemo}
+                                disabled={isSavingMemo || !memos.find(m => m.date === activeMemoDate && m.item === activeMemoItem)}
+                                className="px-5 py-2.5 rounded-xl font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                Delete
+                            </button>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setIsMemoModalOpen(false)}
+                                    className="px-5 py-2.5 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleSaveMemo}
+                                    disabled={isSavingMemo}
+                                    className="px-6 py-2.5 rounded-xl font-medium text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm hover:shadow transition-all disabled:opacity-50"
+                                >
+                                    {isSavingMemo ? 'Saving...' : 'Save'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </main>
     );
 }

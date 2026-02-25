@@ -39,6 +39,18 @@ class MonitorDailyResponse(BaseModel):
     source_breakdown: List[Dict[str, Any]]
     diffs: List[Dict[str, Any]]
 
+class MemoRequest(BaseModel):
+    date: str
+    item: str
+    memo: str
+
+class MemoResponse(BaseModel):
+    id: str
+    date: str
+    item: str
+    memo: str
+    updated_at: str
+
 # --- Logic ---
 
 def parse_filename(filename: str) -> Optional[Dict[str, str]]:
@@ -235,6 +247,111 @@ async def get_daily_detail(date: str, folder_path: str = Query(..., description=
         source_breakdown=source_breakdown,
         diffs=all_diffs
     )
+
+import uuid
+
+def _get_memos_file_path(folder_path: str) -> str:
+    return os.path.join(folder_path, "memos.json")
+
+def _read_memos(folder_path: str) -> List[Dict[str, Any]]:
+    memos_file = _get_memos_file_path(folder_path)
+    if os.path.exists(memos_file):
+        try:
+            with open(memos_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Error reading memos.json: {e}")
+            return []
+    return []
+
+def _write_memos(folder_path: str, memos: List[Dict[str, Any]]):
+    memos_file = _get_memos_file_path(folder_path)
+    try:
+        with open(memos_file, 'w', encoding='utf-8') as f:
+            json.dump(memos, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Error writing memos.json: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save memo.")
+
+@router.get("/memos", response_model=List[MemoResponse])
+async def get_memos(folder_path: str = Query(..., description="Absolute path to JSON folder")):
+    """
+    선택한 폴더의 memos.json에서 메모 목록을 가져옵니다.
+    """
+    if not os.path.exists(folder_path):
+         raise HTTPException(status_code=400, detail="Folder does not exist")
+    return _read_memos(folder_path)
+
+@router.post("/memos", response_model=MemoResponse)
+async def save_memo(
+    request: MemoRequest, 
+    folder_path: str = Query(..., description="Absolute path to JSON folder")
+):
+    """
+    새 메모를 추가하거나 기존 메모(같은 날짜+항목)를 업데이트합니다.
+    """
+    try:
+        print(f"DEBUG: Entering POST /memos with folder_path '{folder_path}'")
+        print(f"DEBUG: request payload: {request}")
+        
+        if not os.path.exists(folder_path):
+            print(f"DEBUG: Folder path does not exist: {folder_path}")
+            raise HTTPException(status_code=400, detail="Folder does not exist")
+
+        memos = _read_memos(folder_path)
+        print(f"DEBUG: Loaded {len(memos)} existing memos.")
+
+        # Check if memo already exists for this date and item
+        existing_memo = next((m for m in memos if m['date'] == request.date and m['item'] == request.item), None)
+        
+        now_str = datetime.now().isoformat()
+        
+        if existing_memo:
+            print(f"DEBUG: Updating existing memo ID {existing_memo.get('id')}")
+            existing_memo['memo'] = request.memo
+            existing_memo['updated_at'] = now_str
+            response_data = existing_memo
+        else:
+            new_memo = {
+                "id": str(uuid.uuid4()),
+                "date": request.date,
+                "item": request.item,
+                "memo": request.memo,
+                "updated_at": now_str
+            }
+            print(f"DEBUG: Creating new memo: {new_memo}")
+            memos.append(new_memo)
+            response_data = new_memo
+            
+        _write_memos(folder_path, memos)
+        print(f"DEBUG: Successfully wrote memos to {folder_path}")
+        return response_data
+    except Exception as e:
+        import traceback
+        print(f"DEBUG: ERROR in save_memo: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/memos/{memo_id}")
+async def delete_memo(
+    memo_id: str,
+    folder_path: str = Query(..., description="Absolute path to JSON folder")
+):
+    """
+    메모를 삭제합니다.
+    """
+    if not os.path.exists(folder_path):
+         raise HTTPException(status_code=400, detail="Folder does not exist")
+
+    memos = _read_memos(folder_path)
+    initial_len = len(memos)
+    memos = [m for m in memos if m.get('id') != memo_id]
+    
+    if len(memos) == initial_len:
+         raise HTTPException(status_code=404, detail="Memo not found")
+         
+    _write_memos(folder_path, memos)
+    return {"success": True}
 
 @router.get("/fs/list", response_model=FolderListResponse)
 async def list_folders(path: Optional[str] = Query(None, description="Path to list folders from")):
