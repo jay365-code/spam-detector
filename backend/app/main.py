@@ -423,7 +423,8 @@ async def search_spam_rag_examples(query: str, k: int = 3):
         results = service.search_similar(intent_summary, k=k)
         
         # 3. Filter by RAG_DISTANCE_THRESHOLD (align with LLM prompt injection logic)
-        distance_threshold = float(os.getenv("RAG_DISTANCE_THRESHOLD", "0.35"))
+        # 3-small models tend to have higher cosine distances than ada-002.
+        distance_threshold = float(os.getenv("RAG_DISTANCE_THRESHOLD", "0.50"))
         hits = results.get("hits", [])
         filtered_hits = [
             hit for hit in hits 
@@ -438,6 +439,18 @@ async def search_spam_rag_examples(query: str, k: int = 3):
             "total": len(filtered_hits)
         }
     except Exception as e:
+        # Check if the error is due to Quota Exhaustion
+        error_msg = str(e)
+        if "quota" in error_msg.lower() or "429" in error_msg.lower() or "QuotaExhaustedNoRetryError" in error_msg:
+            logger.warning(f"Spam RAG Search Quote Exhausted during intent generation: {e}")
+            # Instead of failing with 500, return an empty result set gracefully for the UI
+            return {
+                "success": True, 
+                "data": {"hits": [], "stats": {}}, 
+                "total": 0,
+                "warning": "LLM Quota Exhausted: Could not generate intent for search."
+            }
+        
         logger.error(f"Spam RAG Search Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -71,7 +71,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             start_t = time.time()
             self.vector_db = Chroma(
                 collection_name="spam_guide",
-                embedding_function=OpenAIEmbeddings(model="text-embedding-ada-002"),
+                embedding_function=OpenAIEmbeddings(model="text-embedding-3-small"),
                 persist_directory=os.path.join(os.path.dirname(__file__), "../../../data/chroma_db")
             )
             logger.info(f"[ContentAnalysisAgent] ChromaDB initialized in {time.time() - start_t:.4f}s")
@@ -351,8 +351,8 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         # RAG 예시 섹션 구성
         # ChromaDB L2 distance: 0에 가까울수록 유사
         # [Intent-based RAG] 문장 유사도가 아닌 '의도 유사도'를 보기 위해 임계값을 0.35로 완화
-        # 0.15 (문장 일치) -> 0.35 (의도 일치: 단어 달라도 맥락 유사하면 허용)
-        distance_threshold = float(os.getenv("RAG_DISTANCE_THRESHOLD", "0.35"))
+        # 0.15 (문장 일치) -> 0.50 (의도 일치: 단어 달라도 맥락 유사하면 허용, 3-small 기준치 높임)
+        distance_threshold = float(os.getenv("RAG_DISTANCE_THRESHOLD", "0.50"))
         
         rag_section = ""
         valid_examples = []
@@ -560,8 +560,8 @@ Step 4. SPAM 확정 조건:
         # RAG 예시 섹션 구성
         # ChromaDB L2 distance: 0에 가까울수록 유사
         # [Intent-based RAG] 문장 유사도가 아닌 '의도 유사도'를 보기 위해 임계값을 0.35로 완화
-        # 0.15 (문장 일치) -> 0.35 (의도 일치: 단어 달라도 맥락 유사하면 허용)
-        distance_threshold = float(os.getenv("RAG_DISTANCE_THRESHOLD", "0.35"))
+        # 0.15 (문장 일치) -> 0.50 (의도 일치: 단어 달라도 맥락 유사하면 허용, 3-small 기준치 높임)
+        distance_threshold = float(os.getenv("RAG_DISTANCE_THRESHOLD", "0.50"))
         
         rag_section = ""
         valid_examples = []
@@ -1083,6 +1083,9 @@ Step 4. SPAM 확정 조건:
         
         try:
             return await self._aquery_llm_with_retry(prompt)
+        except QuotaExhaustedNoRetryError as e:
+            logger.error(f"Intent Summary Generation Quota Exhausted: {e}")
+            return "Error generating intent summary: Quota exhausted"
         except Exception as e:
             logger.error(f"Intent Summary Generation Error: {e}")
             return "Error generating intent summary"

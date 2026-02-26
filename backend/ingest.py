@@ -62,9 +62,9 @@ def ingest_data():
     print(f"Split into {len(docs)} chunks.")
 
     # 3. Create Chroma Vector Store
-    # Consistent Model: text-embedding-ada-002
-    print("Creating Vector DB (using OpenAI Embeddings: text-embedding-ada-002)...")
-    embedding_function = OpenAIEmbeddings(model="text-embedding-ada-002")
+    # Consistent Model: text-embedding-3-small
+    print("Creating Vector DB (using OpenAI Embeddings: text-embedding-3-small)...")
+    embedding_function = OpenAIEmbeddings(model="text-embedding-3-small")
     
     db = Chroma.from_documents(
         documents=docs, 

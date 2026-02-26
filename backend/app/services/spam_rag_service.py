@@ -36,7 +36,7 @@ def _normalize_query_text(q) -> str:
 class SpamRagService:
     def __init__(self):
         # [Schema Update] v1.1 Intent-based RAG Collection
-        self.collection_name = "spam_rag_intent"
+        self.collection_name = "spam_rag_intent_v2"
         self.db = None
         self._embedding_function = None
         self._db_lock = threading.Lock()
@@ -53,7 +53,7 @@ class SpamRagService:
             
             logger.info("[SpamRagService] Initializing OpenAIEmbeddings helper...")
             start_t = time.time()
-            self._embedding_function = OpenAIEmbeddings(model="text-embedding-ada-002")
+            self._embedding_function = OpenAIEmbeddings(model="text-embedding-3-small")
             logger.info(f"[SpamRagService] Initialized OpenAIEmbeddings helper in {time.time() - start_t:.4f}s")
         return self._embedding_function
     
@@ -154,7 +154,7 @@ class SpamRagService:
             }
         """
         query_intent_summary = _normalize_query_text(query_intent_summary)
-        logger.debug(f"Searching similar intent: '{query_intent_summary[:30]}...'")
+        logger.debug(f"Searching similar intent: '{query_intent_summary}'")
         
         response = {
             "metric": "cosine_distance",
@@ -208,7 +208,7 @@ class SpamRagService:
 
         # [User Request] Log for each item to match Chat Mode behavior
         for summary in query_intent_summaries:
-            logger.debug(f"Searching similar intent: '{summary[:30]}...'")
+            logger.debug(f"Searching similar intent: '{summary}'")
 
         try:
             db = self._get_db()
