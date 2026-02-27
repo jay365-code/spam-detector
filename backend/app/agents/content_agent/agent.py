@@ -45,6 +45,25 @@ def _normalize_llm_content(content) -> str:
     return str(content)
 
 
+def _clean_intent_summary(text: str) -> str:
+    """
+    LLM이 Intent Summary 앞에 마크다운 헤더/볼드 레이블을 포함할 경우 제거.
+    예: "**Principal Intent / Tactics / Action Request**\nIllegal Loan..."
+        → "Illegal Loan..."
+    """
+    import re
+    text = text.strip()
+    # **...** 볼드 패턴 제거
+    text = re.sub(r"\*\*.*?\*\*\s*\n?", "", text).strip()
+    # "Principal Intent / Tactics / Action Request" 헤더 줄 제거 (대소문자 무시)
+    text = re.sub(r"(?i)^principal intent\s*/\s*tactics\s*/\s*action request\s*\n?", "", text).strip()
+    # 앞쪽 줄이 슬래시 없이 단독 레이블이면 제거 (슬래시 포함 본문만 남김)
+    lines = text.splitlines()
+    if lines and "/" not in lines[0] and len(lines) > 1:
+        text = "\n".join(lines[1:]).strip()
+    return text
+
+
 class ContentAnalysisAgent: # Renamed from RagBasedFilter
     def __init__(self):
         self.vector_db = None
@@ -290,44 +309,74 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             except Exception as e:
                 error_msg = str(e).lower()
                 
-                # [Fix] Explicit type check for Google API errors (Gemini)
-                is_google_quota_error = False
+                # ----------------------------------------------------------------
+                # [Provider별 Quota/Rate-Limit 에러 감지]
+                # 각 SDK의 고유 Exception 타입을 먼저 체크하고,
+                # isinstance 체크 실패 시 error string으로 폴백
+                # ----------------------------------------------------------------
+                is_quota_error = False
+                
                 if provider == "GEMINI":
                     try:
                         import google.api_core.exceptions
                         if isinstance(e, (google.api_core.exceptions.ResourceExhausted, google.api_core.exceptions.TooManyRequests)):
-                            is_google_quota_error = True
+                            is_quota_error = True
                     except ImportError:
                         pass
-
-                    # Quota Exceeded / Rate Limit 체크 (429 에러)
-                    # Add "resource exhausted" to string check for robustness
-                    if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
-                        req_model = self.model_name if "gemini" in self.model_name else "gemini-1.5-flash"
-                        logger.warning(f"[ContentAnalysisAgent] 429/Quota Detected. Requested model: {req_model}")
-                        logger.warning(f"[ContentAnalysisAgent] {provider} Quota Exceeded detected. Attempting key rotation...")
-                        
-                        # [동시성 개선] 실패한 키를 넘겨주어 중복 전환 방지 및 글로벌 고갈 감지
-                        is_rotated = key_manager.rotate_key(provider, failed_key=current_api_key)
-                        
-                        if not is_rotated:
-                            logger.error(f"[ContentAnalysisAgent] Global exhaustion reached for {provider}.")
-                            raise QuotaExhaustedNoRetryError(f"{provider} quota globally exhausted. No retry.") from e
-                        
-                        if attempt < max_quota_tries - 1:
-                            logger.info(f"[ContentAnalysisAgent] Switching to new {provider} key instantly (Attempt {attempt+1}/{max_quota_tries})...")
-                            continue
-                        else:
-                            logger.error(f"[ContentAnalysisAgent] All {provider} keys exhausted.")
-                            key_manager.mark_exhausted(provider)
-                            raise QuotaExhaustedNoRetryError(f"{provider} quota exhausted. No retry.") from e
-                    
-                    # Log full traceback only for non-quota errors to reduce noise
-                    logger.exception(f"{provider} Async API Error (Network/Transient)")
-                    raise e # let tenacity retry it
+                    # String fallback: "resource exhausted", "quota", "rate", "429", "limit"
+                    if not is_quota_error:
+                        is_quota_error = any(kw in error_msg for kw in ["quota", "rate", "429", "limit", "resource exhausted"])
                 
-        # This will trigger if the loop finishes max_quota_tries without returning, theoretically unreached due to raise inside else
+                elif provider == "OPENAI":
+                    try:
+                        import openai
+                        if isinstance(e, openai.RateLimitError):
+                            is_quota_error = True
+                    except ImportError:
+                        pass
+                    # String fallback: "rate_limit", "insufficient_quota", "429"
+                    if not is_quota_error:
+                        is_quota_error = any(kw in error_msg for kw in ["rate limit", "rate_limit", "quota", "429", "limit", "insufficient"])
+                
+                elif provider == "CLAUDE":
+                    try:
+                        import anthropic
+                        if isinstance(e, anthropic.RateLimitError):
+                            is_quota_error = True
+                    except ImportError:
+                        pass
+                    # String fallback: "rate limit", "overloaded", "429"
+                    if not is_quota_error:
+                        is_quota_error = any(kw in error_msg for kw in ["rate limit", "rate_limit", "quota", "429", "limit", "overloaded"])
+                
+                # ----------------------------------------------------------------
+                # [공통 Quota 처리] 키 로테이션 + 재시도 or 전체 고갈 선언
+                # ----------------------------------------------------------------
+                if is_quota_error:
+                    logger.warning(f"[ContentAnalysisAgent] {provider} Quota/Rate-Limit detected (Attempt {attempt+1}/{max_quota_tries}). Attempting key rotation...")
+                    
+                    # [동시성 개선] 실패한 키를 넘겨주어 중복 전환 방지 및 글로벌 고갈 감지
+                    is_rotated = key_manager.rotate_key(provider, failed_key=current_api_key)
+                    
+                    if not is_rotated:
+                        logger.error(f"[ContentAnalysisAgent] Global exhaustion reached for {provider}.")
+                        raise QuotaExhaustedNoRetryError(f"{provider} quota globally exhausted. No retry.") from e
+                    
+                    if attempt < max_quota_tries - 1:
+                        logger.info(f"[ContentAnalysisAgent] Switching to new {provider} key (Attempt {attempt+1}/{max_quota_tries})...")
+                        continue
+                    else:
+                        logger.error(f"[ContentAnalysisAgent] All {provider} keys exhausted.")
+                        key_manager.mark_exhausted(provider)
+                        raise QuotaExhaustedNoRetryError(f"{provider} quota exhausted. No retry.") from e
+                
+                # [비Quota 에러] tenacity가 재시도하도록 위로 전파
+                logger.exception(f"{provider} Async API Error (Network/Transient)")
+                raise e
+                
+        # 루프가 정상 return 없이 종료된 경우 (이론상 미도달)
         raise QuotaExhaustedNoRetryError(f"All {provider} keys repeatedly failed.")
+
 
     @retry(
         stop=stop_after_attempt(3),
@@ -1079,16 +1128,17 @@ Step 4. SPAM 확정 조건:
         [INPUT]
         {message}
         
-        [OUTPUT GUIDELINES]
-        - Format: "Principal Intent / Tactics / Action Request"
-        - Do NOT include any PII (Person Identifiable Information) or specific numbers.
-        - Example: 
-            Input: "Deposit 300 today, contact 010-1234-5678" 
-            Output: "Illegal Loan Advertisement / Immediate Deposit Promise / Request for contact via personal number"
+        [OUTPUT RULES]
+        - Output the intent summary ONLY. No headers, no labels, no markdown, no extra explanation.
+        - Use slash-separated format: [Intent] / [Tactics] / [Action Request]
+        - Do NOT include any PII or specific numbers.
+        - BAD example: "**Principal Intent / Tactics / Action Request** Illegal Loan..."
+        - GOOD example: "Illegal Loan Advertisement / Immediate Deposit Promise / Request for contact via personal number"
         """
         
         try:
-            return await self._aquery_llm_with_retry(prompt)
+            raw = await self._aquery_llm_with_retry(prompt)
+            return _clean_intent_summary(raw)
         except QuotaExhaustedNoRetryError as e:
             logger.error(f"Intent Summary Generation Quota Exhausted: {e}")
             return "Error generating intent summary: Quota exhausted"
