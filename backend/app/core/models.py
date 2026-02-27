@@ -13,18 +13,12 @@ LLM_PROVIDERS = ["GEMINI", "OPENAI", "CLAUDE"]
 LLM_MODELS = {
     "GEMINI": [
         {"name": "Gemini 3.0 Flash Preview (Recommended)", "id": "gemini-3-flash-preview"},
-        {"name": "Gemini 3.1 Pro Preview", "id": "gemini-3.1-pro-preview"},
-        {"name": "Gemini 2.5 Flash", "id": "gemini-2.5-flash"},
-        {"name": "Gemini 2.5 Flash Lite", "id": "gemini-2.5-flash-lite"},
     ],
     "OPENAI": [
-        {"name": "GPT-4o (High Quality)", "id": "gpt-4o"},
-        {"name": "GPT-4o-mini (Fast)", "id": "gpt-4o-mini"},
-        {"name": "GPT-4-turbo", "id": "gpt-4-turbo"},
+        {"name": "GPT-5-mini", "id": "gpt-5-mini"},
     ],
     "CLAUDE": [
-        {"name": "Claude 3.5 Sonnet", "id": "claude-3-5-sonnet-20240620"},
-        {"name": "Claude 3 Haiku", "id": "claude-3-haiku-20240307"},
+        {"name": "Claude Haiku 4.5", "id": "claude-haiku-4-5"},
     ]
 }
 

@@ -122,7 +122,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         # RAG 예시 검색 (유사 스팸 사례) - Intent Summary 필수
         rag_examples = []
         if intent_summary:
-            rag_examples = self._search_spam_rag(intent_summary, k=2)
+            rag_examples = self._search_spam_rag(intent_summary, k=4)
             if rag_examples:
                 logger.info(f"Spam RAG: {len(rag_examples)}건 검색됨")
             else:
@@ -358,14 +358,17 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         valid_examples = []
         
         if rag_examples:
-            logger.info(f"    [RAG Examples] Filtering with threshold: {distance_threshold}")
-            for ex in rag_examples:
+            logger.info(f"    [RAG Examples] Top-2 forced + threshold ({distance_threshold}) from 3rd onwards")
+            for idx, ex in enumerate(rag_examples):
                 # [Fix] Map 'distance' from RAG service to 'score'
                 score = ex.get('score', ex.get('distance', 999))
                 
-                # 유사도 점수가 임계값 이하인 경우만 포함
-                if score <= distance_threshold:
-                    valid_examples.append({**ex, 'score': score}) 
+                # Top-2는 무조건 포함, 3번째부터는 distance <= threshold만 포함
+                if idx < 2:
+                    valid_examples.append({**ex, 'score': score})
+                    logger.debug(f"    [RAG Examples]   - score: {score:.3f}, included (Top-{idx+1}, forced)")
+                elif score <= distance_threshold:
+                    valid_examples.append({**ex, 'score': score})
                 else:
                     logger.debug(f"    [RAG Examples]   - score: {score:.3f}, excluded (threshold: {distance_threshold})")
             
@@ -567,14 +570,17 @@ Step 4. SPAM 확정 조건:
         valid_examples = []
         
         if rag_examples:
-            logger.info(f"    [RAG Examples] Filtering with threshold: {distance_threshold}")
-            for ex in rag_examples:
+            logger.info(f"    [RAG Examples] Top-2 forced + threshold ({distance_threshold}) from 3rd onwards")
+            for idx, ex in enumerate(rag_examples):
                 # [Fix] Map 'distance' from RAG service to 'score'
                 score = ex.get('score', ex.get('distance', 999))
                 
-                # 유사도 점수가 임계값 이하인 경우만 포함
-                if score <= distance_threshold:
-                    valid_examples.append({**ex, 'score': score}) 
+                # Top-2는 무조건 포함, 3번째부터는 distance <= threshold만 포함
+                if idx < 2:
+                    valid_examples.append({**ex, 'score': score})
+                    logger.debug(f"    [RAG Examples]   - score: {score:.3f}, included (Top-{idx+1}, forced)")
+                elif score <= distance_threshold:
+                    valid_examples.append({**ex, 'score': score})
                 else:
                     logger.debug(f"    [RAG Examples]   - score: {score:.3f}, excluded (threshold: {distance_threshold})")
             
