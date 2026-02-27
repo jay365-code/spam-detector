@@ -424,6 +424,11 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             if valid_examples:
                 rag_section = "\n[Reference Context - Similar Intent Examples]\n"
                 rag_section += "아래는 유사한 의도(Intent)를 가진 과거 메시지 판정 결과입니다. 참고 자료로만 활용하세요.\n"
+                rag_section += "\n[CRITICAL - Near-Duplicate 판정 규칙]\n"
+                rag_section += "아래 조건 중 하나라도 해당하면 해당 예시를 '참고' 수준이 아니라 '강제 준수' 대상으로 취급한다:\n"
+                rag_section += "  1) normalized_text가 분석 대상 메시지와 exact match인 경우\n"
+                rag_section += "  2) 유사도 score < 0.05 이고, 토큰/형태 유사도도 매우 높은 경우 (사실상 동일 메시지)\n"
+                rag_section += "이 경우, 해당 예시의 판정(label)을 그대로 따르고, reason 필드에 '과거 동일 사례 판정 적용' 임을 반드시 명시하라.\n"
                 for i, ex in enumerate(valid_examples, 1):
                     msg_preview = ex.get('message', '')[:100]
                     category = ex.get('category', 'N/A')
@@ -636,6 +641,11 @@ Step 4. SPAM 확정 조건:
             if valid_examples:
                 rag_section = "\n[Reference Context - Similar Intent Examples]\n"
                 rag_section += "아래는 유사한 의도(Intent)를 가진 과거 메시지 판정 결과입니다. 참고 자료로만 활용하세요.\n"
+                rag_section += "\n[CRITICAL - Near-Duplicate 판정 규칙]\n"
+                rag_section += "아래 조건 중 하나라도 해당하면 해당 예시를 '참고' 수준이 아니라 '강제 준수' 대상으로 취급한다:\n"
+                rag_section += "  1) normalized_text가 분석 대상 메시지와 exact match인 경우\n"
+                rag_section += "  2) 유사도 score < 0.05 이고, 토큰/형태 유사도도 매우 높은 경우 (사실상 동일 메시지)\n"
+                rag_section += "이 경우, 해당 예시의 판정(label)을 그대로 따르고, reason 필드에 '과거 동일 사례 판정 적용' 임을 반드시 명시하라.\n"
                 for i, ex in enumerate(valid_examples, 1):
                     msg_preview = ex.get('message', '')[:100]
                     category = ex.get('category', 'N/A')
