@@ -63,24 +63,24 @@ def calculate_advanced_metrics(tp: int, tn: int, fp: int, fn: int, total: int) -
         hei_status = "검토 필요"
         hei_color = "danger"
     
-    # ===== PRIMARY STATUS (Accuracy + Kappa 기반) =====
+    # ===== PRIMARY STATUS (Kappa 기반) =====
     # 판정 기준:
-    # - 협업 가능: Accuracy >= 95% AND Kappa >= 0.60
-    # - 모니터링 필요: Accuracy >= 90% AND Kappa >= 0.40
-    # - 개선 필요: 그 외
+    # - 협업 가능 (🟢): Kappa >= 0.75
+    # - 모니터링 필요 (🟡): 0.65 <= Kappa < 0.75
+    # - 개선 필요 (🔴): Kappa < 0.65
     
-    if accuracy >= 0.95 and kappa >= 0.60:
+    if kappa >= 0.75:
         primary_status = "협업 가능"
         primary_color = "success"
-        primary_description = "Human-AI 간 높은 일치율과 통계적으로 유의미한 합의를 보입니다."
-    elif accuracy >= 0.90 and kappa >= 0.40:
+        primary_description = "Kappa가 0.75 이상으로 Human-AI 간 높은 통계적 합의를 보입니다."
+    elif kappa >= 0.65:
         primary_status = "모니터링 필요"
         primary_color = "warning"
-        primary_description = "일치율은 양호하나, 지속적인 모니터링이 권장됩니다."
+        primary_description = "Kappa가 0.65~0.75 구간으로 지속적인 모니터링이 권장됩니다."
     else:
         primary_status = "개선 필요"
         primary_color = "danger"
-        primary_description = "일치율 또는 합의도가 기준에 미달합니다. 모델 개선이 필요합니다."
+        primary_description = "Kappa가 0.65 미만으로 모델 개선이 필요합니다."
     
     return {
         "accuracy": round(accuracy, 4),

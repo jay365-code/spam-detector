@@ -145,6 +145,8 @@ async def get_trend(folder_path: str = Query(..., description="Absolute path to 
         
         # FN Rate
         fn_rate = agg_fn / (agg_tp + agg_fn) if (agg_tp + agg_fn) > 0 else 0.0
+        # FP Rate
+        fp_rate = agg_fp / (agg_tn + agg_fp) if (agg_tn + agg_fp) > 0 else 0.0
 
         daily_summaries.append({
             "date": date,
@@ -157,6 +159,7 @@ async def get_trend(folder_path: str = Query(..., description="Absolute path to 
             "kappa": metrics['kappa'],
             "mcc": metrics['mcc'],
             "fn_rate": round(fn_rate, 4),
+            "fp_rate": round(fp_rate, 4),
             "primary_status": metrics['primary_status'],
             "primary_color": metrics['primary_color']
         })

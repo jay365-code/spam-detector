@@ -37,6 +37,7 @@ interface DailySummary {
     accuracy: number;
     kappa: number;
     fn_rate: number;
+    fp_rate: number;
     mcc: number;
     primary_status: string;
     primary_color: 'success' | 'warning' | 'danger';
@@ -268,6 +269,36 @@ export default function MonitorPage() {
     };
 
     // --- Helpers ---
+
+    // 헤더 툴팁 컴포넌트 (수식 + 설명)
+    const HeaderTooltip = ({
+        label,
+        formula,
+        desc,
+        items,
+    }: {
+        label: string;
+        formula: string;
+        desc: string;
+        items?: { icon: string; text: string }[];
+    }) => (
+        <th className="px-6 py-3 font-semibold text-center relative group/th cursor-help">
+            <span className="border-b border-dashed border-slate-400">{label}</span>
+            <div className="hidden group-hover/th:block absolute z-50 top-full left-1/2 -translate-x-1/2 mt-2 bg-slate-800 text-white text-[11px] rounded-lg shadow-xl p-3 text-left normal-case font-normal leading-relaxed whitespace-nowrap min-w-[200px]">
+                <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-800 rotate-45 rounded-sm" />
+                <p className="font-mono text-emerald-300 font-semibold mb-1.5 text-[11px]">{formula}</p>
+                <p className="text-slate-300 mb-1">{desc}</p>
+                {items && items.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-slate-600 space-y-0.5">
+                        {items.map((item, i) => (
+                            <p key={i}>{item.icon} {item.text}</p>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </th>
+    );
+
     const formatDate = (dateStr: string) => {
         if (dateStr && dateStr.length === 8) {
             return `${dateStr.substring(0, 4)}.${dateStr.substring(4, 6)}.${dateStr.substring(6, 8)}`;
@@ -498,10 +529,36 @@ export default function MonitorPage() {
                                 <th className="px-6 py-3 font-semibold">Date</th>
                                 <th className="px-6 py-3 font-semibold text-center">Sources</th>
                                 <th className="px-6 py-3 font-semibold text-center">Matched</th>
-                                <th className="px-6 py-3 font-semibold text-center">Accuracy</th>
-                                <th className="px-6 py-3 font-semibold text-center">Kappa</th>
-                                <th className="px-6 py-3 font-semibold text-center">FN Rate</th>
-                                <th className="px-6 py-3 font-semibold text-center">Status</th>
+                                <HeaderTooltip
+                                    label="Accuracy"
+                                    formula="(TP + TN) / Total"
+                                    desc="전체 중 인간·AI가 일치한 비율"
+                                />
+                                <HeaderTooltip
+                                    label="Kappa"
+                                    formula="(Po − Pe) / (1 − Pe)"
+                                    desc="우연 일치를 제외한 실제 합의도"
+                                />
+                                <HeaderTooltip
+                                    label="FN Rate"
+                                    formula="FN / (TP + FN)"
+                                    desc="실제 스팸 중 AI가 놓친 비율 (낮을수록 좋음)"
+                                />
+                                <HeaderTooltip
+                                    label="FP Rate"
+                                    formula="FP / (TN + FP)"
+                                    desc="실제 정상 중 AI가 스팸으로 오탐한 비율 (낮을수록 좋음)"
+                                />
+                                <HeaderTooltip
+                                    label="Status"
+                                    formula="κ 기준 3단계 판정"
+                                    desc="Kappa 값에 따라 자동 분류"
+                                    items={[
+                                        { icon: '🟢', text: '협업 가능 — κ ≥ 0.75' },
+                                        { icon: '🟡', text: '모니터링 필요 — 0.65 ≤ κ < 0.75' },
+                                        { icon: '🔴', text: '개선 필요 — κ < 0.65' },
+                                    ]}
+                                />
                                 <th className="px-6 py-3 text-right">Action</th>
                             </tr>
                         </thead>
@@ -539,14 +596,17 @@ export default function MonitorPage() {
                                     <td className="px-6 py-4 text-center font-medium text-rose-600">
                                         {(day.fn_rate * 100).toFixed(1)}%
                                     </td>
+                                    <td className="px-6 py-4 text-center font-medium text-amber-600">
+                                        {((day.fp_rate ?? 0) * 100).toFixed(1)}%
+                                    </td>
                                     <td className="px-6 py-4 text-center">
                                         <span className={cn(
                                             "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold border",
-                                            day.primary_color === 'success' ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
-                                                day.primary_color === 'warning' ? "bg-amber-50 text-amber-700 border-amber-100" :
+                                            day.kappa >= 0.75 ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                                                day.kappa >= 0.65 ? "bg-amber-50 text-amber-700 border-amber-100" :
                                                     "bg-rose-50 text-rose-700 border-rose-100"
                                         )}>
-                                            {day.primary_status}
+                                            {day.kappa >= 0.75 ? '🟢' : day.kappa >= 0.65 ? '🟡' : '🔴'} {day.primary_status}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-right">

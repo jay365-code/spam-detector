@@ -166,15 +166,20 @@ candidates_40: {candidates_40_json}
                 if self.provider == "OPENAI":
                     from openai import OpenAI
                     client = OpenAI(api_key=self.api_key)
-                    response = client.chat.completions.create(
-                        model=self.model_name,
-                        messages=[
+                    # o1/o3/o4/gpt-5 계열 reasoning 모델은 temperature 파라미터 미지원
+                    _no_temp_prefixes = ("o1", "o3", "o4", "gpt-5")
+                    _supports_temp = not any(self.model_name.startswith(p) for p in _no_temp_prefixes)
+                    _kwargs = {
+                        "model": self.model_name,
+                        "messages": [
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
                         ],
-                        response_format={"type": "json_object"},
-                        temperature=0.0
-                    )
+                        "response_format": {"type": "json_object"},
+                    }
+                    if _supports_temp:
+                        _kwargs["temperature"] = 0.0
+                    response = client.chat.completions.create(**_kwargs)
                     content = response.choices[0].message.content
                     
                 elif self.provider == "GEMINI":
