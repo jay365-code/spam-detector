@@ -323,9 +323,9 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                             is_quota_error = True
                     except ImportError:
                         pass
-                    # String fallback: "resource exhausted", "quota", "rate", "429", "limit"
+                    # [버그 수정] 확실한 429 오인식 방지를 위해 HTTP status code 또는 명백한 문구를 추가
                     if not is_quota_error:
-                        is_quota_error = any(kw in error_msg for kw in ["quota", "rate", "429", "limit", "resource exhausted"])
+                        is_quota_error = any(kw in error_msg for kw in ["quota", "rate", "429", "limit", "resource exhausted", "too many requests"])
                 
                 elif provider == "OPENAI":
                     try:
@@ -364,6 +364,12 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                     
                     if attempt < max_quota_tries - 1:
                         logger.info(f"[ContentAnalysisAgent] Switching to new {provider} key (Attempt {attempt+1}/{max_quota_tries})...")
+                        # [BUG FIX] 진행 중이던 캐시 객체를 삭제해야 다음 번 get_cached_client에서 새로운 Key로 객체가 생성됨
+                        cache_key = f"{provider}_{current_api_key}_{model_name}"
+                        dict_key = (cache_key, asyncio.get_running_loop() if asyncio.get_event_loop().is_running() else None)
+                        if dict_key in self._loop_bound_clients:
+                            del self._loop_bound_clients[dict_key]
+                        
                         continue
                     else:
                         logger.error(f"[ContentAnalysisAgent] All {provider} keys exhausted.")

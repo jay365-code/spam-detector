@@ -89,28 +89,34 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                  # Inconclusive -> Trust Content Verdict (no override)
                  final["reason"] = f"{existing_reason} | [URL: Suspected but Inconclusive]"
              elif url_is_spam:
-                 # Case: Content(HAM) -> URL(SPAM) : SPAM Confirmed
-                 final["is_spam"] = True
-                 
-                 # Update Probability (Use URL's high confidence)
-                 url_prob = u_res.get("spam_probability", 0.95)
-                 final["spam_probability"] = url_prob
-                 
-                 # Update Reason (Include specific URL reason)
                  url_reason = u_res.get("reason", "Malicious URL detected")
-                 final["reason"] = f"{existing_reason} | [URL SPAM: {url_reason}]"
-                 
-                 # Code update: URL 스팸 코드가 있으면 무조건 업데이트 (URL 분석이 Ground Truth)
-                 # Content가 이미 스팸 코드를 가지고 있어도, URL 방문 결과가 더 정확하므로 덮어씀
                  url_code = u_res.get("classification_code")
-                 if url_code and str(url_code) != "0":
-                     final["classification_code"] = url_code
+                 
+                 if final.get("is_spam") is True:
+                     # Case 1: Content(SPAM) + URL(SPAM) -> SPAM 유지, URL 코드/이유 추가
+                     final["spam_probability"] = u_res.get("spam_probability", 0.95)
+                     final["reason"] = f"{existing_reason} | [URL SPAM: {url_reason}]"
+                     if url_code and str(url_code) != "0":
+                         final["classification_code"] = url_code
+                 else:
+                     # Case 2: Content(HAM) + URL(SPAM) -> HAM 반환, 대신 [텍스트 HAM + 악성 URL] 특수 처리
+                     # [User Request] 메시지 자체(텍스트)는 HAM이므로 덮어쓰지 않고 HAM을 유지한다. (오탐 학습 방지)
+                     # 단, 엑셀/DB 저장을 위해 '악성 URL 추출됨' 특수 플래그를 넘긴다.
+                     final["is_spam"] = False
+                     final["reason"] = f"{existing_reason} | [텍스트 HAM + 악성 URL 분리 감지: {url_reason}]"
+                     final["malicious_url_extracted"] = True
+                     final["url_spam_code"] = url_code # URL 추출본 시트에 저장할 용도
              else:
-                 # Case: Content(SPAM) -> URL(Safe) : HAM Confirmed
+                 # Case 3: URL(Safe) -> 만약 Content가 SPAM이었다 하더라도 Override하여 HAM 확정
                  if final.get("is_spam"):
                      final["is_spam"] = False
                      final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE (Override)]"
                      final["classification_code"] = None
+
+        # Ensure malicious_url_extracted is explicitly in the final dict if set
+        if "malicious_url_extracted" in final and final["malicious_url_extracted"] is True:
+             # Ensure the value is properly returned
+             final["malicious_url_extracted"] = True
 
 
         # 2. Add IBSE Info

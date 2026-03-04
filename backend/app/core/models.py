@@ -16,6 +16,7 @@ LLM_MODELS = {
     ],
     "OPENAI": [
         {"name": "GPT-5-mini", "id": "gpt-5-mini"},
+        {"name": "GPT-5-nano", "id": "gpt-5-nano"},
     ],
     "CLAUDE": [
         {"name": "Claude Haiku 4.5", "id": "claude-haiku-4-5"},

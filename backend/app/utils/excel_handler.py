@@ -38,7 +38,7 @@ class ExcelHandler:
         
         return value
 
-    def _sort_sheet_by_gubun(self, ws, gubun_col_idx: int):
+    def _sort_sheet_by_gubun(self, ws, gubun_col_idx: int, reason_col_idx: int = None):
         """
         구분 컬럼 기준으로 정렬: SPAM("o") 상단, HAM("") 하단
         """
@@ -53,12 +53,21 @@ class ExcelHandler:
                 row_data.append(ws.cell(row=row_idx, column=col_idx).value)
             data_rows.append(row_data)
         
-        # 구분 컬럼 기준 정렬 (SPAM "o" 먼저, HAM "" 나중)
-        # "o"는 빈 문자열보다 먼저 오도록 정렬
+        # 구분 컬럼 기준 정렬 (SPAM "o" -> TEXT-HAM URL-SPAM -> HAM "")
         def sort_key(row):
             gubun_val = row[gubun_col_idx - 1] if len(row) >= gubun_col_idx else ""
-            # "o" = 0 (상위), "" or None = 1 (하위)
-            return 0 if gubun_val == "o" else 1
+            reason_val = row[reason_col_idx - 1] if reason_col_idx and len(row) >= reason_col_idx else ""
+            
+            is_separated = False
+            if reason_val and "[텍스트 HAM + 악성 URL 분리 감지" in str(reason_val):
+                is_separated = True
+
+            if gubun_val == "o":
+                return 0
+            elif is_separated:
+                return 1
+            else:
+                return 2
         
         data_rows.sort(key=sort_key)
         
@@ -124,6 +133,13 @@ class ExcelHandler:
             # Probability 컬럼 중앙 정렬
             if prob_col:
                 ws.cell(row=row_idx, column=prob_col).alignment = center_align
+
+            # 메시지 길이 및 URL 길이 중앙 정렬
+            if msg_len_col:
+                ws.cell(row=row_idx, column=msg_len_col).alignment = center_align
+            url_len_col = get_col_idx("URL 길이")
+            if url_len_col:
+                ws.cell(row=row_idx, column=url_len_col).alignment = center_align
             
             # 메시지 컬럼: 자동줄바꿈 + 세로 중앙
             if msg_col:
@@ -133,13 +149,26 @@ class ExcelHandler:
             if reason_col:
                 ws.cell(row=row_idx, column=reason_col).alignment = wrap_vcenter_align
             
-            # SPAM인 경우 메시지 셀 황금색 채우기
+            # SPAM(o) 및 TEXT+URL분리인 경우 메시지 셀 채우기 적용
             if gubun_col and msg_col:
                 gubun_val = ws.cell(row=row_idx, column=gubun_col).value
-                if gubun_val == "o":  # SPAM
-                    cell = ws.cell(row=row_idx, column=msg_col)
+                reason_val = ws.cell(row=row_idx, column=reason_col).value if reason_col else ""
+                
+                is_separated = False
+                if reason_val and "[텍스트 HAM + 악성 URL 분리 감지" in str(reason_val):
+                    is_separated = True
+
+                cell = ws.cell(row=row_idx, column=msg_col)
+                if gubun_val == "o":  # 일반 SPAM
                     cell.fill = spam_fill
-                    cell.alignment = wrap_vcenter_align  # 채우기와 함께 정렬 유지
+                    cell.alignment = wrap_vcenter_align
+                elif is_separated: # TEXT-HAM + URL-SPAM
+                    # Target fill color FFD1D1 for URL-SPAM from HAM text
+                    pink_fill = PatternFill(start_color="FFD1D1", end_color="FFD1D1", fill_type="solid")
+                    cell.fill = pink_fill
+                    cell.alignment = wrap_vcenter_align
+                else:
+                    cell.alignment = wrap_vcenter_align
 
 
     def is_short_url(self, url: str) -> bool:
@@ -197,12 +226,18 @@ class ExcelHandler:
             cell.fill = header_fill
             
         # Write Data
+        row_num = 2
         for url, info in unique_urls.items():
             ws.append([
                 self._sanitize_cell_value(url), 
                 info['len'], 
                 self._sanitize_cell_value(info['code'])
             ])
+            # 데이터 셀 모두 가운데 정렬
+            for col_idx in range(1, 4):
+                ws.cell(row=row_num, column=col_idx).alignment = header_align
+            
+            row_num += 1
 
     def _create_blocklist_sheet(self, wb: Workbook, blocklist_data: list):
         """
@@ -339,11 +374,17 @@ class ExcelHandler:
                     if result.get("is_spam") is False:
                         code_val = ""
                     else:
-                        # Extract only digits from the code (e.g. SPAM-1 -> 1)
-                        import re
+                        # SPAM인 경우 코드 추출
                         raw_val = str(result.get("classification_code", ""))
+                        import re
                         match = re.search(r'\d+', raw_val)
                         code_val = match.group(0) if match else raw_val
+
+                    extracted_url_code = ""
+                    if result.get("malicious_url_extracted"):
+                        raw_ext_code = str(result.get("url_spam_code", ""))
+                        m_ext = re.search(r'\d+', raw_ext_code)
+                        extracted_url_code = m_ext.group(0) if m_ext else raw_ext_code
                     prob_val = result.get("spam_probability", 0.0)
                     reason_val = result.get("reason", "")
                     in_token_val = result.get("input_tokens", 0)
@@ -357,10 +398,10 @@ class ExcelHandler:
                     ws.cell(row=row_idx, column=out_token_col_idx, value=out_token_val)
 
                     # --- URL Collection Logic ---
-                    # Only collect URLs if the message is SPAM
-                    if result.get("is_spam") is True:
+                    # Collect URLs if SPAM or malicious URL extracted from HAM
+                    if result.get("is_spam") is True or result.get("malicious_url_extracted"):
                         # re is already imported globally
-                        url_pattern = r'(?:https?://|www\.)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+                        url_pattern = r'(?:https?://|www\.)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:/[a-zA-Z0-9./?=&%_-]*)?'
                         urls = re.findall(url_pattern, batch_buffer[idx][1])
                         
                         for url in urls:
@@ -372,7 +413,8 @@ class ExcelHandler:
                                  if url not in unique_urls:
                                      unique_urls[url] = {
                                          "len": self._lenb(url),
-                                         "code": code_val
+                                         "code": code_val if result.get("is_spam") else extracted_url_code,
+                                         "malicious_url_extracted": result.get("malicious_url_extracted", False)
                                      }
 
                     # --- IBSE Collection Logic ---
@@ -434,7 +476,7 @@ class ExcelHandler:
                 flush_batch(start_index=final_start_index)
 
             # 3.5 구분 컬럼 기준 정렬 (SPAM 상단, HAM 하단)
-            self._sort_sheet_by_gubun(ws, gubun_col_idx)
+            self._sort_sheet_by_gubun(ws, gubun_col_idx, reason_col_idx)
             
             # 3.6 서식 적용
             self._apply_formatting(ws, headers)
@@ -635,19 +677,22 @@ class ExcelHandler:
                     is_spam = result.get("is_spam")
                     if is_spam is True:
                         gubun_val = "o"
-                    elif is_spam is False:
-                        code_val = "" # Normal
-                        gubun_val = ""
                     else:
-                        gubun_val = "UNKNOWN"
+                        gubun_val = ""
                         
                     # Code
-                    raw_code = str(result.get("classification_code", ""))
-                    if is_spam:
+                    if is_spam is False:
+                        code_val = ""
+                    else:
+                        raw_code = str(result.get("classification_code", ""))
                         match = re.search(r'\d+', raw_code)
                         code_val = match.group(0) if match else raw_code
-                    else:
-                        code_val = ""
+
+                    extracted_url_code = ""
+                    if result.get("malicious_url_extracted"):
+                        raw_ext_code = str(result.get("url_spam_code", ""))
+                        m_ext = re.search(r'\d+', raw_ext_code)
+                        extracted_url_code = m_ext.group(0) if m_ext else raw_ext_code
                         
                     # Probability (e.g. 98%)
                     prob_float = result.get("spam_probability", 0.0)
@@ -672,14 +717,14 @@ class ExcelHandler:
                     ])
                     
                     # --- URL Collection Logic ---
-                    # Only collect URLs from SPAM messages
-                    if result.get("is_spam") is True:
+                    # Only collect URLs from SPAM messages or extracted from HAM
+                    if result.get("is_spam") is True or result.get("malicious_url_extracted"):
                         target_url = url_val.strip()
                         if not target_url:
                              # Stricter URL Pattern: Exclude special chars in domain (only allow alphanumeric, dot, hyphen)
                              # Original: r'(https?://\S+|www\.\S+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})'
-                             # New: Enforce domain part to be standard
-                             url_pattern = r'(?:https?://|www\.)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+                             # New: Enforce domain part to be standard, but include path
+                             url_pattern = r'(?:https?://|www\.)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:/[a-zA-Z0-9./?=&%_-]*)?'
                              match = re.search(url_pattern, msg_val)
                              if match:
                                  target_url = match.group(0)
@@ -705,7 +750,8 @@ class ExcelHandler:
                                  if target_url not in unique_urls:
                                      unique_urls[target_url] = {
                                          "len": self._lenb(target_url),
-                                         "code": code_val
+                                         "code": code_val if is_spam else extracted_url_code,
+                                         "malicious_url_extracted": result.get("malicious_url_extracted", False)
                                      }
 
                     # --- IBSE Collection Logic ---
