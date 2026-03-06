@@ -314,7 +314,7 @@ function App() {
   const [isAtBottom, setIsAtBottom] = useState(true);
 
   // Filter & Search State
-  const [logFilter, setLogFilter] = useState<'ALL' | 'SPAM' | 'HAM'>('ALL');
+  const [logFilter, setLogFilter] = useState<'ALL' | 'SPAM' | 'HAM' | 'FP_SENSITIVE'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Report Management State
@@ -758,15 +758,17 @@ function App() {
 
   // [New] Filter & Count Logic
   const allCount = logs.length;
-  const spamCount = logs.filter(l => l?.result?.is_spam).length;
+  const spamCount = logs.filter(l => l?.result?.is_spam && l?.result?.semantic_class !== 'Type_B').length;
   const hamCount = logs.filter(l => l?.result && !l.result.is_spam).length;
+  const fpSensitiveCount = logs.filter(l => l?.result?.semantic_class === 'Type_B').length;
 
   const filteredLogs = logs
     .map((log, originalIdx) => ({ ...log, originalIdx }))
     .filter(log => {
       // Apply Filter
-      if (logFilter === 'SPAM' && (!log.result || !log.result.is_spam)) return false;
+      if (logFilter === 'SPAM' && (!log.result || !log.result.is_spam || log.result.semantic_class === 'Type_B')) return false;
       if (logFilter === 'HAM' && (!log.result || log.result.is_spam)) return false;
+      if (logFilter === 'FP_SENSITIVE' && log.result?.semantic_class !== 'Type_B') return false;
 
       // Apply Search
       if (searchQuery.trim()) {
@@ -888,21 +890,19 @@ function App() {
             {/* Filter Buttons */}
             <div className="flex items-center bg-slate-900/50 rounded-lg p-1 border border-slate-700 ml-4">
               {[
-                { label: 'ALL', count: allCount },
-                { label: 'SPAM', count: spamCount },
-                { label: 'HAM', count: hamCount }
-              ].map(({ label, count }) => (
+                { label: 'ALL', count: allCount, filterKey: 'ALL', activeClass: 'bg-blue-500 text-white shadow-lg', inactiveClass: 'text-slate-400 hover:text-slate-200' },
+                { label: 'SPAM', count: spamCount, filterKey: 'SPAM', activeClass: 'bg-red-500 text-white shadow-lg', inactiveClass: 'text-red-400 hover:text-red-200' },
+                { label: 'FP SENSITIVE', count: fpSensitiveCount, filterKey: 'FP_SENSITIVE', activeClass: 'bg-orange-500 text-white shadow-lg', inactiveClass: 'text-orange-400 hover:text-orange-200' },
+                { label: 'HAM', count: hamCount, filterKey: 'HAM', activeClass: 'bg-green-600 text-white shadow-lg', inactiveClass: 'text-green-400 hover:text-green-200' },
+              ].map(({ label, count, filterKey, activeClass, inactiveClass }) => (
                 <button
-                  key={label}
-                  onClick={() => setLogFilter(label as any)}
-                  className={`px-3 py-1 rounded-md transition-all text-xs font-bold flex items-center ${logFilter === label
-                    ? 'bg-blue-500 text-white shadow-lg'
-                    : 'text-slate-400 hover:text-slate-200'
+                  key={filterKey}
+                  onClick={() => setLogFilter(filterKey as any)}
+                  className={`px-3 py-1 rounded-md transition-all text-xs font-bold flex items-center ${logFilter === filterKey ? activeClass : inactiveClass
                     }`}
                 >
                   {label}
-                  <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${logFilter === label ? 'bg-white/20' : 'bg-slate-700'
-                    }`}>
+                  <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${logFilter === filterKey ? 'bg-white/20' : 'bg-slate-700'}`}>
                     {count}
                   </span>
                 </button>
@@ -1000,7 +1000,11 @@ function App() {
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         {log.result ? (
                           <>
-                            {log.result.is_spam ? (
+                            {log.result.semantic_class === 'Type_B' ? (
+                              <span className="text-orange-400 flex items-center gap-1 bg-orange-400/10 px-1.5 rounded text-xs font-bold whitespace-nowrap">
+                                <AlertCircle className="w-3 h-3" /> FP SENSITIVE ({Math.round(log.result.spam_probability * 100)}%) - {getCodeDescription(log.result.classification_code) || '사칭/위장형 스팸'}
+                              </span>
+                            ) : log.result.is_spam ? (
                               <span className="text-red-400 flex items-center gap-1 bg-red-400/10 px-1.5 rounded text-xs font-bold whitespace-nowrap">
                                 <CheckCircle className="w-3 h-3 invisible" /> {/* Placeholder to balance space if needed */}
                                 <AlertCircle className="w-3 h-3" /> SPAM ({Math.round(log.result.spam_probability * 100)}%) - {getCodeDescription(log.result.classification_code)}

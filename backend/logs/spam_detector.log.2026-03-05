@@ -1,0 +1,153 @@
+2026-03-05 10:02:49 | INFO     | app.main | connect:76 | WebSocket Connected: Client client-g2x7qu4vc
+2026-03-05 15:03:51 | INFO     | app.main | disconnect:93 | WebSocket Disconnected: Client client-g2x7qu4vc
+2026-03-05 16:03:51 | INFO     | app.core.logging_config | setup_logging:223 | 로깅 초기화 완료 | Console=DEBUG | File=DEBUG | JSON=ON
+2026-03-05 16:03:51 | INFO     | app.core.llm_manager | _initialize:47 | [KeyManager] Initialized GEMINI with 1 key(s).
+2026-03-05 16:03:51 | INFO     | app.core.llm_manager | _initialize:47 | [KeyManager] Initialized OPENAI with 1 key(s).
+2026-03-05 16:03:51 | INFO     | app.core.llm_manager | _initialize:47 | [KeyManager] Initialized CLAUDE with 1 key(s).
+2026-03-05 16:04:03 | INFO     | app.main | _log_env_config:175 | 📋 [Config] .env loaded:
+  LLM_PROVIDER=GEMINI
+  OPENAI_API_KEY=***
+  GEMINI_API_KEY=***
+  CLAUDE_API_KEY=***
+  LLM_MODEL=gemini-3-flash-preview
+  LLM_BATCH_SIZE=5
+  LOG_LEVEL_CONSOLE=DEBUG
+  LOG_LEVEL_FILE=DEBUG
+  LOG_JSON_ENABLED=1
+  LOG_CONSOLE_ENABLED=1
+  SPAM_RAG_ENABLED=1
+  RAG_DISTANCE_THRESHOLD=0.55
+  MAX_BROWSER_CONCURRENCY=5
+  ALPHANUMERIC_OBFUSCATION_RATIO_THRESHOLD=0.55
+  MIN_MESSAGE_LENGTH=5
+2026-03-05 16:04:03 | INFO     | app.main | startup_event:198 | 🔥 [Startup] Warming up AI Components (Vector DB & LLM)...
+2026-03-05 16:04:03 | INFO     | app.services.spam_rag_service | __init__:43 | SpamRagService initialized (Collection: spam_rag_intent_v2)
+2026-03-05 16:04:03 | INFO     | app.services.spam_rag_service | _get_db:66 | [SpamRagService] Importing Chroma...
+2026-03-05 16:04:03 | INFO     | app.services.spam_rag_service | _get_db:70 | [SpamRagService] Imported Chroma in 0.4336s
+2026-03-05 16:04:03 | INFO     | app.services.spam_rag_service | _get_db:74 | [SpamRagService] Connecting to ChromaDB at C:\Users\leejo\Project\AI Agent\Spam Detector\backend\app\services\../../data/chroma_db
+2026-03-05 16:04:03 | INFO     | app.services.spam_rag_service | _get_embedding_function:48 | [SpamRagService] Importing OpenAIEmbeddings...
+2026-03-05 16:04:03 | INFO     | app.services.spam_rag_service | _get_embedding_function:52 | [SpamRagService] Imported OpenAIEmbeddings in 0.0000s
+2026-03-05 16:04:03 | INFO     | app.services.spam_rag_service | _get_embedding_function:54 | [SpamRagService] Initializing OpenAIEmbeddings helper...
+2026-03-05 16:04:04 | INFO     | app.services.spam_rag_service | _get_embedding_function:57 | [SpamRagService] Initialized OpenAIEmbeddings helper in 0.8094s
+2026-03-05 16:04:04 | INFO     | app.services.spam_rag_service | _get_db:82 | [SpamRagService] Connected to ChromaDB in 1.0330s
+2026-03-05 16:04:04 | INFO     | app.main | startup_event:208 |    -> SpamRagService Warmed up.
+2026-03-05 16:04:04 | INFO     | app.agents.content_agent.agent | _get_vector_db:82 | [ContentAnalysisAgent] Lazy loading Vector DB...
+2026-03-05 16:04:04 | INFO     | app.agents.content_agent.agent | _get_vector_db:87 | [ContentAnalysisAgent] Imports took 0.0070s
+2026-03-05 16:04:04 | INFO     | app.agents.content_agent.agent | _get_vector_db:89 | ChromaDB 초기화 중...
+2026-03-05 16:04:05 | INFO     | app.agents.content_agent.agent | _get_vector_db:96 | [ContentAnalysisAgent] ChromaDB initialized in 0.4975s
+2026-03-05 16:04:05 | INFO     | app.main | startup_event:215 |    -> ContentAnalysisAgent Warmed up.
+2026-03-05 16:04:05 | INFO     | app.main | startup_event:220 | ✅ Server Application Started! (Startup took 1.97s) | Global ThreadPool: 70 workers.
+2026-03-05 16:05:15 | INFO     | app.main | connect:76 | WebSocket Connected: Client client-hklgqbs1n
+2026-03-05 17:00:05 | INFO     | app.main | websocket_endpoint:806 | Received from client-hklgqbs1n: {'type': 'CHAT_MESSAGE', 'content': '전제척으로 요즘 경기가 너무 힘듭니다 단 30,000원으로 재기 하세요. https://krkhj.com/2602', 'mode': 'Unified'}
+2026-03-05 17:00:05 | INFO     | app.main | websocket_endpoint:816 | 
+============================================================
+[Chat] Mode: Unified
+[Chat] 메시지 원문:
+  전제척으로 요즘 경기가 너무 힘듭니다 단 30,000원으로 재기 하세요. https://krkhj.com/2602
+============================================================
+2026-03-05 17:00:05 | DEBUG    | app.agents.content_agent.agent | acheck:803 | 분석 시작 (async) | msg=전제척으로 요즘 경기가 너무 힘듭니다 단 30,000원으로 재기 하세요. https://krkhj.com/2602
+2026-03-05 17:00:05 | INFO     | app.agents.content_agent.agent | _get_cached_client:193 | [ContentAnalysisAgent] Instantiating new LLM client for GEMINI (gemini-3-flash-preview)
+2026-03-05 17:00:10 | INFO     | app.agents.content_agent.agent | acheck:821 | Intent Summary: Illegal Financial or Gambling Advertisement / Appealing to economic hardship with a low-cost recovery promise / Request ...
+2026-03-05 17:00:10 | DEBUG    | app.agents.content_agent.agent | _retrieve_context:138 | Using Full Spam Guide Text (Always)
+2026-03-05 17:00:10 | DEBUG    | app.services.spam_rag_service | search_similar:157 | Searching similar intent: 'Illegal Financial or Gambling Advertisement / Appealing to economic hardship with a low-cost recovery promise / Request to access an external link for participation'
+2026-03-05 17:00:10 | DEBUG    | app.services.spam_rag_service | search_similar_batch:211 | Searching similar intent: 'Illegal Financial or Gambling Advertisement / Appealing to economic hardship with a low-cost recovery promise / Request to access an external link for participation'
+2026-03-05 17:00:13 | INFO     | app.agents.content_agent.agent | _retrieve_context:146 | Spam RAG: 4건 검색됨
+2026-03-05 17:00:13 | INFO     | app.agents.content_agent.agent | acheck:837 | RAG Metrics | Top1=0.5693 | Top2=0.6536 | Gap=0.0843
+2026-03-05 17:00:13 | DEBUG    | app.agents.content_agent.agent | acheck:843 | Building prompt...
+2026-03-05 17:00:13 | INFO     | app.agents.content_agent.agent | _build_prompt:633 |     [RAG Examples] Top-2 forced + threshold (0.55) from 3rd onwards
+2026-03-05 17:00:13 | DEBUG    | app.agents.content_agent.agent | _build_prompt:641 |     [RAG Examples]   - score: 0.569, included (Top-1, forced)
+2026-03-05 17:00:13 | DEBUG    | app.agents.content_agent.agent | _build_prompt:641 |     [RAG Examples]   - score: 0.654, included (Top-2, forced)
+2026-03-05 17:00:13 | DEBUG    | app.agents.content_agent.agent | _build_prompt:645 |     [RAG Examples]   - score: 0.668, excluded (threshold: 0.55)
+2026-03-05 17:00:13 | DEBUG    | app.agents.content_agent.agent | _build_prompt:645 |     [RAG Examples]   - score: 0.690, excluded (threshold: 0.55)
+2026-03-05 17:00:13 | INFO     | app.agents.content_agent.agent | _build_prompt:666 |     [RAG Examples] 2 examples included in prompt (threshold: 0.55)
+2026-03-05 17:00:13 | DEBUG    | app.agents.content_agent.agent | _build_prompt:669 |     [RAG Examples Injected Content]:
+
+[Reference Context - Similar Intent Examples]
+아래는 유사한 의도(Intent)를 가진 과거 메시지 판정 결과입니다. 참고 자료로만 활용하세요.
+
+[CRITICAL - Near-Duplicate 판정 규칙]
+아래 조건 중 하나라도 해당하면 해당 예시를 '참고' 수준이 아니라 '강제 준수' 대상으로 취급한다:
+  1) normalized_text가 분석 대상 메시지와 exact match인 경우
+  2) 유사도 score < 0.05 이고, 토큰/형태 유사도도 매우 높은 경우 (사실상 동일 메시지)
+이 경우, 해당 예시의 판정(label)을 그대로 따르고, reason 필드에 '과거 동일 사례 판정 적용' 임을 반드시 명시하라.
+
+예시 1 (유사도: 0.569):
+  메시지: "7541 0768 박 성탄절 P 많이드려요 분위기"
+  판정: SPAM (code: 3)
+  카테고리: 도박 / 게임
+  근거: Intent: 정체불명의 혜택(P)을 미끼로 한 유흥/도박 사이트 유입 유도 (Anonymous Nightlife/Gambling Solicitation - SPAM)
+Tactics: 닉네임만 노출(Identity Concealment - 박), 특정 시즌 악용(Seasonal Baiting - 성탄절), 모호한 혜택 강조(Vague Incentive - P 많이드려요), 법적 규정 위반(Legal Failure)
+Action: 업소 방문 또는 사이트 가입 유도(Conversion), 개인 번호 유효성 확인(Live Line Check), 스팸 필터 회피(Evasion)
+
+예시 2 (유사도: 0.654):
+  메시지: "하시는일번창하시기를기원드립니다~^^건강하시고무탈한하루되세요~~~강철중드립니다~미션ㆍ더킹"
+  판정: SPAM (code: 1)
+  카테고리: 성인 / 유흥
+  근거: Intent: 유명 캐릭터명(강철중)과 유흥 상호(미션, 더킹)를 활용한 안부 위장 호객 및 번호 유효성 확인 (Pop-culture Alias & Entertainment Solicitation - SPAM)
+Tactics: 가명 사용(강철중), 모호한 상호 나열(미션/더킹), 정중한 안부 인사 활용, 법적 광고 규격(광고/080) 전면 미준수
+Action: 수신자의 답장 유도(누구세요? 등)를 통한 번호 활성 상태 확인, 유흥 업소 예약 상담 연결, 향후 타겟 마케팅을 위한 '반응 고객' 리스트 등록
+
+2026-03-05 17:00:13 | INFO     | app.agents.content_agent.agent | acheck:857 | 프롬프트 생성 완료 | RAG Guide=O | rag_retrieved=4, rag_injected=2
+2026-03-05 17:00:13 | INFO     | app.agents.content_agent.agent | acheck:858 | RAG Details | injected_labels=SPAM:2/HAM:0 | injected_ids=['rag_bf766069', 'rag_978ed982']
+2026-03-05 17:00:13 | DEBUG    | app.agents.content_agent.agent | acheck:860 | Prompt built, length: 7525 chars
+2026-03-05 17:00:13 | DEBUG    | app.agents.content_agent.agent | acheck:862 | Calling LLM...
+2026-03-05 17:00:26 | DEBUG    | app.agents.content_agent.agent | acheck:874 | LLM 응답: ```json
+{
+  "label": "SPAM",
+  "ham_code": "null",
+  "spam_code": "2",
+  "spam_probability": 0.92,
+  "reason": "경제적 어려움을 언급하며 단돈 30,000원으로 '재기'할 수 있다는 비현실적인 보상을 약속하여 외부 링크 클릭을 유도하고 있습니다. 이는 가이드 2.2에서 정의한 '비현실적 보상(피싱/사기 의도)'에 해당하며, '전제척으로'와 같은 미세한 오타를 섞어 필터링 회피를 시도한 정황이 확인됩니다. 따라서 harm_anchor=true이며 의도가 매우 명확하여 SPAM으로 판정합니다.",
+  "signals": {
+    "harm_anchor": true,
+    "route_or_cta": true
+  }
+}
+```
+2026-03-05 17:00:26 | INFO     | app.agents.content_agent.agent | acheck:881 | 판정완료 | SPAM | code=2 | prob=0.92
+2026-03-05 17:00:26 | INFO     | app.agents.content_agent.agent | acheck:882 |   - Reason: 경제적 어려움을 언급하며 단돈 30,000원으로 '재기'할 수 있다는 비현실적인 보상을 약속하여 외부 링크 클릭을 유도하고 있습니다. 이는 가이드 2.2에서 정의한 '비현실적 보상(피싱/사기 의도)'에 해당하며, '전제척으로'와 같은 미세한 오타를 섞어 필터링 회피를 시도한 정황이 확인됩니다. 따라서 harm_anchor=true이며 의도가 매우 명확하여 SPAM으로 판정합니다.
+2026-03-05 17:00:26 | INFO     | app.agents.url_agent.nodes | extract_node:493 | [URL Agent] Extracted URLs: ['https://krkhj.com/2602']
+2026-03-05 17:00:26 | INFO     | app.agents.url_agent.agent | acheck:198 | [ISAA] EXTRACT -> Completed node: extract
+2026-03-05 17:00:26 | INFO     | app.agents.url_agent.nodes | scrape_node:511 | [URL Agent] Scraping URL: https://krkhj.com/2602
+2026-03-05 17:00:26 | DEBUG    | app.agents.url_agent.tools | scrape_url:480 | Attempt 1 for https://krkhj.com/2602. Loop: 2241520722256
+2026-03-05 17:00:26 | DEBUG    | app.agents.url_agent.tools | scrape_url:484 | Checking browser state... (Headless: True)
+2026-03-05 17:00:26 | INFO     | app.agents.url_agent.tools | start:197 | [PlaywrightManager] Initialized concurrency semaphore with limit: 5
+2026-03-05 17:00:26 | DEBUG    | app.agents.url_agent.tools | start:205 | Launching new browser instance (Headless: True)...
+2026-03-05 17:00:26 | DEBUG    | app.agents.url_agent.tools | scrape_url:490 | Creating mobile context (iPhone emulation)...
+2026-03-05 17:00:26 | DEBUG    | app.agents.url_agent.tools | scrape_url:499 | Mobile context created (iPhone 14 Pro emulation).
+2026-03-05 17:00:27 | DEBUG    | app.agents.url_agent.tools | scrape_url:507 | Page created with enhanced stealth. Navigating to https://krkhj.com/2602...
+2026-03-05 17:00:31 | DEBUG    | app.agents.url_agent.tools | scrape_url:511 | Navigation complete. Status: 200
+2026-03-05 17:00:32 | DEBUG    | app.agents.url_agent.tools | simulate_human_behavior:241 | Human behavior simulated
+2026-03-05 17:00:32 | DEBUG    | app.agents.url_agent.tools | scrape_url:524 | Waiting for content...
+2026-03-05 17:00:34 | DEBUG    | app.agents.url_agent.tools | scrape_url:613 | Capturing screenshot...
+2026-03-05 17:00:34 | INFO     | app.agents.url_agent.tools | scrape_url:618 | Scraping success: 컨설턴트 김희주
+2026-03-05 17:00:34 | DEBUG    | app.agents.url_agent.tools | scrape_url:623 | Closing context.
+2026-03-05 17:00:34 | INFO     | app.agents.url_agent.nodes | scrape_node:527 | [URL Agent] Scrape Result: status=success, final_url=https://krkhj.com/index.html, title=컨설턴트 김희주, captcha=False, text_len=4165
+2026-03-05 17:00:34 | INFO     | app.agents.url_agent.nodes | scrape_node:539 | [URL Agent] Content Preview: 카톡문의 단 일분의 성공은 수년 동안의 실패를 보상한다. 컨설턴트 김희주 여러분에게 좋은 투자 및 재테크를 소개해드리고 싶은 김희주 입니다! 리스크없는 안정적이고 꾸준한 수익으로 여러분의 오늘 10분이 내일을 바꿀 수 있도록 도와드리겠습니다.  ✔️ [안전성] 확실한 원금보장형,매달 꾸준한 수익을 보여드립니다. ✔️ [간편성] 핸드폰 하나로 무경험자도 리딩...
+2026-03-05 17:00:34 | INFO     | app.agents.url_agent.agent | acheck:198 | [ISAA] SCRAPE -> Completed node: scrape
+2026-03-05 17:00:34 | INFO     | app.agents.url_agent.nodes | analyze_node:565 | URL 분석 시작 | msg=전제척으로 요즘 경기가 너무 힘듭니다 단 30,000원으로 재기 하세요. https://krkhj.com/2602
+2026-03-05 17:00:34 | INFO     | app.agents.url_agent.nodes | analyze_node:582 | 스크래핑 결과: URL=https://krkhj.com/index.html | Title=컨설턴트 김희주 | Text길이=3000자
+2026-03-05 17:00:34 | INFO     | app.agents.url_agent.nodes | analyze_node:676 | [URL Agent] Scraped Content Preview (100 chars): 카톡문의
+단 일분의 성공은 수년 동안의 실패를 보상한다.
+컨설턴트 김희주
+여러분에게 좋은 투자 및 재테크를 소개해드리고 싶은 김희주 입니다!
+리스크없는 안정적이고 꾸준한 수익으로...
+2026-03-05 17:00:34 | INFO     | app.agents.url_agent.nodes | get_llm:114 | [URL Agent] Instantiating new LLM client for GEMINI (gemini-3-flash-preview)
+2026-03-05 17:00:42 | INFO     | app.agents.url_agent.nodes | analyze_node:752 | LLM 분석결과 | SPAM | code=2 | prob=1.0
+2026-03-05 17:00:42 | DEBUG    | app.agents.url_agent.nodes | analyze_node:753 | Reason: SMS 메시지에서 주장하는 '30,000원으로 재기'라는 내용과 연결된 URL의 '재테크 및 투자 컨설팅' 홍보 내용이 문맥적으로 일치합니다. 그러나 해당 웹페이지는 전형적인 사기성 '투자 리딩' 사이트의 형태를 띠고 있습니다. [안전성] 항목에서 언급된 '확실한 원금...
+2026-03-05 17:00:42 | INFO     | app.agents.url_agent.agent | acheck:198 | [ISAA] ANALYZE -> Completed node: analyze
+2026-03-05 17:00:42 | INFO     | app.main | websocket_endpoint:1096 | [URL Override] Updated code from '2' to '2' based on URL analysis
+2026-03-05 17:00:42 | INFO     | app.agents.ibse_agent.service | process_message:46 | DEBUG URL Match: 'https://'
+2026-03-05 17:00:42 | INFO     | app.agents.ibse_agent.service | process_message:50 | Skipping LLM for 01885694-e720-44ec-8b6d-85c8df701a44: URL detected (Short or Normal).
+2026-03-05 17:00:48 | INFO     | app.agents.content_agent.agent | generate_final_summary:1128 | Final Summary: 🚫 **해당 메시지는 위험한 투자 사기(스팸)로 판정되었습니다.**
+
+**[분석 결과 개요]**
+이 메시지는 최근의 경제적 어려움을 이용해 '30,000원'이라는 소액으로 큰돈을 벌 수 있다는 비현실적인 보상을 약속하며 클릭을 유도하고 있습니다. 분석 결과, 연결된 링크는 불법적인 '원금 보장'과 '고수익'을 미끼로 카카오톡 1:1 상담을 유도하는 전형적인 사기성 투자 리딩 사이트로 확인되었습니다. 특히 필터링을 피하기 위해 의도적인 오타(전제척으로)를 섞어 쓰는 등 수법이 매우 정교합니다.
+
+**[권고 조치]**
+절대 해당 링크를 클릭하거나 개인정보를 입력하지 마십시오. 피해 예방을 위해 해당 번호를 즉시 **스팸 차단 및 신고**하신 후 메시지를 삭제하시기 바랍니다.
+2026-03-05 18:07:58 | INFO     | app.main | disconnect:93 | WebSocket Disconnected: Client client-hklgqbs1n
+2026-03-05 20:07:55 | INFO     | app.main | connect:76 | WebSocket Connected: Client client-hklgqbs1n
+2026-03-05 20:07:55 | INFO     | app.main | disconnect:93 | WebSocket Disconnected: Client client-hklgqbs1n
+2026-03-05 20:07:56 | INFO     | app.main | connect:76 | WebSocket Connected: Client client-xecs7czbf
+2026-03-05 20:07:57 | INFO     | app.main | disconnect:93 | WebSocket Disconnected: Client client-xecs7czbf

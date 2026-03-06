@@ -127,6 +127,89 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         
         return {"final_result": final}
 
+    def fp_sentinel_node(state: BatchState):
+        """
+        FP Sentinel (오탐 방지 정책 에이전트)
+        의미 클래스(Semantic Class)를 분류하고, Type_B에 대해 학습 라벨(Learning Label)과 차단(Enforcement) 정책을 분리/강제합니다.
+        """
+        final = state.get("final_result", {})
+        c_res = state.get("content_result", {})
+        u_res = state.get("url_result")
+        
+        signals = c_res.get("signals", {})
+        c_impersonation = signals.get("is_impersonation", False)
+        c_vague_cta = signals.get("is_vague_cta", False)
+        
+        u_blocked = False
+        u_spam = False
+        if u_res:
+             u_blocked = u_res.get("bot_protection_active", False)
+             u_spam = u_res.get("is_spam") is True
+             
+        # [Priority 0] URL CONFIRMED SAFE → 무조건 HAM 확정
+        # URL Agent가 안전하다고 명시적으로 확인한 경우, c_impersonation 여부와 무관하게 HAM 처리
+        # (관리비 미납 알림 등 정상 URL을 포함한 메시지가 사칭으로 오분류되는 것 방지)
+        final_reason = final.get("reason", "")
+        if "CONFIRMED SAFE" in final_reason:
+             semantic_class = "Ham"
+             learning_label = "HAM"
+             # is_spam은 aggregator가 이미 False로 설정했으므로 그대로 유지
+
+        # Rulset 1: Type_B (FP-Sensitive Spam) - 사칭/기만 감지
+        # c_impersonation=True이면 URL 결과(DNS fail, timeout 등) 무관하게 Type_B 확정
+        # 단, URL이 있는 경우에만 적용 (URL 없는 순수 텍스트 사칭은 Type_A로 처리)
+        # → URL 없는 메시지는 나이브베이즈 오염 위험이 낮아 Type_B 불필요
+        elif c_impersonation and u_res is not None:
+             semantic_class = "Type_B"
+             learning_label = "HAM" # 학습에서 제외하여 나이브베이즈 보호
+             
+             # Enforcement: SPAM으로 강제 (HITL/HAM 오버라이드)
+             if final.get("is_spam") is not True:
+                 final["is_spam"] = True
+                 final["classification_code"] = "10" # 강제 Phishing/사칭 코드
+             existing_reason = final.get("reason", "")
+             if "[FP Sentinel Override]" not in existing_reason:
+                 final["reason"] = f"{existing_reason} | [FP Sentinel Override] 사칭/기만(Type_B) 확정 차단"
+                 
+        # Ruleset 1.2: Type_B (Vague CTA + URL SPAM)
+        # 텍스트가 의도적으로 모호/범용어이지만 URL이 스팸으로 확인된 경우
+        # → 텍스트를 SPAM으로 학습하면 나이브베이즈 오탐 유발 가능
+        elif c_vague_cta and u_spam:
+             semantic_class = "Type_B"
+             learning_label = "HAM"
+             existing_reason = final.get("reason", "")
+             if "[FP Sentinel Override]" not in existing_reason:
+                 final["reason"] = f"{existing_reason} | [FP Sentinel Override] 모호한 CTA + URL 스팸(Type_B) 확정 차단"
+
+        # Ruleset 1.5: Type_B (URL-Separated / URL-Blocked Case)
+        # Content Agent가 HAM으로 판단했지만 URL이 악성이거나 접근 불가(timeout, bot-block)인 경우
+        # → 텍스트는 정상처럼 보이지만 URL 위험이 있는 FP-Sensitive 케이스
+        elif c_res.get("is_spam") is False and (
+            final.get("malicious_url_extracted") is True or u_blocked
+        ):
+             semantic_class = "Type_B"
+             learning_label = "HAM"
+             final["is_spam"] = True  # Enforcement: 차단
+             existing_reason = final.get("reason", "")
+             if "[FP Sentinel Override]" not in existing_reason:
+                 cause = "악성 URL 탐지" if final.get("malicious_url_extracted") else "URL 접근 불가(timeout/bot-block)"
+                 final["reason"] = f"{existing_reason} | [FP Sentinel Override] {cause} Type_B 확정 차단"
+
+        # Rulset 2: Type_A (Pure Spam)
+        elif final.get("is_spam") is True:
+             semantic_class = "Type_A"
+             learning_label = "SPAM"
+             
+        # Rulset 3: Ham
+        else:
+             semantic_class = "Ham"
+             learning_label = "HAM"
+             
+        final["semantic_class"] = semantic_class
+        final["learning_label"] = learning_label
+        
+        return {"final_result": final}
+
     # --- Conditional Logic ---
     
     def router(state: BatchState):
@@ -199,6 +282,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
     workflow.add_node("url_node", url_node)
     workflow.add_node("ibse_node", ibse_node)
     workflow.add_node("aggregator_node", aggregator_node)
+    workflow.add_node("fp_sentinel_node", fp_sentinel_node)
     
     workflow.set_entry_point("content_node")
     
@@ -212,5 +296,9 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
     # Convergence
     workflow.add_edge("url_node", "aggregator_node")
     workflow.add_edge("ibse_node", "aggregator_node")
+    
+    # FP Sentinel Policy Engine
+    workflow.add_edge("aggregator_node", "fp_sentinel_node")
+    workflow.add_edge("fp_sentinel_node", END)
     
     return workflow.compile()

@@ -53,18 +53,17 @@ class ExcelHandler:
                 row_data.append(ws.cell(row=row_idx, column=col_idx).value)
             data_rows.append(row_data)
         
-        # 구분 컬럼 기준 정렬 (SPAM "o" -> TEXT-HAM URL-SPAM -> HAM "")
+        # 구분 콜럼 기준 정렬: SPAM("o") → Type_B → HAM
         def sort_key(row):
             gubun_val = row[gubun_col_idx - 1] if len(row) >= gubun_col_idx else ""
             reason_val = row[reason_col_idx - 1] if reason_col_idx and len(row) >= reason_col_idx else ""
-            
-            is_separated = False
-            if reason_val and "[텍스트 HAM + 악성 URL 분리 감지" in str(reason_val):
-                is_separated = True
+
+            # Type_B 판별: FP Sentinel이 reason에 [FP Sentinel Override] 태그를 삽입
+            is_type_b = bool(reason_val and "[FP Sentinel Override]" in str(reason_val))
 
             if gubun_val == "o":
                 return 0
-            elif is_separated:
+            elif is_type_b:
                 return 1
             else:
                 return 2
@@ -101,6 +100,8 @@ class ExcelHandler:
         code_col = get_col_idx("분류")
         msg_len_col = get_col_idx("메시지 길이")
         prob_col = get_col_idx("Probability")
+        semantic_col = get_col_idx("Semantic Class")
+        learning_col = get_col_idx("Learning Label")
         reason_col = get_col_idx("Reason")
         
         # 컬럼 너비 설정
@@ -112,6 +113,10 @@ class ExcelHandler:
             ws.column_dimensions[get_column_letter(msg_len_col)].width = 10
         if prob_col:
             ws.column_dimensions[get_column_letter(prob_col)].width = 10
+        if semantic_col:
+            ws.column_dimensions[get_column_letter(semantic_col)].width = 15
+        if learning_col:
+            ws.column_dimensions[get_column_letter(learning_col)].width = 15
         if reason_col:
             ws.column_dimensions[get_column_letter(reason_col)].width = 90
         
@@ -134,6 +139,12 @@ class ExcelHandler:
             if prob_col:
                 ws.cell(row=row_idx, column=prob_col).alignment = center_align
 
+            # 신규 컬럼 중앙 정렬
+            if semantic_col:
+                ws.cell(row=row_idx, column=semantic_col).alignment = center_align
+            if learning_col:
+                ws.cell(row=row_idx, column=learning_col).alignment = center_align
+
             # 메시지 길이 및 URL 길이 중앙 정렬
             if msg_len_col:
                 ws.cell(row=row_idx, column=msg_len_col).alignment = center_align
@@ -149,11 +160,15 @@ class ExcelHandler:
             if reason_col:
                 ws.cell(row=row_idx, column=reason_col).alignment = wrap_vcenter_align
             
-            # SPAM(o) 및 TEXT+URL분리인 경우 메시지 셀 채우기 적용
+            # SPAM(o), Type_B, TEXT+URL분리인 경우 메시지 셀 채우기 적용
             if gubun_col and msg_col:
                 gubun_val = ws.cell(row=row_idx, column=gubun_col).value
                 reason_val = ws.cell(row=row_idx, column=reason_col).value if reason_col else ""
+                semantic_val = ws.cell(row=row_idx, column=semantic_col).value if semantic_col else ""
                 
+                is_type_b = bool(semantic_val and str(semantic_val) == "Type_B") or bool(
+                    reason_val and "[FP Sentinel Override]" in str(reason_val)
+                )
                 is_separated = False
                 if reason_val and "[텍스트 HAM + 악성 URL 분리 감지" in str(reason_val):
                     is_separated = True
@@ -161,6 +176,10 @@ class ExcelHandler:
                 cell = ws.cell(row=row_idx, column=msg_col)
                 if gubun_val == "o":  # 일반 SPAM
                     cell.fill = spam_fill
+                    cell.alignment = wrap_vcenter_align
+                elif is_type_b:  # Type_B (FP-Sensitive Spam): 분홍 = #FFB3BA
+                    type_b_fill = PatternFill(start_color="FFB3BA", end_color="FFB3BA", fill_type="solid")
+                    cell.fill = type_b_fill
                     cell.alignment = wrap_vcenter_align
                 elif is_separated: # TEXT-HAM + URL-SPAM
                     # Target fill color FFD1D1 for URL-SPAM from HAM text
@@ -308,7 +327,9 @@ class ExcelHandler:
             gubun_col_idx = get_col_idx("구분", len(headers) + 1)
             code_col_idx = get_col_idx("분류", gubun_col_idx + 1)
             prob_col_idx = get_col_idx("Probability", code_col_idx + 1)
-            reason_col_idx = get_col_idx("Reason", prob_col_idx + 1)
+            semantic_col_idx = get_col_idx("Semantic Class", prob_col_idx + 1)
+            learning_col_idx = get_col_idx("Learning Label", semantic_col_idx + 1)
+            reason_col_idx = get_col_idx("Reason", learning_col_idx + 1)
             in_token_col_idx = get_col_idx("In_Token", reason_col_idx + 1)
             out_token_col_idx = get_col_idx("Out_Token", in_token_col_idx + 1)
 
@@ -364,17 +385,24 @@ class ExcelHandler:
                         continue
 
                     # Write Result
-                    if result.get("is_spam") is True:
+                    semantic_val = result.get("semantic_class", "")
+                    is_type_b = semantic_val == "Type_B"
+                    
+                    if is_type_b:
+                        # Type_B: 구분/분류 공란 (Learning HAM, Enforcement SPAM이지만 엔소기로는 공란으로 표시)
+                        gubun_val = ""
+                        code_val = ""
+                    elif result.get("is_spam") is True:
                         gubun_val = "o"
+                        raw_val = str(result.get("classification_code", ""))
+                        import re
+                        match = re.search(r'\d+', raw_val)
+                        code_val = match.group(0) if match else raw_val
                     elif result.get("is_spam") is False:
                         gubun_val = ""
-                    else:
-                        gubun_val = "UNKNOWN"
-                        
-                    if result.get("is_spam") is False:
                         code_val = ""
                     else:
-                        # SPAM인 경우 코드 추출
+                        gubun_val = "UNKNOWN"
                         raw_val = str(result.get("classification_code", ""))
                         import re
                         match = re.search(r'\d+', raw_val)
@@ -386,6 +414,8 @@ class ExcelHandler:
                         m_ext = re.search(r'\d+', raw_ext_code)
                         extracted_url_code = m_ext.group(0) if m_ext else raw_ext_code
                     prob_val = result.get("spam_probability", 0.0)
+                    semantic_val = result.get("semantic_class", "")
+                    learning_val = result.get("learning_label", "")
                     reason_val = result.get("reason", "")
                     in_token_val = result.get("input_tokens", 0)
                     out_token_val = result.get("output_tokens", 0)
@@ -393,6 +423,8 @@ class ExcelHandler:
                     ws.cell(row=row_idx, column=gubun_col_idx, value=gubun_val)
                     ws.cell(row=row_idx, column=code_col_idx, value=code_val)
                     ws.cell(row=row_idx, column=prob_col_idx, value=prob_val)
+                    ws.cell(row=row_idx, column=semantic_col_idx, value=semantic_val)
+                    ws.cell(row=row_idx, column=learning_col_idx, value=learning_val)
                     ws.cell(row=row_idx, column=reason_col_idx, value=reason_val)
                     ws.cell(row=row_idx, column=in_token_col_idx, value=in_token_val)
                     ws.cell(row=row_idx, column=out_token_col_idx, value=out_token_val)
@@ -400,6 +432,12 @@ class ExcelHandler:
                     # --- URL Collection Logic ---
                     # Collect URLs if SPAM or malicious URL extracted from HAM
                     if result.get("is_spam") is True or result.get("malicious_url_extracted"):
+                        # URL중복 제거 시트에는 classification_code 원본 사용 (Type_B여도 실제 코드 표시)
+                        raw_url_code = str(result.get("classification_code", ""))
+                        _m = re.search(r'\d+', raw_url_code)
+                        url_dedup_code = _m.group(0) if _m else raw_url_code
+                        if not result.get("is_spam"):
+                            url_dedup_code = extracted_url_code
                         # re is already imported globally
                         url_pattern = r'(?:https?://|www\.)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:/[a-zA-Z0-9./?=&%_-]*)?'
                         urls = re.findall(url_pattern, batch_buffer[idx][1])
@@ -413,7 +451,7 @@ class ExcelHandler:
                                  if url not in unique_urls:
                                      unique_urls[url] = {
                                          "len": self._lenb(url),
-                                         "code": code_val if result.get("is_spam") else extracted_url_code,
+                                         "code": url_dedup_code,
                                          "malicious_url_extracted": result.get("malicious_url_extracted", False)
                                      }
 
@@ -615,7 +653,7 @@ class ExcelHandler:
             ws.title = "육안분석(시뮬결과35_150)"
             
             # Define Headers
-            headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Reason"]
+            headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Learning Label", "Reason"]
             ws.append(headers)
             
             # Styling
@@ -675,18 +713,21 @@ class ExcelHandler:
                     
                     # Logic
                     is_spam = result.get("is_spam")
-                    if is_spam is True:
-                        gubun_val = "o"
-                    else:
+                    semantic_class = result.get("semantic_class", "")
+                    is_type_b = semantic_class == "Type_B"
+                    
+                    if is_type_b:
+                        # Type_B: 구분/분류 공란 (메시지 색만 주황으로 처리됨)
                         gubun_val = ""
-                        
-                    # Code
-                    if is_spam is False:
                         code_val = ""
-                    else:
+                    elif is_spam is True:
+                        gubun_val = "o"
                         raw_code = str(result.get("classification_code", ""))
                         match = re.search(r'\d+', raw_code)
                         code_val = match.group(0) if match else raw_code
+                    else:
+                        gubun_val = ""
+                        code_val = ""
 
                     extracted_url_code = ""
                     if result.get("malicious_url_extracted"):
@@ -698,6 +739,8 @@ class ExcelHandler:
                     prob_float = result.get("spam_probability", 0.0)
                     prob_val = f"{int(prob_float * 100)}%"
                     
+                    semantic_val = result.get("semantic_class", "")
+                    learning_val = result.get("learning_label", "")
                     reason_val = result.get("reason", "")
                     
                     # Lengths
@@ -712,7 +755,9 @@ class ExcelHandler:
                         self._sanitize_cell_value(code_val), 
                         msg_len, 
                         url_len, 
-                        self._sanitize_cell_value(prob_val), 
+                        self._sanitize_cell_value(prob_val),
+                        self._sanitize_cell_value(semantic_val),
+                        self._sanitize_cell_value(learning_val),
                         self._sanitize_cell_value(reason_val)
                     ])
                     
@@ -748,9 +793,15 @@ class ExcelHandler:
 
                             if not self.is_short_url(target_url):
                                  if target_url not in unique_urls:
+                                     # URL중복 제거 시트에는 classification_code 원본 사용 (Type_B여도 실제 코드 표시)
+                                     raw_url_code = str(result.get("classification_code", ""))
+                                     _m = re.search(r'\d+', raw_url_code)
+                                     url_dedup_code = _m.group(0) if _m else raw_url_code
+                                     if not is_spam:
+                                         url_dedup_code = extracted_url_code
                                      unique_urls[target_url] = {
                                          "len": self._lenb(target_url),
-                                         "code": code_val if is_spam else extracted_url_code,
+                                         "code": url_dedup_code,
                                          "malicious_url_extracted": result.get("malicious_url_extracted", False)
                                      }
 
@@ -797,9 +848,10 @@ class ExcelHandler:
             if batch_buffer:
                 flush_batch(total_rows - len(batch_buffer))
             
-            # 4.5 구분 컬럼 기준 정렬 (SPAM 상단, HAM 하단)
-            # Headers: ["메시지", "URL", "구분", ...] → 구분은 3번째 컬럼
-            self._sort_sheet_by_gubun(ws, gubun_col_idx=3)
+            # 4.5 구분 컬럼 기준 정렬 (SPAM 상단, Type_B 중간, HAM 하단)
+            # Headers: ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Learning Label", "Reason"]
+            # 구분=3번째, Reason=10번째
+            self._sort_sheet_by_gubun(ws, gubun_col_idx=3, reason_col_idx=10)
             
             # 4.6 서식 적용
             self._apply_formatting(ws, headers)

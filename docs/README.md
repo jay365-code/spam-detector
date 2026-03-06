@@ -6,8 +6,17 @@
 
 - **🧠 다단계 분석 파이프라인 (Multi-Stage Analysis)**
   - **1단계 (Rule-Based)**: 알려진 패턴, Unicode 난독화 감지, 외국어 필터링을 통한 즉각적인 분류.
-  - **2단계 (Content AI)**: LLM(RAG)을 활용하여 문맥을 이해하고 교묘한 스팸 의도를 탐지.
+  - **2단계 (Content AI)**: LLM(RAG)을 활용하여 문맥을 이해하고, 정상 기업/업무 사칭(`is_impersonation`) 및 의도적 모호 문구(`is_vague_cta`) 등 교묘한 기만 의도를 탐지.
   - **3단계 (URL Deep Dive)**: Playwright를 사용해 URL을 실시간으로 방문하여 피싱 사이트나 리다이렉트 체인을 추적.
+
+- **🛡️ FP Sentinel (오탐 방지 정책 에이전트)**
+  - 스팸 의사결정의 마지막 단계에서 작동하여 **차단(Enforcement)과 학습(Learning) 정책을 분리**합니다.
+  - 다음 룰셋으로 Type_B(FP-민감 스팸)를 식별하여, 나이브 베이즈(Naive Bayes) 학습 데이터 오염을 방지합니다:
+    - **P0**: URL CONFIRMED SAFE → 무조건 Ham (c_impersonation 무시)
+    - **R1**: `is_impersonation=True` + URL 있음 → Type_B
+    - **R1.2**: `is_vague_cta=True` + URL SPAM 확인 → Type_B
+    - **R1.5**: Content=HAM + URL 악성/timeout → Type_B
+    - **R2**: 그 외 스팸 → Type_A (정상 학습)
 
 - **📊 Spam Alignment Monitor (SAM)**
   - **트렌드 분석**: 기간별 Accuracy, Cohen's Kappa, MCC 지표를 차트로 시각화하여 품질 변화를 추적합니다.
@@ -32,7 +41,8 @@
   - 스팸으로 분류된 메시지에서 "스팸 지문(Signature)"을 자동으로 추출하여 차단 목록 생성을 지원합니다.
 
 - **🤝 전문가 검토 (HITL - Human-in-the-Loop)**
-  - AI의 판단이 모호한 경우(예: 확률 40~70%), 자동으로 분석을 일시 정지하고 운영자의 최종 판단을 요청합니다.
+  - AI의 판단이 모호한 경우(분류 코드 30번), **배치를 멈추지 않고(Non-blocking)** 운영자에게 실시간 알림을 보냅니다.
+  - 스팸 확률이 90% 이상인 경우 시스템이 스팸으로 자동 확정하며, 그 외에는 정상(HAM)으로 1차 분류하되 `[확인 필요]` 태그를 추가하여 사후 리뷰를 유도합니다.
 
 - **⚡ 고성능 처리 (High-Performance)**
   - **실시간 채팅**: WebSocket 스트리밍을 통해 분석 결과를 즉시 제공.
@@ -56,11 +66,13 @@ graph TD
     URL --> Aggregator["결과 통합 (Aggregator)"]
     IBSE --> Aggregator
     
-    Aggregator --> HITL{"HITL 검토<br/>(확률 < 임계값)"}
+    Aggregator --> FPS["FP Sentinel<br/>(오탐 방지 정책)"]
+    FPS --> HITL{"HITL 검토<br/>(코드 30)"}
     
-    HITL -- "모호합(Ambiguous)" --> User([운영자 검토])
-    HITL -- "확실함(Clear)" --> End([최종 판정])
-    User --> End
+    HITL -- "확률 < 0.9" --> Notify([실시간 알림<br/>Non-blocking HAM])
+    HITL -- "확률 >= 0.9" --> Auto([SPAM 자동 확정])
+    Notify --> End([최종 판정])
+    Auto --> End
 ```
 
 ### Rule-Based Filter (1단계 사전 필터링)
@@ -80,44 +92,55 @@ graph TD
     *   URL이 포함된 경우 ➡️ **URL Node** 병렬 실행.
     *   스팸으로 식별된 경우 ➡️ **IBSE Node** 병렬 실행 (시그니처 추출).
 3.  **Aggregator (종합 판단 로직)**: 모든 노드의 결과를 취합하여 최종 판정:
-    *   **URL 확실 SPAM** → Content HAM이어도 **최종 SPAM** (피싱 사이트 차단)
-    *   **URL 확실 안전** → Content SPAM이어도 **최종 HAM** (관리비 스미싱 오탐 방지)
-    *   **URL 불확실** → Content 판정 유지 (이미지 전용 등)
+    *   **URL 확실 SPAM** → Content HAM이어도 `malicious_url_extracted=True` 플래그 (텍스트 HAM 유지)
+    *   **URL 확실 안전** → Content SPAM이어도 **최종 HAM** (CONFIRMED SAFE Override)
+    *   **URL 불확실** → Content 판정 유지
+4.  **FP Sentinel (정책 엔진)**: Aggregator 결과를 받아 Semantic Class와 Learning Label 결정:
+    *   **P0** CONFIRMED SAFE → Ham 확정
+    *   **R1** `is_impersonation=True` + URL 있음 → **Type_B** (차단 O, 학습 제외)
+    *   **R1.2** `is_vague_cta=True` + URL SPAM → **Type_B**
+    *   **R1.5** Content=HAM + URL 악성/timeout → **Type_B** (차단 O)
+    *   **R2** 그 외 스팸 → **Type_A** (차단 O, 학습 O)
+    *   **R3** 그 외 → **Ham**
 
 #### Aggregator Override 규칙 (Content + URL 병합)
 
-| 케이스 | Content 판정 | URL 판정 | URL 상태 | 최종 판정 | 설명 |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Case 1** | **SPAM** | **SPAM** | 확실한 스팸 | **SPAM** | 둘 다 스팸 (가장 강력한 스팸) |
-| **Case 2** | **SPAM** | **HAM** | 확실한 안전 | **HAM** | URL이 정상 사이트로 확인 (관리비 오탐 방지) |
-| **Case 3** | **SPAM** | HAM | 불확실 | **SPAM** | URL 판단 불가, Content 스팸 유지 |
-| **Case 4** | **HAM** | **SPAM** | 확실한 스팸 | **SPAM** | URL이 피싱으로 확인 (이미지 스팸 대응) |
-| **Case 5** | **HAM** | HAM | 확실한 안전 | **HAM** | 둘 다 정상 |
+| 케이스 | Content | URL 판정 | 최종 (Aggregator) | FP Sentinel |
+| :--- | :--- | :--- | :--- | :--- |
+| **Case 1** | SPAM | SPAM | **SPAM** | Type_A or Type_B (impersonation 여부) |
+| **Case 2** | SPAM | CONFIRMED SAFE | **HAM** | Ham (P0 우선) |
+| **Case 3** | SPAM | 불확실/없음 | **SPAM** | Type_A or Type_B (impersonation/vague_cta 여부) |
+| **Case 4** | HAM | SPAM | **HAM** + `malicious_url_extracted` | Type_B (R1.5) |
+| **Case 5** | HAM | timeout/bot-block | Content 유지 → HITL 가능 | Type_B (R1.5, c_res.is_spam=False 조건) |
+| **Case 6** | HAM | HAM/없음 | **HAM** | Ham |
 
 ## 🔄 논리적 흐름 (Workflow)
 
 ```mermaid
 graph LR
-    Start((Start)) --> Content["Content Agent"]
+    Start((Start)) --> Content["Content Agent<br/>is_impersonation / is_vague_cta"]
 
     subgraph UnifiedBatchGraph
-        Content --> Check{"Is Spam?"}
+        Content --> Router{라우터}
         
-        %% 병렬 처리 (Parallel Execution)
-        Check -- Yes --> Parallel{Parallel}
-        Parallel --> URL["URL Agent"]
-        Parallel --> IBSE["IBSE Agent"]
+        %% URL 분기
+        Router -- "URL 있음" --> URL["URL Agent (Parallel)"]
         
-        %% 결과 통합 (Aggregator)
+        %% IBSE 분기
+        Router -- "확률 >= 임계치" --> IBSE["IBSE Agent (Parallel)"]
+        
+        %% 결과 대기 및 통합
         URL --> Aggregator[Aggregator]
         IBSE --> Aggregator
         
-        %% 스팸이 아닌 경우 바로 통합
-        Check -- No ------------------> Aggregator
+        %% 아무 조건도 안 맞으면 (URL 없음 & HAM) 바로 이동
+        Router -- "기타 (HAM)" --> Aggregator
+        
+        Aggregator --> FPS["FP Sentinel<br/>Type_A / Type_B / Ham"]
     end
 
-    Aggregator --> End((End))
-    End --> Excel["Excel Handler"]
+    FPS --> End((End))
+    End --> Excel["Excel Handler<br/>(SPAM=황색, Type_B=분홍, HAM=흰색)"]
 ```
 
 ### 1. 파일 업로드 (Upload)

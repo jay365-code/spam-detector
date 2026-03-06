@@ -470,7 +470,13 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
 Step 1. HARD GATE 확인 → harm_anchor = false 이면 무조건 HAM (label="HAM")
 Step 2. harm_anchor 판정 → Guide 2.2 기준 (URL 무시, 텍스트만, 도박/성인/사기/어뷰즈 의도가 명확해야 true)
 Step 3. 의도 명확도 판정 → spam_probability로 표현 (0.85 이상이면 의도가 매우 명확)
-Step 4. SPAM 확정 조건:
+Step 4. 사칭/기만(Impersonation) 여부 판정 → is_impersonation
+   - 단순히 일상어가 섞인 것이 아니라, '대기업/공공기관'을 사칭하거나 '택배/결제/승인' 등 정상 업무를 위장하여 수신자를 속이려는 명백한 기만 정황이 있으면 true
+Step 4-1. 모호한 행동 유도(Vague CTA) 여부 판정 → is_vague_cta
+   - 텍스트 자체가 의도적으로 범용어/모호한 표현으로만 구성되어 있고, URL/채널 클릭이 주된 공격 벡터인 경우 true
+   - 예: "확실하게 보여드리겠습니다", "들어오셔서 성과 지켜봐주세요", "결과로 증명하겠습니다" 등
+   - 텍스트만 봤을 때 정상 메시지로 오인될 가능성이 높으나 링크가 실제 스팸 목적인 패턴
+Step 5. SPAM 확정 조건:
    - 의도가 매우 명확 (spam_probability >= 0.85): harm_anchor=true면 SPAM (route_or_cta 무시)
    - 의도가 애매 (spam_probability < 0.85): harm_anchor=true AND route_or_cta=true 일 때만 SPAM
 
@@ -481,7 +487,7 @@ Step 4. SPAM 확정 조건:
 "spam_code": "0|1|2|3|null",
 "spam_probability": 0.0,
 "reason": "한국어로 판단 근거 작성 (과거 유사 사례가 있다면 반드시 언급)",
-"signals": {{ "harm_anchor": false, "route_or_cta": false }}
+"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false }}
 }}
 """
 
@@ -562,6 +568,12 @@ Step 4. SPAM 확정 조건:
         signals = result_json.get("signals", {})
         harm_anchor = signals.get("harm_anchor", False)
         route_or_cta = signals.get("route_or_cta", False)
+        is_impersonation = signals.get("is_impersonation", False)
+        is_vague_cta = signals.get("is_vague_cta", False)
+        
+        # Ensure signals dict is up to date
+        signals["is_impersonation"] = is_impersonation
+        signals["is_vague_cta"] = is_vague_cta
 
         # ========== HARD GATE ENFORCEMENT ==========
         # Rule 1: harm_anchor = false → 무조건 HAM
@@ -691,7 +703,13 @@ Step 2. harm_anchor 판정 → Guide 2.2 기준
    - 텍스트 의도가 도박/성인/사기/어뷰즈면 true
    - **난독화된 URL 문자열 자체**도 회피 의도(harm_anchor=true)의 근거가 된다.
 Step 3. 의도 명확도 판정 → spam_probability로 표현 (0.85 이상이면 의도가 매우 명확)
-Step 4. SPAM 확정 조건:
+Step 4. 사칭/기만(Impersonation) 여부 판정 → is_impersonation
+   - 단순히 일상어가 섞인 것이 아니라, '대기업/공공기관'을 사칭하거나 '택배/결제/승인' 등 정상 업무를 위장하여 수신자를 속이려는 명백한 기만 정황이 있으면 true
+Step 4-1. 모호한 행동 유도(Vague CTA) 여부 판정 → is_vague_cta
+   - 텍스트 자체가 의도적으로 범용어/모호한 표현으로만 구성되어 있고, URL/채널 클릭이 주된 공격 벡터인 경우 true
+   - 예: "확실하게 보여드리겠습니다", "들어오셔서 성과 지켜봐주세요", "결과로 증명하겠습니다" 등
+   - 텍스트만 봤을 때 정상 메시지로 오인될 가능성이 높으나 링크가 실제 스팸 목적인 패턴
+Step 5. SPAM 확정 조건:
    - 의도가 매우 명확 (spam_probability >= 0.85): harm_anchor=true면 SPAM (route_or_cta 무시)
    - 의도가 애매 (spam_probability < 0.85): harm_anchor=true AND route_or_cta=true 일 때만 SPAM
 
@@ -702,7 +720,7 @@ Step 4. SPAM 확정 조건:
 "spam_code": "0|1|2|3|null",
 "spam_probability": 0.0,
 "reason": "한국어로 판단 근거 작성 (과거 유사 사례가 있다면 반드시 언급)",
-"signals": {{ "harm_anchor": false, "route_or_cta": false }}
+"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false }}
 }}
 """
         return prompt_text, valid_examples

@@ -1,0 +1,216 @@
+2026-03-03 09:49:13 | INFO     | app.main | disconnect:93 | WebSocket Disconnected: Client client-r8fmvhkte
+2026-03-03 09:49:24 | INFO     | app.main | shutdown_event:224 | Server shutting down...
+2026-03-03 09:49:24 | INFO     | app.main | shutdown_event:228 | Global ThreadPoolExecutor shutdown.
+2026-03-03 09:53:24 | INFO     | app.core.logging_config | setup_logging:223 | 로깅 초기화 완료 | Console=DEBUG | File=DEBUG | JSON=ON
+2026-03-03 09:53:24 | INFO     | app.core.llm_manager | _initialize:47 | [KeyManager] Initialized GEMINI with 5 key(s).
+2026-03-03 09:53:24 | INFO     | app.core.llm_manager | _initialize:47 | [KeyManager] Initialized OPENAI with 1 key(s).
+2026-03-03 09:53:24 | INFO     | app.core.llm_manager | _initialize:47 | [KeyManager] Initialized CLAUDE with 1 key(s).
+2026-03-03 09:53:36 | INFO     | app.main | _log_env_config:175 | 📋 [Config] .env loaded:
+  LLM_PROVIDER=GEMINI
+  OPENAI_API_KEY=***
+  GEMINI_API_KEY=***
+  CLAUDE_API_KEY=***
+  LLM_MODEL=gemini-3-flash-preview
+  LLM_BATCH_SIZE=5
+  LOG_LEVEL_CONSOLE=DEBUG
+  LOG_LEVEL_FILE=DEBUG
+  LOG_JSON_ENABLED=1
+  LOG_CONSOLE_ENABLED=1
+  SPAM_RAG_ENABLED=1
+  RAG_DISTANCE_THRESHOLD=0.55
+  MAX_BROWSER_CONCURRENCY=5
+  ALPHANUMERIC_OBFUSCATION_RATIO_THRESHOLD=0.55
+  MIN_MESSAGE_LENGTH=5
+2026-03-03 09:53:36 | INFO     | app.main | startup_event:198 | 🔥 [Startup] Warming up AI Components (Vector DB & LLM)...
+2026-03-03 09:53:36 | INFO     | app.services.spam_rag_service | __init__:43 | SpamRagService initialized (Collection: spam_rag_intent_v2)
+2026-03-03 09:53:36 | INFO     | app.services.spam_rag_service | _get_db:66 | [SpamRagService] Importing Chroma...
+2026-03-03 09:53:37 | INFO     | app.services.spam_rag_service | _get_db:70 | [SpamRagService] Imported Chroma in 0.3967s
+2026-03-03 09:53:37 | INFO     | app.services.spam_rag_service | _get_db:74 | [SpamRagService] Connecting to ChromaDB at C:\Users\leejo\Project\AI Agent\Spam Detector\backend\app\services\../../data/chroma_db
+2026-03-03 09:53:37 | INFO     | app.services.spam_rag_service | _get_embedding_function:48 | [SpamRagService] Importing OpenAIEmbeddings...
+2026-03-03 09:53:37 | INFO     | app.services.spam_rag_service | _get_embedding_function:52 | [SpamRagService] Imported OpenAIEmbeddings in 0.0000s
+2026-03-03 09:53:37 | INFO     | app.services.spam_rag_service | _get_embedding_function:54 | [SpamRagService] Initializing OpenAIEmbeddings helper...
+2026-03-03 09:53:37 | INFO     | app.services.spam_rag_service | _get_embedding_function:57 | [SpamRagService] Initialized OpenAIEmbeddings helper in 0.7582s
+2026-03-03 09:53:38 | INFO     | app.services.spam_rag_service | _get_db:82 | [SpamRagService] Connected to ChromaDB in 1.0428s
+2026-03-03 09:53:38 | INFO     | app.main | startup_event:208 |    -> SpamRagService Warmed up.
+2026-03-03 09:53:38 | INFO     | app.agents.content_agent.agent | _get_vector_db:82 | [ContentAnalysisAgent] Lazy loading Vector DB...
+2026-03-03 09:53:38 | INFO     | app.agents.content_agent.agent | _get_vector_db:87 | [ContentAnalysisAgent] Imports took 0.0088s
+2026-03-03 09:53:38 | INFO     | app.agents.content_agent.agent | _get_vector_db:89 | ChromaDB 초기화 중...
+2026-03-03 09:53:38 | INFO     | app.agents.content_agent.agent | _get_vector_db:96 | [ContentAnalysisAgent] ChromaDB initialized in 0.4846s
+2026-03-03 09:53:38 | INFO     | app.main | startup_event:215 |    -> ContentAnalysisAgent Warmed up.
+2026-03-03 09:53:38 | INFO     | app.main | startup_event:220 | ✅ Server Application Started! (Startup took 1.93s) | Global ThreadPool: 70 workers.
+2026-03-03 09:55:07 | INFO     | app.main | connect:76 | WebSocket Connected: Client client-m0jgywmjc
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:627 | Calling on_part_begin with no data
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:624 | Calling on_header_field with data[42:61]
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:624 | Calling on_header_value with data[63:146]
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:627 | Calling on_header_end with no data
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:624 | Calling on_header_field with data[148:160]
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:624 | Calling on_header_value with data[162:172]
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:627 | Calling on_header_end with no data
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:627 | Calling on_headers_finished with no data
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:624 | Calling on_part_data with data[176:212]
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:627 | Calling on_part_end with no data
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:627 | Calling on_part_begin with no data
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:624 | Calling on_header_field with data[256:275]
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:624 | Calling on_header_value with data[277:304]
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:627 | Calling on_header_end with no data
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:627 | Calling on_headers_finished with no data
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:624 | Calling on_part_data with data[308:324]
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:627 | Calling on_part_end with no data
+2026-03-03 09:59:27 | DEBUG    | python_multipart.multipart | callback:627 | Calling on_end with no data
+2026-03-03 09:59:27 | INFO     | app.main | upload_file:1194 | DEBUG: Receive file upload request from Client client-m0jgywmjc: kisa_20260101_A_result_hamMsg_url_test - one.txt
+2026-03-03 09:59:27 | INFO     | app.utils.excel_handler | process_kisa_txt:511 | Detected encoding: utf-8 (Confidence: 0.99) for kisa_20260101_A_result_hamMsg_url_test - one.txt
+2026-03-03 09:59:27 | DEBUG    | app.utils.excel_handler | process_kisa_txt:534 | Attempting decoding with utf-8...
+2026-03-03 09:59:27 | INFO     | app.utils.excel_handler | process_kisa_txt:538 | Successfully decoded using utf-8
+2026-03-03 09:59:27 | INFO     | app.utils.excel_handler | process_kisa_txt:551 | Processed KISA text file using utf-8 encoding. Total lines: 1
+2026-03-03 09:59:27 | INFO     | app.utils.excel_handler | process_kisa_txt:568 | Processing 1 rows from KISA TXT (Batch Size: 1)...
+2026-03-03 09:59:27 | INFO     | app.main | run_batch_pipeline:1361 | Initialized Dual Concurrency: Browser=5, LLM-Only=5
+2026-03-03 09:59:27 | INFO     | app.main | run_batch_pipeline:1428 | Starting asyncio.gather for 1 tasks...
+2026-03-03 09:59:27 | DEBUG    | app.main | sem_task:1386 | Queued in LLM-Only Queue (Waiting for semaphore...)
+2026-03-03 09:59:27 | DEBUG    | app.main | sem_task:1396 | Acquired LLM-Only semaphore. Starting process...
+2026-03-03 09:59:27 | INFO     | app.agents.content_agent.agent | _get_cached_client:193 | [ContentAnalysisAgent] Instantiating new LLM client for GEMINI (gemini-3-flash-preview)
+2026-03-03 09:59:33 | DEBUG    | app.agents.content_agent.agent | prepare_batch_contexts:943 | Generated intent summary for JIT process.
+2026-03-03 09:59:33 | DEBUG    | app.services.spam_rag_service | search_similar_batch:211 | Searching similar intent: 'Physical Education Service Advertisement / Direct provision of service name and mobile contact / Request for contact via personal number'
+2026-03-03 09:59:36 | INFO     | app.main | process_single_item:1302 | 분석 시작 | msg=주대문의 줄넘기 010 2473 9865
+2026-03-03 09:59:36 | DEBUG    | app.agents.content_agent.agent | acheck:797 | 분석 시작 (async) | msg=주대문의 줄넘기 010 2473 9865
+2026-03-03 09:59:36 | DEBUG    | app.agents.content_agent.agent | acheck:804 | Using injected batch context (Skipping RAG retrieval)
+2026-03-03 09:59:36 | INFO     | app.agents.content_agent.agent | acheck:831 | RAG Metrics | Top1=0.7847 | Top2=0.8310 | Gap=0.0464
+2026-03-03 09:59:36 | DEBUG    | app.agents.content_agent.agent | acheck:837 | Building prompt...
+2026-03-03 09:59:36 | INFO     | app.agents.content_agent.agent | _build_prompt:627 |     [RAG Examples] Top-2 forced + threshold (0.55) from 3rd onwards
+2026-03-03 09:59:36 | DEBUG    | app.agents.content_agent.agent | _build_prompt:635 |     [RAG Examples]   - score: 0.785, included (Top-1, forced)
+2026-03-03 09:59:36 | DEBUG    | app.agents.content_agent.agent | _build_prompt:635 |     [RAG Examples]   - score: 0.831, included (Top-2, forced)
+2026-03-03 09:59:36 | DEBUG    | app.agents.content_agent.agent | _build_prompt:639 |     [RAG Examples]   - score: 0.902, excluded (threshold: 0.55)
+2026-03-03 09:59:36 | INFO     | app.agents.content_agent.agent | _build_prompt:660 |     [RAG Examples] 2 examples included in prompt (threshold: 0.55)
+2026-03-03 09:59:36 | DEBUG    | app.agents.content_agent.agent | _build_prompt:663 |     [RAG Examples Injected Content]:
+
+[Reference Context - Similar Intent Examples]
+아래는 유사한 의도(Intent)를 가진 과거 메시지 판정 결과입니다. 참고 자료로만 활용하세요.
+
+[CRITICAL - Near-Duplicate 판정 규칙]
+아래 조건 중 하나라도 해당하면 해당 예시를 '참고' 수준이 아니라 '강제 준수' 대상으로 취급한다:
+  1) normalized_text가 분석 대상 메시지와 exact match인 경우
+  2) 유사도 score < 0.05 이고, 토큰/형태 유사도도 매우 높은 경우 (사실상 동일 메시지)
+이 경우, 해당 예시의 판정(label)을 그대로 따르고, reason 필드에 '과거 동일 사례 판정 적용' 임을 반드시 명시하라.
+
+예시 1 (유사도: 0.785):
+  메시지: "(광고) 다양한 꽃들의 만남~ ☎ 문의전화)터치) 010 2266 1251"
+  판정: SPAM (code: 1)
+  카테고리: 성인 / 유흥
+  근거: Intent: '꽃'과 '만남'이라는 은유적 표현을 활용한 정체불명의 유흥/영업 상담 유도 (Pseudo-Florist Adult Service Solicitation - SPAM)
+Tactics: 상호 전면 은닉, 은어 사용(꽃들의 만남), 즉각적 통화 유도(터치), 구체적 서비스 내용 배제
+Action: 사설 유흥 서비스(출장 마사지, 다방 등) 상담 연결 유도, 수신자의 번호 활성 상태 및 반응도 확인, 상담 시 개인정보 수집 및 유료 서비스 결제 유도
+
+예시 2 (유사도: 0.831):
+  메시지: "(광고) 2026도~쭉 이벤트 ▼ 063-222-8282 매~이용 5.000원 무료거부 080-222-8282"
+  판정: SPAM (code: 2)
+  카테고리: 피싱 / 스미싱
+  근거: Intent: 상호를 은닉한 채 이벤트/현금 미끼를 활용하여 전화 연결 유도 (Hidden Identity Solicitation via Cash Bait - SPAM)
+Tactics: 상호 전면 은닉, 파격 혜택 강조(5,000원), 연도 강조(2026), 필터링 회피용 물결표(~) 다수 사용
+Action: 사설 도박/유흥 업소 상담 연결 유도, 발신자 번호의 유효성 및 반응도 체크(Live Line Check), 지역 기반(063 전북 지역) 타겟팅 의심
+
+2026-03-03 09:59:36 | INFO     | app.agents.content_agent.agent | acheck:851 | 프롬프트 생성 완료 | RAG Guide=O | rag_retrieved=3, rag_injected=2
+2026-03-03 09:59:36 | INFO     | app.agents.content_agent.agent | acheck:852 | RAG Details | injected_labels=SPAM:2/HAM:0 | injected_ids=['rag_05672f3b', 'rag_8d634a90']
+2026-03-03 09:59:36 | DEBUG    | app.agents.content_agent.agent | acheck:854 | Prompt built, length: 7422 chars
+2026-03-03 09:59:36 | DEBUG    | app.agents.content_agent.agent | acheck:856 | Calling LLM...
+2026-03-03 09:59:47 | DEBUG    | app.agents.content_agent.agent | acheck:868 | LLM 응답: ```json
+{
+"label": "SPAM",
+"ham_code": null,
+"spam_code": "1",
+"spam_probability": 0.85,
+"reason": "본 메시지는 '불분명한 상호(또는 은어) + 개인 연락처'만 존재하는 구조적 패턴을 보입니다. 가이드 5.2항(성인/유흥)에 따르면 지역명이나 불분명한 상호 뒤에 연락처만 나열된 경우 유흥 광고의 의도로 판단합니다. 특히 '줄넘기'는 유흥 업계에서 특정 서비스를 지칭하는 은어로 사용되는 경우가 많으며, 이는 [참조 예시 1]의 '꽃들의 만남' 사례와 같이 은유적 표현을 통해 실제 업종을 은닉하고 통화를 유도하는 전형적인 성인/유흥 스팸의 수법과 일치하므로 harm_anchor를 true로 판정합니다.",
+"signals": { "harm_anchor": true, "route_or_cta": true }
+}
+```
+2026-03-03 09:59:47 | INFO     | app.agents.content_agent.agent | acheck:875 | 판정완료 | SPAM | code=1 | prob=0.85
+2026-03-03 09:59:47 | INFO     | app.agents.content_agent.agent | acheck:876 |   - Reason: 본 메시지는 '불분명한 상호(또는 은어) + 개인 연락처'만 존재하는 구조적 패턴을 보입니다. 가이드 5.2항(성인/유흥)에 따르면 지역명이나 불분명한 상호 뒤에 연락처만 나열된 경우 유흥 광고의 의도로 판단합니다. 특히 '줄넘기'는 유흥 업계에서 특정 서비스를 지칭하는 은어로 사용되는 경우가 많으며, 이는 [참조 예시 1]의 '꽃들의 만남' 사례와 같이 은유적 표현을 통해 실제 업종을 은닉하고 통화를 유도하는 전형적인 성인/유흥 스팸의 수법과 일치하므로 harm_anchor를 true로 판정합니다.
+2026-03-03 09:59:47 | INFO     | app.agents.ibse_agent.service | process_message:80 | Starting IBSE Analysis for 0df99960-a6f5-4147-a3ed-ddfe38bb9279 (LangGraph)
+2026-03-03 09:59:47 | INFO     | app.agents.ibse_agent.service | process_message:87 | IBSE Node Finished: generate_candidates
+2026-03-03 10:00:01 | INFO     | app.agents.ibse_agent.service | process_message:87 | IBSE Node Finished: select_signature
+2026-03-03 10:00:01 | INFO     | app.agents.ibse_agent.service | process_message:87 | IBSE Node Finished: validate
+2026-03-03 10:00:01 | INFO     | app.main | process_single_item:1328 | 완료 | SPAM | code=1 | prob=0.85 | 33.8s
+2026-03-03 10:00:06 | INFO     | app.agents.content_agent.agent | generate_final_summary:1122 | Final Summary: 🚫 **해당 메시지는 스팸(성인/유흥 광고)으로 판단됩니다.**
+
+본 메시지는 '줄넘기'와 같은 은유적인 은어와 개인 연락처만을 나열하여 실제 업종을 은닉하고 통화를 유도하는 전형적인 유흥 스팸의 패턴을 보이고 있습니다.
+
+추가적인 피해를 방지하기 위해 해당 번호로 연락하지 마시고, 즉시 **번호 차단 및 메시지 삭제**를 진행해 주시기 바랍니다.
+2026-03-03 10:00:06 | INFO     | app.main | run_batch_pipeline:1430 | asyncio.gather finished.
+2026-03-03 10:00:06 | INFO     | app.main | run_batch_pipeline:1444 | Local PlaywrightManager cleaned up.
+2026-03-03 15:24:40 | INFO     | app.main | disconnect:93 | WebSocket Disconnected: Client client-m0jgywmjc
+2026-03-03 17:57:27 | INFO     | app.main | connect:76 | WebSocket Connected: Client client-53ks1y2uu
+2026-03-03 18:06:22 | INFO     | app.main | websocket_endpoint:806 | Received from client-53ks1y2uu: {'type': 'CHAT_MESSAGE', 'content': '(광고)뉴월드 ※ 본 문자는 발신전용입니다. 문의: 010-3753-8762 위 번호로 이메일 답장주시면 프로그램 발송드리겠습니다. 무료거부 0808811268', 'mode': 'Unified'}
+2026-03-03 18:06:22 | INFO     | app.main | websocket_endpoint:816 | 
+============================================================
+[Chat] Mode: Unified
+[Chat] 메시지 원문:
+  (광고)뉴월드 ※ 본 문자는 발신전용입니다. 문의: 010-3753-8762 위 번호로 이메일 답장주시면 프로그램 발송드리겠습니다. 무료거부 0808811268
+============================================================
+2026-03-03 18:06:22 | DEBUG    | app.agents.content_agent.agent | acheck:797 | 분석 시작 (async) | msg=(광고)뉴월드 ※ 본 문자는 발신전용입니다. 문의: 010-3753-8762 위 번호로 이메일 답장주시면 프로그램 발송드리겠습니다. 무료거부 0...
+2026-03-03 18:06:22 | INFO     | app.agents.content_agent.agent | _get_cached_client:193 | [ContentAnalysisAgent] Instantiating new LLM client for GEMINI (gemini-3-flash-preview)
+2026-03-03 18:06:44 | WARNING  | app.agents.content_agent.agent | _aquery_llm:356 | [ContentAnalysisAgent] GEMINI Quota/Rate-Limit detected (Attempt 1/5). Attempting key rotation...
+2026-03-03 18:06:44 | INFO     | app.core.llm_manager | rotate_key:117 | [KeyManager] Rotated GEMINI key to index 1 (Key: AIzaSyCWbo...)
+2026-03-03 18:06:44 | INFO     | app.agents.content_agent.agent | _aquery_llm:366 | [ContentAnalysisAgent] Switching to new GEMINI key (Attempt 1/5)...
+2026-03-03 18:06:44 | INFO     | app.agents.content_agent.agent | _get_cached_client:193 | [ContentAnalysisAgent] Instantiating new LLM client for GEMINI (gemini-3-flash-preview)
+2026-03-03 18:07:03 | WARNING  | app.agents.content_agent.agent | _aquery_llm:356 | [ContentAnalysisAgent] GEMINI Quota/Rate-Limit detected (Attempt 2/5). Attempting key rotation...
+2026-03-03 18:07:03 | INFO     | app.core.llm_manager | rotate_key:117 | [KeyManager] Rotated GEMINI key to index 2 (Key: AIzaSyB1ui...)
+2026-03-03 18:07:03 | INFO     | app.agents.content_agent.agent | _aquery_llm:366 | [ContentAnalysisAgent] Switching to new GEMINI key (Attempt 2/5)...
+2026-03-03 18:07:03 | INFO     | app.agents.content_agent.agent | _get_cached_client:193 | [ContentAnalysisAgent] Instantiating new LLM client for GEMINI (gemini-3-flash-preview)
+2026-03-03 18:07:21 | WARNING  | app.agents.content_agent.agent | _aquery_llm:356 | [ContentAnalysisAgent] GEMINI Quota/Rate-Limit detected (Attempt 3/5). Attempting key rotation...
+2026-03-03 18:07:21 | INFO     | app.core.llm_manager | rotate_key:117 | [KeyManager] Rotated GEMINI key to index 3 (Key: AIzaSyA7I3...)
+2026-03-03 18:07:21 | INFO     | app.agents.content_agent.agent | _aquery_llm:366 | [ContentAnalysisAgent] Switching to new GEMINI key (Attempt 3/5)...
+2026-03-03 18:07:21 | INFO     | app.agents.content_agent.agent | _get_cached_client:193 | [ContentAnalysisAgent] Instantiating new LLM client for GEMINI (gemini-3-flash-preview)
+2026-03-03 18:07:40 | WARNING  | app.agents.content_agent.agent | _aquery_llm:356 | [ContentAnalysisAgent] GEMINI Quota/Rate-Limit detected (Attempt 4/5). Attempting key rotation...
+2026-03-03 18:07:40 | INFO     | app.core.llm_manager | rotate_key:117 | [KeyManager] Rotated GEMINI key to index 4 (Key: AIzaSyA7I3...)
+2026-03-03 18:07:40 | INFO     | app.agents.content_agent.agent | _aquery_llm:366 | [ContentAnalysisAgent] Switching to new GEMINI key (Attempt 4/5)...
+2026-03-03 18:07:57 | WARNING  | app.agents.content_agent.agent | _aquery_llm:356 | [ContentAnalysisAgent] GEMINI Quota/Rate-Limit detected (Attempt 5/5). Attempting key rotation...
+2026-03-03 18:07:57 | ERROR    | app.core.llm_manager | rotate_key:108 | [KeyManager] All 5 GEMINI keys failed consecutively. Marking as globally exhausted.
+2026-03-03 18:07:57 | ERROR    | app.agents.content_agent.agent | _aquery_llm:362 | [ContentAnalysisAgent] Global exhaustion reached for GEMINI.
+2026-03-03 18:07:57 | ERROR    | app.agents.content_agent.agent | agenerate_intent_summary:1153 | Intent Summary Generation Quota Exhausted: GEMINI quota globally exhausted. No retry.
+2026-03-03 18:07:57 | INFO     | app.agents.content_agent.agent | acheck:815 | Intent Summary: Error generating intent summary: Quota exhausted...
+2026-03-03 18:07:57 | DEBUG    | app.agents.content_agent.agent | _retrieve_context:138 | Using Full Spam Guide Text (Always)
+2026-03-03 18:07:57 | DEBUG    | app.services.spam_rag_service | search_similar:157 | Searching similar intent: 'Error generating intent summary: Quota exhausted'
+2026-03-03 18:07:57 | DEBUG    | app.services.spam_rag_service | search_similar_batch:211 | Searching similar intent: 'Error generating intent summary: Quota exhausted'
+2026-03-03 18:07:58 | INFO     | app.agents.content_agent.agent | _retrieve_context:146 | Spam RAG: 4건 검색됨
+2026-03-03 18:07:58 | INFO     | app.agents.content_agent.agent | acheck:831 | RAG Metrics | Top1=1.4346 | Top2=1.4506 | Gap=0.0160
+2026-03-03 18:07:58 | DEBUG    | app.agents.content_agent.agent | acheck:837 | Building prompt...
+2026-03-03 18:07:58 | INFO     | app.agents.content_agent.agent | _build_prompt:627 |     [RAG Examples] Top-2 forced + threshold (0.55) from 3rd onwards
+2026-03-03 18:07:58 | DEBUG    | app.agents.content_agent.agent | _build_prompt:635 |     [RAG Examples]   - score: 1.435, included (Top-1, forced)
+2026-03-03 18:07:58 | DEBUG    | app.agents.content_agent.agent | _build_prompt:635 |     [RAG Examples]   - score: 1.451, included (Top-2, forced)
+2026-03-03 18:07:58 | DEBUG    | app.agents.content_agent.agent | _build_prompt:639 |     [RAG Examples]   - score: 1.457, excluded (threshold: 0.55)
+2026-03-03 18:07:58 | DEBUG    | app.agents.content_agent.agent | _build_prompt:639 |     [RAG Examples]   - score: 1.481, excluded (threshold: 0.55)
+2026-03-03 18:07:58 | INFO     | app.agents.content_agent.agent | _build_prompt:660 |     [RAG Examples] 2 examples included in prompt (threshold: 0.55)
+2026-03-03 18:07:58 | DEBUG    | app.agents.content_agent.agent | _build_prompt:663 |     [RAG Examples Injected Content]:
+
+[Reference Context - Similar Intent Examples]
+아래는 유사한 의도(Intent)를 가진 과거 메시지 판정 결과입니다. 참고 자료로만 활용하세요.
+
+[CRITICAL - Near-Duplicate 판정 규칙]
+아래 조건 중 하나라도 해당하면 해당 예시를 '참고' 수준이 아니라 '강제 준수' 대상으로 취급한다:
+  1) normalized_text가 분석 대상 메시지와 exact match인 경우
+  2) 유사도 score < 0.05 이고, 토큰/형태 유사도도 매우 높은 경우 (사실상 동일 메시지)
+이 경우, 해당 예시의 판정(label)을 그대로 따르고, reason 필드에 '과거 동일 사례 판정 적용' 임을 반드시 명시하라.
+
+예시 1 (유사도: 1.435):
+  메시지: "이제 Apple iForgot 웹사이트에서 Apple 계정 전화번호를 업데이트할 수 있습니다. 01. 08.까지 해야 합니다."
+  판정: HAM (code: )
+  카테고리: 기타 정상
+  근거: Intent: Apple ID 보안 강화를 위한 연락처 정보 업데이트 안내 (Apple ID Security & Contact Update Notification - HAM)
+Tactics: 공식 브랜드/도구 명칭 사용(Official Tool - iForgot), 보안 절차 안내(Security Procedure - Phone Update), 기한 명시(Deadline - 01. 08.), 간결한 정보 전달(Minimalist Informative Tone)
+Action: 계정 복구 수단 최신화 유도(Recovery Info Update), 계정 보안 상태 유지(Security Maintenance), 사용자 계정 잠금 사전 방지
+
+예시 2 (유사도: 1.451):
+  메시지: "(광고)태양투자자문 카톡방 입장마감 예정인데 입장 완료되셨죠? 무료거부 0808100095"
+  판정: HAM (code: )
+  카테고리: 정상 광고/마케팅
+  근거: Intent: 투자 자문 커뮤니티(카톡방) 참여 상태 확인 및 입장 마감 기한 고지 (Investment Community Onboarding & Deadline Notice - HAM)
+Tactics: 실존 브랜드 명시(Brand - 태양투자자문), 진행 상황 확인형 문구(Status Check - 입장 완료되셨죠?), 법적 광고 규격 준수(Compliance - Ad/080), 시간적 긴박함 조성(Scarcity - 입장마감 예정)
+Action: 기존 상담 고객의 커뮤니티 안착 유도, 서비스 참여 누락 방지, 제도권 금융 브랜드의 고객 유지(Retention) 활동
+
+2026-03-03 18:07:58 | INFO     | app.agents.content_agent.agent | acheck:851 | 프롬프트 생성 완료 | RAG Guide=O | rag_retrieved=4, rag_injected=2
+2026-03-03 18:07:58 | INFO     | app.agents.content_agent.agent | acheck:852 | RAG Details | injected_labels=SPAM:0/HAM:2 | injected_ids=['rag_5f4f49fa', 'rag_c1bff092']
+2026-03-03 18:07:58 | DEBUG    | app.agents.content_agent.agent | acheck:854 | Prompt built, length: 7664 chars
+2026-03-03 18:07:58 | DEBUG    | app.agents.content_agent.agent | acheck:856 | Calling LLM...
+2026-03-03 18:07:58 | ERROR    | app.agents.content_agent.agent | acheck:861 | Async LLM query failure (Quota Exhausted): GEMINI quota exhausted (all keys). No retry.
+2026-03-03 18:07:58 | WARNING  | app.main | websocket_endpoint:1003 | [WebSocket] LLM Quota Exhausted/Exceeded detected. Bypassing URL and IBSE stages for client client-53ks1y2uu.
+2026-03-03 18:08:15 | INFO     | app.main | disconnect:93 | WebSocket Disconnected: Client client-53ks1y2uu
+2026-03-03 21:20:26 | INFO     | app.main | connect:76 | WebSocket Connected: Client client-kkveurri9
+2026-03-03 22:07:55 | INFO     | app.main | disconnect:93 | WebSocket Disconnected: Client client-kkveurri9
