@@ -595,7 +595,7 @@ class ExcelHandler:
             # PROBLEM: Chardet sometimes guesses ISO-8859-1 (Latin1) for EUC-KR files with high confidence.
             # ISO-8859-1 ALWAYS succeeds in decoding but produces garbage (Mojibake).
             # SOLUTION: We MUST try UTF-8 and CP949 (Korean) *strictly* first, regardless of what Chardet thinks.
-            
+            # EUC-KR files: utf-8 fails → cp949 succeeds (correct fallback)
             encodings_to_try = ['utf-8', 'cp949', 'euc-kr']
             
             if encoding_used and encoding_used.lower() not in encodings_to_try:
