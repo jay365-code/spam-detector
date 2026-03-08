@@ -94,6 +94,11 @@ FP Sentinel은 메시지를 아래 3가지 의미 클래스 중 하나로 분류
 - **결과**: `Type_B`
 - **의의**: 부고, 청첩장, 카톡 추가 유도 등 지인과의 일상 대화를 100% 모방한 메시지입니다. URL 유무와 무관하게 이를 Type_A로 학습하면 실제 개인 간 메시지가 스팸 처리되는 치명적인 오탐이 발생하므로 나이브 베이즈에서 완전히 격리합니다.
 
+### [룰셋 1.4] Type_B (Garbage Obfuscation)
+- **조건**: `C_GarbageObfuscate` = True
+- **결과**: `Type_B` (학습 제외)
+- **의의**: 구체적인 의도 없이 `l0`, `ㄹ`, `R3993` 같이 필터 우회용 쓰레기 토큰들로만 구성된 메시지입니다. 이를 그대로 학습하면 평범한 숫자나 기호를 스팸으로 오인하는 나이브베이즈 모델 오염이 발생하므로 Type_B로 격리하여 보호합니다.
+
 ### [룰셋 1.5] Type_B (텍스트 HAM + URL 위험/불확실)
 - **조건**: Content Agent가 HAM 판정 (`C_Spam` = False) **AND** (URL 악성 확인 또는 URL timeout/bot-block)
 - **결과**: `Type_B` + Enforcement 차단 (`is_spam=True`)

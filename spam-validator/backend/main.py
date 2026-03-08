@@ -157,6 +157,19 @@ async def compare_results(
         indicator=True
     )
     
+    # ----------------------------------------------------
+    # Type B (FP Sentinel Override - NB 보호) 처리:
+    # 1. Human이 SPAM (True) 이고 AI가 Type B인 경우 -> AI도 SPAM (True) 으로 간주 (뒷단 검출 예정이므로 FN 제외)
+    # 2. Human이 HAM (False) 이고 AI가 Type B인 경우 -> AI도 HAM (False) 으로 간주 (FP로 잡히지 않도록)
+    # ----------------------------------------------------
+    type_b_mask = merged_all['reason_llm'].astype(str).str.contains(r'\[FP Sentinel Override\]|Type_B', case=False, na=False)
+    
+    # Human이 SPAM인 케이스
+    merged_all.loc[type_b_mask & (merged_all['is_spam_human'] == True), 'is_spam_llm'] = True
+    # Human이 HAM인 케이스
+    merged_all.loc[type_b_mask & (merged_all['is_spam_human'] == False), 'is_spam_llm'] = False
+
+
     # Split into Matched / Missing
     merged = merged_all[merged_all['_merge'] == 'both'].copy()
     missing_in_llm_df = merged_all[merged_all['_merge'] == 'left_only'].copy()
@@ -202,6 +215,7 @@ async def compare_results(
     diffs = []
     # Filter for mismatches
     mismatch = merged[merged['is_spam_human'] != merged['is_spam_llm']]
+
     
     for _, row in mismatch.iterrows():
         diff_type = "FN" if row['is_spam_human'] else "FP"

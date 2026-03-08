@@ -140,6 +140,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         c_impersonation = signals.get("is_impersonation", False)
         c_vague_cta = signals.get("is_vague_cta", False)
         c_personal_lure = signals.get("is_personal_lure", False)
+        c_garbage_obfuscate = signals.get("is_garbage_obfuscation", False)
         
         u_blocked = False
         u_spam = False
@@ -195,6 +196,20 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              existing_reason = final.get("reason", "")
              if "[FP Sentinel Override]" not in existing_reason:
                  final["reason"] = f"{existing_reason} | [FP Sentinel Override] 사적/경조사 위장(Type_B) 확정 차단"
+
+        # Ruleset 1.4: Type_B (Garbage Obfuscation)
+        # 내용 없이 필터 우회용 문자 조각들로만 구성된 메시지 (NB 모델 오염 방지)
+        elif c_garbage_obfuscate:
+             semantic_class = "Type_B"
+             learning_label = "HAM"
+             
+             # Enforcement: SPAM으로 강제
+             if final.get("is_spam") is not True:
+                 final["is_spam"] = True
+                 
+             existing_reason = final.get("reason", "")
+             if "[FP Sentinel Override]" not in existing_reason:
+                 final["reason"] = f"{existing_reason} | [FP Sentinel Override] 난독화/쓰레기 토큰(Type_B) 보호"
 
         # Ruleset 1.5: Type_B (URL-Separated / URL-Blocked Case)
         # Content Agent가 HAM으로 판단했지만 URL이 악성이거나 접근 불가(timeout, bot-block)인 경우

@@ -380,7 +380,13 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                         logger.info(f"[ContentAnalysisAgent] Switching to new {provider} key (Attempt {attempt+1}/{max_quota_tries})...")
                         # [BUG FIX] 진행 중이던 캐시 객체를 삭제해야 다음 번 get_cached_client에서 새로운 Key로 객체가 생성됨
                         cache_key = f"{provider}_{current_api_key}_{model_name}"
-                        dict_key = (cache_key, asyncio.get_running_loop() if asyncio.get_event_loop().is_running() else None)
+                        
+                        try:
+                            current_loop = asyncio.get_running_loop()
+                            dict_key = (cache_key, current_loop)
+                        except RuntimeError:
+                            dict_key = (cache_key, None)
+                            
                         if dict_key in self._loop_bound_clients:
                             del self._loop_bound_clients[dict_key]
                         
@@ -493,7 +499,20 @@ Step 4-1. 모호한 행동 유도(Vague CTA) 여부 판정 → is_vague_cta
 Step 4-2. 사적 관계/경조사 위장 (Personal Lure) 판단 → is_personal_lure
    - 정상적인 사적 대화나 경조사를 100% 모방하여 악성 클릭을 유도하는 경우 true
    - 예: "[부고] OOO님 모친상", "모바일 청첩장", "번호 저장해놔", "오랜만이네 잘 지내?" 등
-Step 5. SPAM 확정 조건:
+Step 4-3. 필터 회피용 쓰레기 토큰 (Garbage Obfuscation) 판단 → is_garbage_obfuscation
+   - 구체적인 도박/성인 의도는 없으나, 필터 우회를 위해 의미 없는 문자 조각(`l0`, `ㄹ`, `R3993` 등)이나 파편화된 코드 위주로 구성된 경우 true.
+   - 이는 Naive Bayes 모델 학습 시 '정상 단어'를 '스팸 단어'로 오염시킬 위험이 매우 큼.
+Step 5. [Naive Bayes 보호 목적 안내]
+   is_impersonation / is_vague_cta / is_personal_lure / is_garbage_obfuscation 네 시그널은 단순 스팸 판정이 아니라,
+   **Naive Bayes 학습 모델 오염 방지**를 위해 추출합니다.
+   ⚠️ 중요: 이 시그널은 **메시지가 SPAM으로 확정된 경우에만** 의미를 가집니다. HAM 메시지에서는 항상 false로 설정하세요.
+   이 시그널이 true이면 해당 메시지는 스팸으로 즉시 차단되지만, **모델 학습에서는 제외**됩니다.
+   판단 기준 (SPAM 확정 후에만 적용): "이 메시지의 단어/표현이 NB 학습에 사용되면, 향후 정상 메시지를 스팸으로 오분류할 위험이 있는가?"
+   - 사칭: 정상 업무 용어(입금, 승인, 택배 등)를 스팸 맥락에서 사용 → NB 오탐 위험 높음
+   - Vague CTA: 일상 범용어만으로 구성된 클릭 유도 → 공통 단어 오염 위험
+   - Personal Lure: 사적 대화/경조사 100% 모방 → 일상어 오염 위험
+   - Garbage Obfuscation: 무의미한 문자/난독화 파편 → 단순 쓰레기 토큰 오염 위험
+Step 6. SPAM 확정 조건:
    - 의도가 매우 명확 (spam_probability >= 0.85): harm_anchor=true면 SPAM (route_or_cta 무시)
    - 의도가 애매 (spam_probability < 0.85): harm_anchor=true AND route_or_cta=true 일 때만 SPAM
 
@@ -504,7 +523,7 @@ Step 5. SPAM 확정 조건:
 "spam_code": "0|1|2|3|null",
 "spam_probability": 0.0,
 "reason": "한국어로 판단 근거 작성 (과거 유사 사례가 있다면 반드시 언급)",
-"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false, "is_personal_lure": false }}
+"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false, "is_personal_lure": false, "is_garbage_obfuscation": false }}
 }}
 """
 
@@ -588,11 +607,13 @@ Step 5. SPAM 확정 조건:
         is_impersonation = signals.get("is_impersonation", False)
         is_vague_cta = signals.get("is_vague_cta", False)
         is_personal_lure = signals.get("is_personal_lure", False)
+        is_garbage_obfuscation = signals.get("is_garbage_obfuscation", False)
         
         # Ensure signals dict is up to date
         signals["is_impersonation"] = is_impersonation
         signals["is_vague_cta"] = is_vague_cta
         signals["is_personal_lure"] = is_personal_lure
+        signals["is_garbage_obfuscation"] = is_garbage_obfuscation
 
         # ========== HARD GATE ENFORCEMENT ==========
         # Rule 1: harm_anchor = false → 무조건 HAM
@@ -638,14 +659,16 @@ Step 5. SPAM 확정 조건:
                 is_spam = True
 
         # ========== HAM SIGNAL DEFENSE ==========
-        # NB 보호 시그널(is_impersonation, is_vague_cta, is_personal_lure)은
+        # NB 보호 시그널(is_impersonation, is_vague_cta, is_personal_lure, is_garbage_obfuscation)은
         # SPAM 확정 메시지에만 의미가 있음. HAM으로 판정된 경우 강제로 false로 초기화.
         if not is_spam:
-            if signals.get("is_impersonation") or signals.get("is_vague_cta") or signals.get("is_personal_lure"):
+            if any([signals.get("is_impersonation"), signals.get("is_vague_cta"), 
+                    signals.get("is_personal_lure"), signals.get("is_garbage_obfuscation")]):
                 logger.debug("[HAM Signal Defense] HAM 판정 메시지의 NB 보호 시그널을 false로 초기화")
             signals["is_impersonation"] = False
             signals["is_vague_cta"] = False
             signals["is_personal_lure"] = False
+            signals["is_garbage_obfuscation"] = False
 
         return {
             "is_spam": is_spam,
@@ -741,8 +764,11 @@ Step 4-1. 모호한 행동 유도(Vague CTA) 여부 판정 → is_vague_cta
 Step 4-2. 사적 관계/경조사 위장 (Personal Lure) 판단 → is_personal_lure
    - 정상적인 사적 대화나 경조사를 100% 모방하여 악성 클릭을 유도하는 경우 true
    - 예: "[부고] OOO님 모친상", "모바일 청첩장", "번호 저장해놔", "오랜만이네 잘 지내?" 등
+Step 4-3. 필터 회피용 쓰레기 토큰 (Garbage Obfuscation) 판단 → is_garbage_obfuscation
+   - 구체적인 도박/성인 의도는 없으나, 필터 우회를 위해 의미 없는 문자 조각(`l0`, `ㄹ`, `R3993` 등)이나 파편화된 코드 위주로 구성된 경우 true.
+   - 이는 Naive Bayes 모델 학습 시 '정상 단어'를 '스팸 단어'로 오염시킬 위험이 매우 큼.
 Step 5. [Naive Bayes 보호 목적 안내]
-   is_impersonation / is_vague_cta / is_personal_lure 세 시그널은 단순 스팸 판정이 아니라,
+   is_impersonation / is_vague_cta / is_personal_lure / is_garbage_obfuscation 네 시그널은 단순 스팸 판정이 아니라,
    **Naive Bayes 학습 모델 오염 방지**를 위해 추출합니다.
    ⚠️ 중요: 이 시그널은 **메시지가 SPAM으로 확정된 경우에만** 의미를 가집니다. HAM 메시지에서는 항상 false로 설정하세요.
    이 시그널이 true이면 해당 메시지는 스팸으로 즉시 차단되지만, **모델 학습에서는 제외**됩니다.
@@ -750,6 +776,7 @@ Step 5. [Naive Bayes 보호 목적 안내]
    - 사칭: 정상 업무 용어(입금, 승인, 택배 등)를 스팸 맥락에서 사용 → NB 오탐 위험 높음
    - Vague CTA: 일상 범용어만으로 구성된 클릭 유도 → 공통 단어 오염 위험
    - Personal Lure: 사적 대화/경조사 100% 모방 → 일상어 오염 위험
+   - Garbage Obfuscation: 무의미한 문자/난독화 파편 → 단순 쓰레기 토큰 오염 위험
 Step 6. SPAM 확정 조건:
    - 의도가 매우 명확 (spam_probability >= 0.85): harm_anchor=true면 SPAM (route_or_cta 무시)
    - 의도가 애매 (spam_probability < 0.85): harm_anchor=true AND route_or_cta=true 일 때만 SPAM
@@ -761,7 +788,7 @@ Step 6. SPAM 확정 조건:
 "spam_code": "0|1|2|3|null",
 "spam_probability": 0.0,
 "reason": "한국어로 판단 근거 작성 (과거 유사 사례가 있다면 반드시 언급)",
-"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false, "is_personal_lure": false }}
+"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false, "is_personal_lure": false, "is_garbage_obfuscation": false }}
 }}
 """
         return prompt_text, valid_examples
@@ -819,7 +846,12 @@ Step 6. SPAM 확정 조건:
             
             try:
                 # Bridge sync check to async LLM call
-                loop = asyncio.get_event_loop()
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
                 content = loop.run_until_complete(self._aquery_llm_with_retry(prompt))
             except Exception as e:
                 logger.error(f"Sync bridging for LLM failed: {e}")

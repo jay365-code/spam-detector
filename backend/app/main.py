@@ -951,10 +951,12 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
 
                         # 4. Unified / Smart Mode (Default)
                         else:
-                            # Step A: Rule-based Check
+                            await send_status("🔍 통합 분석 시작...")
+                            
+                            # Step A: Rule-based Check (Stage 1)
                             s1 = rule_filter.check(user_msg)
                             
-                            # Rule-based HAM (e.g., Non-Korean message)
+                            # Rule-based HAM (e.g., Non-Korean message) - Early Exit
                             if s1.get("is_spam") is False:
                                 s1_code = s1.get("classification_code", "HAM-5")
                                 s1_reason = s1.get("reason", "Rule-based HAM")
@@ -964,176 +966,74 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 msg_text = f"✅ **정상 문자** - {s1_code}. {code_desc}\n- 사유: {s1_reason}\n\n"
                                 await send_text_chunk(msg_text)
                                 
-                                # Signal End of Stream
-                                await manager.send_personal_message({
-                                    "type": "CHAT_STREAM_END",
-                                    "content": ""
-                                }, client_id)
+                                await manager.send_personal_message({"type": "CHAT_STREAM_END", "content": ""}, client_id)
                                 continue
+
+                            # Step B: LangGraph Execution (Stage 2+)
+                            from app.graphs.batch_flow import create_batch_graph
+                            # Use one-off graph for chat
+                            cv_graph = create_batch_graph(rag_filter, url_filter, ibse_service)
                             
-                            # Step B: Content Analysis
-                            s2_result = await rag_filter.acheck(user_msg, s1, status_callback=send_status)
+                            # Prepare Input State
+                            input_state = {
+                                "message": user_msg,
+                                "s1_result": s1,
+                                "prefetched_context": None, # Chat mode does its own RAG retrieval
+                                "content_result": None,
+                                "url_result": None,
+                                "ibse_result": None,
+                                "final_result": None
+                            }
                             
-                            final_is_spam = s2_result.get("is_spam")
-                            content_reason = s2_result.get("reason")
-                            prob = s2_result.get("spam_probability", 0)
-                            code = s2_result.get("classification_code", "Unk")
-                            
-                            code_map = SPAM_CODE_MAP
-                            
-                            # Display Content Result
-                            msg_text = ""
-                            if final_is_spam:
+                            try:
+                                # Invoke Graph
+                                graph_output = await cv_graph.ainvoke(input_state)
+                                final_res = graph_output.get("final_result", {})
+                                
+                                final_is_spam = final_res.get("is_spam")
+                                reason = final_res.get("reason", "No reason provided")
+                                prob = final_res.get("spam_probability", 0.0)
+                                code = final_res.get("classification_code")
+                                learning_label = final_res.get("learning_label", "N/A")
+                                
+                                code_map = SPAM_CODE_MAP
                                 import re
-                                match = re.search(r'\d+', str(code))
-                                raw_code = match.group(0) if match else str(code)
-                                code_desc = code_map.get(raw_code, "기타")
                                 
-                                msg_text = f"🚫 **스팸 의심** ({int(prob*100)}%) - {raw_code}. {code_desc}\n- 사유: {content_reason}\n\n"
-                            elif final_is_spam is None:
-                                msg_text = f"⚠️ **판단 보류 (HITL)**\n- 사유: {content_reason}\n\n"
-                            else:
-                                msg_text = f"✅ **정상 문자**\n- 사유: {content_reason}\n\n"
-                            
-                            await send_text_chunk(msg_text)
-
-                            # [Early Exit] Quota Exhausted/Exceeded 발생 시 후속 작업(URL, IBSE) 생략
-                            content_reason_str = (content_reason or "").lower()
-                            if "quota exhausted" in content_reason_str or "quota exceeded" in content_reason_str or "429" in content_reason_str:
-                                logger.warning(f"[WebSocket] LLM Quota Exhausted/Exceeded detected. Bypassing URL and IBSE stages for client {client_id}.")
-                                await send_text_chunk("⚠️ **참고**: API Quota 초과로 인해 URL 심층 분석 및 시그니처 추출이 생략되었습니다.\n\n")
-                                await manager.send_personal_message({
-                                    "type": "CHAT_STREAM_END",
-                                    "content": ""
-                                }, client_id)
-                                continue
-
-                            # Step B: Conditional URL Check
-                            # Check URL if Content is Spam OR if Content is Safe but URL exists
-                            import re
-                            # url_pattern = re.compile(r'(https?://\S+|www\.\S+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})')
-                            url_pattern = re.compile(r'(?:https?://|www\.)\S+|[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.[a-zA-Z가-힣]{2,}')
-                            has_url = bool(url_pattern.search(user_msg))
-                            
-                            # 난독화 디코딩된 텍스트에서도 URL 체크
-                            decoded_text = s1.get("decoded_text")
-                            if decoded_text and not has_url:
-                                has_url = bool(url_pattern.search(decoded_text))
-                            
-                            # s1에서 이미 추출한 decoded_urls가 있으면 URL 존재
-                            if s1.get("decoded_urls"):
-                                has_url = True
-                            
-                            isaa_result = None
-                            
-                            if has_url:
-                                await send_text_chunk("---\n")
-                                # Content Agent 결과를 URL Agent에 전달 (연관성 확보)
-                                try:
-                                    isaa_result = await url_filter.acheck(user_msg, status_callback=send_status, content_context=s2_result, decoded_text=decoded_text)
-                                    url_text = f"**[URL 분석]** {'🚫 위험' if isaa_result.get('is_spam') else '✅ 안전'}\n"
-                                    url_text += f"- 사유: {isaa_result.get('reason')}\n"
-                                    await send_text_chunk(url_text)
+                                # 📡 [Display Logic]
+                                msg_text = ""
+                                if final_is_spam:
+                                    match = re.search(r'\d+', str(code))
+                                    raw_code = match.group(0) if match else str(code)
+                                    code_desc = code_map.get(raw_code, "기타")
                                     
-                                    # Bidirectional Override Logic
-                                    url_is_spam = isaa_result.get('is_spam')
-                                    reason_lower = isaa_result.get("reason", "").lower()
-                                    is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only", "no url found", "no url extracted", "no url to scrape"]) or url_is_spam is None
-                                except Exception as e:
-                                    error_msg = str(e).lower()
-                                    if "quota" in error_msg or "429" in error_msg or "exhausted" in error_msg:
-                                        logger.warning(f"[WebSocket] URL Agent API Quota Exhausted! Falling back to Content Agent verdict.")
-                                        await send_text_chunk("\n⚠️ **참고**: API Quota 초과(429)로 인해 URL 심층 분석이 실패했습니다. 텍스트 분석 결과만 유지합니다.\n")
-                                        isaa_result = None
-                                        url_is_spam = None
-                                        is_inconclusive = True
+                                    is_fp_sensitive = (final_res.get('semantic_class') == 'Type_B') or ('[FP Sentinel Override]' in reason)
+                                    
+                                    if is_fp_sensitive:
+                                        msg_text = f"🟠 **FP SENSITIVE** ({int(prob*100)}%) - {raw_code}. {code_desc}\n"
                                     else:
-                                        logger.error(f"[WebSocket] URL Deep Dive Failed: {e}")
-                                        await send_text_chunk(f"\n⚠️ **URL 분석 오류**: {e}\n")
-                                        isaa_result = None
-                                        url_is_spam = None
-                                        is_inconclusive = True
-                                
-                                if is_inconclusive:
-                                     # URL 심층 분석 불가 -> 본문 결과(Content Agent) 폴백 지지
-                                     await send_text_chunk("\nℹ️ **URL 분석 불가**: 링크가 만료되었거나 접근할 수 없습니다. 문자 본문 분석 결과를 우선하여 판정합니다.\n")
-                                     pass 
-                                elif url_is_spam:
-                                     # Case 4: Content(HAM) -> URL(SPAM) : SPAM Confirmed conditionally
-                                     # 실질적 유해성(Harmful Intent) 여부 확인
-                                     url_reason = isaa_result.get("reason", "").lower()
-                                     url_code = isaa_result.get('classification_code')
-                                     
-                                     harm_keywords = ["gambling", "adult", "phishing", "malicious", "fraud", "scam", "illegal", "유해", "도박", "성인", "피싱", "사기"]
-                                     has_harmful_intent = any(k in url_reason for k in harm_keywords) or (url_code and str(url_code) != "0")
-
-                                     if not final_is_spam and not has_harmful_intent:
-                                          # 본문 HAM인데 URL은 단순 불일치 -> HAM 유지 (의도 중심)
-                                          await send_text_chunk("\nℹ️ **의도 중심 판정**: 본문과 URL의 문맥이 다르나, 페이지에서 명확한 피해 의도가 확인되지 않아 **정상(HAM)**으로 처리합니다.\n")
-                                     else:
-                                          # 실제 유해성이 확인되었거나 본문이 이미 SPAM인 경우 -> SPAM 확정
-                                          final_is_spam = True
-                                          
-                                          # Update Probability
-                                          url_prob = isaa_result.get("spam_probability", 0.95)
-                                          if url_prob > prob:
-                                              prob = url_prob
-                                          
-                                          # Update Reason
-                                          url_reason_text = isaa_result.get("reason", "Malicious URL detected")
-                                          content_reason += f" | [URL SPAM: {url_reason_text}]"
-
-                                          # URL Agent의 classification_code로 업데이트 (URL 분석이 Ground Truth)
-                                          original_code = code
-                                          
-                                          # URL 코드가 존재하고 '0'(기타)이 아니면 업데이트. 
-                                          # 그렇지 않더라도 기존 코드가 HAM 계열이면 일반 스팸 코드('0')로 전환하여 불일치 방지
-                                          if url_code and str(url_code) != "0":
-                                               code = url_code
-                                          elif str(original_code).startswith("HAM") or not original_code:
-                                               code = "0" # Default SPAM code
-                                               
-                                          logger.info(f"[URL Override] Updated code from '{original_code}' to '{code}' based on URL analysis")
-                                          # 코드 변경 알림 출력
-                                          new_code_desc = code_map.get(str(code), "기타")
-                                          await send_text_chunk(f"\n⚠️ **스팸 확정**: {original_code} → **{code}. {new_code_desc}** (유해 URL 탐지)\n")
-                                elif isaa_result: # result가 있을 때만 처리 (Case 2: Content(SPAM) -> URL(Safe))
-                                     # Case 2: Content(SPAM) -> URL(Safe) : HAM Confirmed
-                                     if final_is_spam:
-                                          final_is_spam = False
-                                          code = None  # HAM으로 바뀌면 코드도 초기화
-                                          content_reason += " | [URL: Confirmed Safe (Override)]" # Update display reason
-                                          await send_text_chunk("\n✅ **정상 확인**: URL 분석 결과 안전한 기관/서비스로 확인되어 정상으로 판정합니다.\n")
-
-                            # Step C: Auto-IBSE (Only if Spam)
-                            if final_is_spam:
-                                await send_text_chunk("---\n")
-                                await send_status("[Auto] 시그니처 추출 시도...")
-                                
-                                loop = asyncio.get_running_loop()
-                                ibse_res = await loop.run_in_executor(
-                                     None, 
-                                     lambda: ibse_service.process_message(user_msg, status_callback=send_status)
-                                )
-                                
-                                sig = ibse_res.get('signature')
-                                if sig:
-                                    await send_text_chunk(f"**[시그니처]** ✅ `{sig}` 추출됨\n")
+                                        msg_text = f"🚫 **스팸 확정** ({int(prob*100)}%) - {raw_code}. {code_desc}\n"
+                                    msg_text += f"- **사유**: {reason}\n"
+                                    
+                                    # NB Protection Label Info
+                                    if learning_label == "HAM":
+                                        msg_text += f"💡 **NB 보호**: 해당 메시지는 정상 토큰 오염 방지를 위해 학습 데이터에서 제외(HAM 처리)되었습니다.\n"
+                                elif final_is_spam is None:
+                                    msg_text = f"⚠️ **판단 보류 (HITL)**\n- **사유**: {reason}\n"
                                 else:
-                                    await send_text_chunk(f"**[시그니처]** 🛑 추출 없음 ({ibse_res.get('decision')})\n")
-
-                            # Step D: Final Summary
-                            if has_url: # Summary most useful when multiple factors exist
-                                await send_text_chunk("\n---\n**📝 종합 의견**\n\n")
+                                    msg_text = f"✅ **정상 문자**\n- **사유**: {reason}\n"
                                 
-                                # URL 분석 결과로 코드가 업데이트된 경우, s2_result 복사본에 반영
-                                final_s2_result = s2_result.copy()
-                                final_s2_result["is_spam"] = final_is_spam
-                                final_s2_result["classification_code"] = code
-                                
-                                summary = await rag_filter.generate_final_summary(user_msg, final_s2_result, isaa_result)
-                                await send_text_chunk(summary)
+                                await send_text_chunk(msg_text)
 
+                                # Step C: Post-processing Summary (RAG-based)
+                                if final_res.get("url_result") or final_is_spam:
+                                    await send_text_chunk("\n---\n**📝 종합 의견**\n\n")
+                                    url_res = graph_output.get("url_result")
+                                    summary = await rag_filter.generate_final_summary(user_msg, final_res, url_res)
+                                    await send_text_chunk(summary)
+
+                            except Exception as graph_err:
+                                logger.error(f"Chat Graph Execution Error: {graph_err}")
+                                await send_text_chunk(f"\n⚠️ **시스템 분석 오류**: {graph_err}\n")
                         # Signal End of Stream
                         await manager.send_personal_message({
                             "type": "CHAT_STREAM_END",

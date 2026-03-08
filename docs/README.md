@@ -100,6 +100,7 @@ graph TD
     *   **R1** `is_impersonation=True` → **Type_B** (차단 O, 학습 제외)
     *   **R1.2** `is_vague_cta=True` + 최종 SPAM 판정 → **Type_B** (학습 제외)
     *   **R1.3** `is_personal_lure=True` → **Type_B** (차단 O, 학습 제외)
+    *   **R1.4** `is_garbage_obfuscation=True` → **Type_B** (차단 O, 학습 제외)
     *   **R1.5** Content=HAM + URL 악성/timeout → **Type_B** (차단 O)
     *   **R2** 그 외 스팸 → **Type_A** (차단 O, 학습 O)
     *   **R3** 그 외 → **Ham**
