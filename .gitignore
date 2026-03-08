@@ -53,6 +53,8 @@ spams/
 # Logs
 *.log
 import_log.txt
+backend/logs/
+spam-validator/backend/logs/
 
 # Secrets and Configs
 mcp_config.json

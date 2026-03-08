@@ -1,2 +1,0 @@
-2026-02-26 19:48:29 | INFO     | logging_config | 로깅 초기화 완료 | Console=INFO | File=DEBUG
-2026-02-26 19:48:29 | DEBUG    | asyncio | Using proactor: IocpProactor
