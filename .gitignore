@@ -44,7 +44,8 @@ venv.bak/
 data/
 backend/data/*
 !backend/data/spam_guide.md
-spams/  # 스팸 메시지 원문
+# 스팸 메시지 원문
+spams/
 *.xlsx
 *.csv
 !sample_*.xlsx

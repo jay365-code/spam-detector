@@ -97,8 +97,9 @@ graph TD
     *   **URL 불확실** → Content 판정 유지
 4.  **FP Sentinel (정책 엔진)**: Aggregator 결과를 받아 Semantic Class와 Learning Label 결정:
     *   **P0** CONFIRMED SAFE → Ham 확정
-    *   **R1** `is_impersonation=True` + URL 있음 → **Type_B** (차단 O, 학습 제외)
-    *   **R1.2** `is_vague_cta=True` + URL SPAM → **Type_B**
+    *   **R1** `is_impersonation=True` → **Type_B** (차단 O, 학습 제외)
+    *   **R1.2** `is_vague_cta=True` + 최종 SPAM 판정 → **Type_B** (학습 제외)
+    *   **R1.3** `is_personal_lure=True` → **Type_B** (차단 O, 학습 제외)
     *   **R1.5** Content=HAM + URL 악성/timeout → **Type_B** (차단 O)
     *   **R2** 그 외 스팸 → **Type_A** (차단 O, 학습 O)
     *   **R3** 그 외 → **Ham**
@@ -107,9 +108,9 @@ graph TD
 
 | 케이스 | Content | URL 판정 | 최종 (Aggregator) | FP Sentinel |
 | :--- | :--- | :--- | :--- | :--- |
-| **Case 1** | SPAM | SPAM | **SPAM** | Type_A or Type_B (impersonation 여부) |
+| **Case 1** | SPAM | SPAM | **SPAM** | Type_A or Type_B (impersonation 등 여부) |
 | **Case 2** | SPAM | CONFIRMED SAFE | **HAM** | Ham (P0 우선) |
-| **Case 3** | SPAM | 불확실/없음 | **SPAM** | Type_A or Type_B (impersonation/vague_cta 여부) |
+| **Case 3** | SPAM | 불확실/없음 | **SPAM** | Type_A or Type_B (impersonation 여부) |
 | **Case 4** | HAM | SPAM | **HAM** + `malicious_url_extracted` | Type_B (R1.5) |
 | **Case 5** | HAM | timeout/bot-block | Content 유지 → HITL 가능 | Type_B (R1.5, c_res.is_spam=False 조건) |
 | **Case 6** | HAM | HAM/없음 | **HAM** | Ham |
@@ -118,7 +119,7 @@ graph TD
 
 ```mermaid
 graph LR
-    Start((Start)) --> Content["Content Agent<br/>is_impersonation / is_vague_cta"]
+    Start((Start)) --> Content["Content Agent<br/>is_impersonation / is_vague_cta / is_personal_lure"]
 
     subgraph UnifiedBatchGraph
         Content --> Router{라우터}

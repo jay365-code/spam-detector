@@ -266,21 +266,35 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                         from langchain_core.messages import HumanMessage
                         response = await llm.ainvoke([HumanMessage(content=prompt)])
                         content = _normalize_llm_content(response.content)
+                        
+                        # Gemini Safety Filter Block 처리
+                        if not content:
+                            finish_reason = response.response_metadata.get("finish_reason", "")
+                            meta_str = str(response.response_metadata)
+                            if finish_reason == "SAFETY" or "PROHIBITED_CONTENT" in meta_str or "block_reason" in meta_str:
+                                logger.warning("[Gemini] Response blocked by safety filters (PROHIBITED_CONTENT). Returning fallback SPAM verdict.")
+                                content = json.dumps({
+                                    "label": "SPAM",
+                                    "spam_probability": 0.99,
+                                    "classification_code": "2",
+                                    "reason": "Safety Filter Blocked: Content was flagged as prohibited (likely highly offensive, explicit, or related to illegal activities).",
+                                    "signals": {"harm_anchor": True, "route_or_cta": True, "is_impersonation": False, "is_vague_cta": False, "is_personal_lure": False}
+                                })
+                            
                     except Exception as e:
                         # Check for safety filter block which might raise specific exceptions or return empty/stopped response
                         # LangChain might raise an error for blocked content or return a finish_reason
                         # For now, let's catch generic errors and let the outer loop handle quota, 
                         # but if it's a safety block (often 400 or specific error), we might want to handle it.
-                        # Assuming outer loop handles exceptions, but specific safety fallback logic:
                         err_str = str(e).lower()
-                        if "safety" in err_str or "blocked" in err_str:
+                        if "safety" in err_str or "blocked" in err_str or "prohibited" in err_str:
                             logger.warning("[Gemini] Response blocked by safety filters. Returning fallback SPAM verdict.")
                             content = json.dumps({
                                 "label": "SPAM",
                                 "spam_probability": 0.99,
-                                "classification_code": "3",
-                                "reason": "Security Filter Blocked: Content was flagged as prohibited (likely highly offensive or explicit), which strongly indicates SPAM.",
-                                "signals": {"harm_anchor": True}
+                                "classification_code": "2",
+                                "reason": "Safety Filter Blocked: Content was flagged as prohibited (likely highly offensive or explicit), which strongly indicates SPAM.",
+                                "signals": {"harm_anchor": True, "route_or_cta": True, "is_impersonation": False, "is_vague_cta": False, "is_personal_lure": False}
                             })
                         else:
                             raise e
@@ -476,6 +490,9 @@ Step 4-1. 모호한 행동 유도(Vague CTA) 여부 판정 → is_vague_cta
    - 텍스트 자체가 의도적으로 범용어/모호한 표현으로만 구성되어 있고, URL/채널 클릭이 주된 공격 벡터인 경우 true
    - 예: "확실하게 보여드리겠습니다", "들어오셔서 성과 지켜봐주세요", "결과로 증명하겠습니다" 등
    - 텍스트만 봤을 때 정상 메시지로 오인될 가능성이 높으나 링크가 실제 스팸 목적인 패턴
+Step 4-2. 사적 관계/경조사 위장 (Personal Lure) 판단 → is_personal_lure
+   - 정상적인 사적 대화나 경조사를 100% 모방하여 악성 클릭을 유도하는 경우 true
+   - 예: "[부고] OOO님 모친상", "모바일 청첩장", "번호 저장해놔", "오랜만이네 잘 지내?" 등
 Step 5. SPAM 확정 조건:
    - 의도가 매우 명확 (spam_probability >= 0.85): harm_anchor=true면 SPAM (route_or_cta 무시)
    - 의도가 애매 (spam_probability < 0.85): harm_anchor=true AND route_or_cta=true 일 때만 SPAM
@@ -487,7 +504,7 @@ Step 5. SPAM 확정 조건:
 "spam_code": "0|1|2|3|null",
 "spam_probability": 0.0,
 "reason": "한국어로 판단 근거 작성 (과거 유사 사례가 있다면 반드시 언급)",
-"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false }}
+"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false, "is_personal_lure": false }}
 }}
 """
 
@@ -570,10 +587,12 @@ Step 5. SPAM 확정 조건:
         route_or_cta = signals.get("route_or_cta", False)
         is_impersonation = signals.get("is_impersonation", False)
         is_vague_cta = signals.get("is_vague_cta", False)
+        is_personal_lure = signals.get("is_personal_lure", False)
         
         # Ensure signals dict is up to date
         signals["is_impersonation"] = is_impersonation
         signals["is_vague_cta"] = is_vague_cta
+        signals["is_personal_lure"] = is_personal_lure
 
         # ========== HARD GATE ENFORCEMENT ==========
         # Rule 1: harm_anchor = false → 무조건 HAM
@@ -709,6 +728,9 @@ Step 4-1. 모호한 행동 유도(Vague CTA) 여부 판정 → is_vague_cta
    - 텍스트 자체가 의도적으로 범용어/모호한 표현으로만 구성되어 있고, URL/채널 클릭이 주된 공격 벡터인 경우 true
    - 예: "확실하게 보여드리겠습니다", "들어오셔서 성과 지켜봐주세요", "결과로 증명하겠습니다" 등
    - 텍스트만 봤을 때 정상 메시지로 오인될 가능성이 높으나 링크가 실제 스팸 목적인 패턴
+Step 4-2. 사적 관계/경조사 위장 (Personal Lure) 판단 → is_personal_lure
+   - 정상적인 사적 대화나 경조사를 100% 모방하여 악성 클릭을 유도하는 경우 true
+   - 예: "[부고] OOO님 모친상", "모바일 청첩장", "번호 저장해놔", "오랜만이네 잘 지내?" 등
 Step 5. SPAM 확정 조건:
    - 의도가 매우 명확 (spam_probability >= 0.85): harm_anchor=true면 SPAM (route_or_cta 무시)
    - 의도가 애매 (spam_probability < 0.85): harm_anchor=true AND route_or_cta=true 일 때만 SPAM
@@ -720,7 +742,7 @@ Step 5. SPAM 확정 조건:
 "spam_code": "0|1|2|3|null",
 "spam_probability": 0.0,
 "reason": "한국어로 판단 근거 작성 (과거 유사 사례가 있다면 반드시 언급)",
-"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false }}
+"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false, "is_personal_lure": false }}
 }}
 """
         return prompt_text, valid_examples

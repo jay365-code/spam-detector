@@ -63,6 +63,8 @@ FP Sentinel은 메시지를 아래 3가지 의미 클래스 중 하나로 분류
 - `C_Impersonation`: Content Agent 기준 **사칭/위장 의도** 플래그 (`is_impersonation: boolean`)
 - `C_VagueCTA`: Content Agent 기준 **의도적 모호 행동 유도** 플래그 (`is_vague_cta: boolean`)
   - 예: "확실하게 보여드리겠습니다", "들어오셔서 성과 지켜봐주세요" 등 범용어로 구성되어 링크 클릭이 공격 벡터인 패턴
+- `C_PersonalLure`: Content Agent 기준 **사적 관계/경조사 위장** 플래그 (`is_personal_lure: boolean`)
+  - 예: "[부고] 모친상", "청첩장", "오랜만이네 잘 지내?" 등 일상어로 클릭을 유도하는 패턴
 - `U_Blocked`: URL Agent가 악성 방어막(timeout, Cloudflare 등) 차단을 겪었는가? (`bot_protection_active` 등)
 - `U_Spam`: URL Agent 기준 결과 페이지가 명백한 악성인가?
 - `U_ConfirmedSafe`: URL Agent가 URL이 안전하다고 명시적으로 확인 (`CONFIRMED SAFE` 태그)
@@ -77,15 +79,20 @@ FP Sentinel은 메시지를 아래 3가지 의미 클래스 중 하나로 분류
 
 ---
 
-### [룰셋 1] Type_B (사칭/기만 + URL)
-- **조건**: `C_Impersonation` = True **AND** URL이 존재함 (`u_res is not None`)
+### [룰셋 1] Type_B (사칭/기만)
+- **조건**: `C_Impersonation` = True
 - **결과**: `Type_B`
-- **의의**: 대기업/공공기관 사칭 또는 정상 업무 위장. URL DNS 실패·timeout 여부와 무관하게 사칭 신호만으로 Type_B 확정. URL 없는 순수 텍스트 사칭은 Type_A로 처리(NB 오염 위험 낮음).
+- **의의**: 대기업/공공기관 사칭 또는 정상 업무 위장. 이러한 메시지는 정상 비즈니스 용어를 사용하므로 나이브베이즈 오염 위험이 큽니다. URL 존재 여부나 접속 실패 등과 무관하게 사칭 신호만으로 Type_B 확정합니다.
 
-### [룰셋 1.2] Type_B (Vague CTA + URL SPAM)
-- **조건**: `C_VagueCTA` = True **AND** `U_Spam` = True
+### [룰셋 1.2] Type_B (Vague CTA 스팸 확정)
+- **조건**: `C_VagueCTA` = True **AND** 최종 `is_spam` = True
+- **결과**: `Type_B` (학습 제외)
+- **의의**: 텍스트 자체는 모호/범용어로 구성되어 있고 최종적으로 스팸 판정이 난 경우(URL 추출 여부 무관). 이러한 모호한 정상 텍스트를 그대로 SPAM으로 학습하면 나이브베이즈가 정상 표현을 스팸으로 오인하기 쉬우므로 Type_B 처리.
+
+### [룰셋 1.3] Type_B (Personal Lure)
+- **조건**: `C_PersonalLure` = True
 - **결과**: `Type_B`
-- **의의**: 텍스트 자체는 모호/범용어로 구성되어 있지만 URL이 스팸으로 확인된 경우. 텍스트를 SPAM으로 학습하면 나이브베이즈가 정상 표현을 스팸으로 오인할 수 있으므로 Type_B 처리.
+- **의의**: 부고, 청첩장, 카톡 추가 유도 등 지인과의 일상 대화를 100% 모방한 메시지입니다. URL 유무와 무관하게 이를 Type_A로 학습하면 실제 개인 간 메시지가 스팸 처리되는 치명적인 오탐이 발생하므로 나이브 베이즈에서 완전히 격리합니다.
 
 ### [룰셋 1.5] Type_B (텍스트 HAM + URL 위험/불확실)
 - **조건**: Content Agent가 HAM 판정 (`C_Spam` = False) **AND** (URL 악성 확인 또는 URL timeout/bot-block)

@@ -139,6 +139,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         signals = c_res.get("signals", {})
         c_impersonation = signals.get("is_impersonation", False)
         c_vague_cta = signals.get("is_vague_cta", False)
+        c_personal_lure = signals.get("is_personal_lure", False)
         
         u_blocked = False
         u_spam = False
@@ -156,10 +157,9 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # is_spam은 aggregator가 이미 False로 설정했으므로 그대로 유지
 
         # Rulset 1: Type_B (FP-Sensitive Spam) - 사칭/기만 감지
-        # c_impersonation=True이면 URL 결과(DNS fail, timeout 등) 무관하게 Type_B 확정
-        # 단, URL이 있는 경우에만 적용 (URL 없는 순수 텍스트 사칭은 Type_A로 처리)
-        # → URL 없는 메시지는 나이브베이즈 오염 위험이 낮아 Type_B 불필요
-        elif c_impersonation and u_res is not None:
+        # c_impersonation=True이면 URL 결과(존재여부, timeout 등) 무관하게 Type_B 확정
+        # 대기업/공공기관 사칭은 정상 업무 단어를 사용하므로 나이브베이즈 보호 필수
+        elif c_impersonation:
              semantic_class = "Type_B"
              learning_label = "HAM" # 학습에서 제외하여 나이브베이즈 보호
              
@@ -171,15 +171,30 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              if "[FP Sentinel Override]" not in existing_reason:
                  final["reason"] = f"{existing_reason} | [FP Sentinel Override] 사칭/기만(Type_B) 확정 차단"
                  
-        # Ruleset 1.2: Type_B (Vague CTA + URL SPAM)
-        # 텍스트가 의도적으로 모호/범용어이지만 URL이 스팸으로 확인된 경우
-        # → 텍스트를 SPAM으로 학습하면 나이브베이즈 오탐 유발 가능
-        elif c_vague_cta and u_spam:
+        # Ruleset 1.2: Type_B (Vague CTA 스팸 확정)
+        # 텍스트가 의도적으로 모호/범용어이고 최종 스팸으로 판정된 경우 (URL 추출 여부 무관)
+        # → 텍스트만 스팸으로 학습하면 나이브베이즈에 치명적 오탐 유발할 수 있으므로 보호
+        elif c_vague_cta and final.get("is_spam") is True:
              semantic_class = "Type_B"
              learning_label = "HAM"
+             
              existing_reason = final.get("reason", "")
              if "[FP Sentinel Override]" not in existing_reason:
-                 final["reason"] = f"{existing_reason} | [FP Sentinel Override] 모호한 CTA + URL 스팸(Type_B) 확정 차단"
+                 final["reason"] = f"{existing_reason} | [FP Sentinel Override] 모호한 CTA 스팸(Type_B) 처리 (NB 보호)"
+
+        # Ruleset 1.3: Type_B (Personal Lure)
+        # 지인 사칭, 경조사 위장 등 100% 일상어로 구성된 메시지 (URL 유무 무관하게 NB에서 철저히 보호)
+        elif c_personal_lure:
+             semantic_class = "Type_B"
+             learning_label = "HAM"
+             
+             # Enforcement: SPAM으로 강제
+             if final.get("is_spam") is not True:
+                 final["is_spam"] = True
+                 
+             existing_reason = final.get("reason", "")
+             if "[FP Sentinel Override]" not in existing_reason:
+                 final["reason"] = f"{existing_reason} | [FP Sentinel Override] 사적/경조사 위장(Type_B) 확정 차단"
 
         # Ruleset 1.5: Type_B (URL-Separated / URL-Blocked Case)
         # Content Agent가 HAM으로 판단했지만 URL이 악성이거나 접근 불가(timeout, bot-block)인 경우
