@@ -50,6 +50,22 @@ class CancellationException(Exception):
     """처리 취소 예외"""
     pass
 
+# [Phase 4] Ctrl+C(SIGINT) 시 배치 조기 종료용 플래그 (시그널 핸들러에서 설정)
+shutdown_requested = False
+
+def _signal_handler(signum, frame):
+    """SIGINT(Ctrl+C) 시 shutdown 플래그만 설정. 배치 워커가 주기적으로 확인."""
+    global shutdown_requested
+    shutdown_requested = True
+    logger.info("Shutdown requested (Ctrl+C)")
+
+# Windows에서 SIGINT 등록 (Ctrl+C)
+try:
+    import signal
+    signal.signal(signal.SIGINT, _signal_handler)
+except Exception as e:
+    logger.warning(f"Could not register SIGINT handler: {e}")
+
 app = FastAPI()
 
 
@@ -1294,7 +1310,13 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                                 return index, {"is_spam": None, "reason": f"Aborted (Global {provider} Quota Exhausted)"}
                                 
                             logger.debug(f"Acquired {queue_type} semaphore. Starting process...")
-                            idx, res = await process_single_item(index, msg, s1)
+                            # [Phase 4] Per-task timeout: 한 항목이 5분 이상 멈추면 조기 종료 (무한 대기 방지)
+                            task_timeout = int(os.getenv("BATCH_TASK_TIMEOUT_SEC", "300"))
+                            try:
+                                idx, res = await asyncio.wait_for(process_single_item(index, msg, s1), timeout=task_timeout)
+                            except asyncio.TimeoutError:
+                                logger.warning(f"Task {index+1} timed out after {task_timeout}s")
+                                return index, {"is_spam": None, "reason": f"Timeout ({task_timeout}s)"}
                             # [Real-time Streaming] Send result to client immediately
                             try:
                                 nonlocal completed_count
@@ -1321,12 +1343,48 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                                 logger.warning(f"WS Streaming Failed: {ws_ex}")
                             return idx, res
 
-                    # Create all tasks (they will wait on semaphore)
-                    tasks = [sem_task(i, messages[i], s1_results[i]) for i in range(len(messages))]
+                    # Create tasks (create_task으로 취소 가능하게)
+                    tasks = [asyncio.create_task(sem_task(i, messages[i], s1_results[i])) for i in range(len(messages))]
                     
-                    # Run All and Wait (Still need to collect all for Excel save)
-                    logger.info(f"Starting asyncio.gather for {len(tasks)} tasks...")
-                    results_with_idx = await asyncio.gather(*tasks)
+                    # [Phase 4] 취소 모니터: 5초마다 is_cancelled 또는 Ctrl+C 확인 → 취소 시 모든 태스크 cancel
+                    cancelled_by_user = False
+                    async def cancel_checker():
+                        nonlocal cancelled_by_user
+                        while True:
+                            await asyncio.sleep(5)
+                            if shutdown_requested or (manager and client_id and manager.is_cancelled(client_id)):
+                                cancelled_by_user = True
+                                logger.info("Cancellation requested. Cancelling all batch tasks...")
+                                for t in tasks:
+                                    if not t.done():
+                                        t.cancel()
+                                return
+                    
+                    cancel_task = asyncio.create_task(cancel_checker())
+                    try:
+                        logger.info(f"Starting asyncio.gather for {len(tasks)} tasks (with cancellation monitor)...")
+                        results_with_idx = await asyncio.gather(*tasks, return_exceptions=True)
+                    finally:
+                        cancel_task.cancel()
+                        try:
+                            await cancel_task
+                        except asyncio.CancelledError:
+                            pass
+                    
+                    if cancelled_by_user:
+                        raise CancellationException("Processing cancelled by user")
+                    
+                    # return_exceptions=True이므로 CancelledError 등이 결과로 올 수 있음 → 정규화
+                    normalized = []
+                    for i, r in enumerate(results_with_idx):
+                        if isinstance(r, BaseException):
+                            if isinstance(r, asyncio.CancelledError):
+                                normalized.append((i, {"is_spam": None, "reason": "Cancelled"}))
+                            else:
+                                normalized.append((i, {"is_spam": None, "reason": f"Error: {r}"}))
+                        else:
+                            normalized.append(r)
+                    results_with_idx = normalized
                     logger.info("asyncio.gather finished.")
                     
                     # Sort just in case (though gather guarantees order) and extract
@@ -1348,6 +1406,8 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
             # Run Async Pipeline
             try:
                 s2_results = asyncio.run(run_batch_pipeline())
+            except CancellationException:
+                raise  # [Phase 4] 취소는 상위로 재전파
             except Exception as e:
                 logger.error(f"Batch Async Error: {e}")
                 s2_results = [{"is_spam": None, "reason": f"Async Error: {e}"} for _ in messages]

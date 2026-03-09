@@ -473,9 +473,10 @@ class PlaywrightManager:
         }
 
         context = None
+        page = None
         
-        # Retry logic for browser connection
-        for attempt in range(2):
+        # Retry logic for browser connection (TargetClosedError 시 3회, 그 외 2회)
+        for attempt in range(3):
             try:
                 logger.debug(f"Attempt {attempt+1} for {url}. Loop: {id(asyncio.get_running_loop())}")
                 
@@ -620,14 +621,37 @@ class PlaywrightManager:
                         return result # Return immediately on success
 
                     finally:
-                        logger.debug("Closing context.")
-                        await context.close()
+                        # [Phase 2] 명시적 page 해제 후 context 정리 (좀비 프로세스 방지)
+                        try:
+                            if page and not page.is_closed():
+                                await page.close()
+                        except Exception:
+                            pass
+                        try:
+                            if context:
+                                await context.close()
+                        except Exception:
+                            pass
                 
                 break # Success (if we returned above, this line is unreachable, but logically loop breaks)
 
             except Exception as e:
-                # Check for Playwright TimeoutError specifically
-                if "Timeout" in str(e) and "Page.goto" in str(e):
+                err_str = str(e).lower()
+                
+                # [Phase 1] TargetClosedError: 브라우저 재시작 후 재시도 (무한 대기 방지)
+                if "target page" in err_str or "context or browser has been closed" in err_str or "targetclosed" in err_str:
+                    logger.warning(f"[PlaywrightManager] TargetClosedError: {e}. Restarting browser...")
+                    await self.stop()
+                    continue
+                
+                # [Phase 2] ERR_ABORTED: 즉시 실패 반환 (재시도 무의미)
+                if "err_aborted" in err_str or "net::err_aborted" in err_str:
+                    result["error"] = "ERR_ABORTED (Blocked)"
+                    result["status"] = "error"
+                    return result
+                
+                # Timeout, 기타 오류
+                if "timeout" in err_str and "page.goto" in err_str:
                     logger.warning(f"Scraping Timeout (likely bot protection): {e}")
                     result["error"] = "Timeout (Bot Protection?)"
                     result["status"] = "timeout"
@@ -636,11 +660,9 @@ class PlaywrightManager:
                     result["error"] = str(e)
                     result["status"] = "error"
                 
-                # If we are here, it means we failed. Move to next attempt in outer loop.
-                # But we need to distinguish between "Browser Init Fail" and "Scraping Fail"
-                # Browser Init Fail is caught in the outer 'except' block. 
-                # This try/except covers the logic INSIDE the semaphore.
-                pass
+                # [처리시간 유지] Timeout/기타는 2회 시도만 (attempt 0, 1)
+                if attempt >= 1:
+                    break
 
 
         # If we reached here (not returned), it means we failed or loop attempt failed inside semaphore

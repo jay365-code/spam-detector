@@ -488,30 +488,36 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
 
 [PROCEDURE]
 Step 1. HARD GATE 확인 → harm_anchor = false 이면 무조건 HAM (label="HAM")
+
 Step 2. harm_anchor 판정 → Guide 2.2 기준 (URL 무시, 텍스트만, 도박/성인/사기/어뷰즈 의도가 명확해야 true)
+
 Step 3. 의도 명확도 판정 → spam_probability로 표현 (0.85 이상이면 의도가 매우 명확)
-Step 4. 사칭/기만(Impersonation) 여부 판정 → is_impersonation
-   - 단순히 일상어가 섞인 것이 아니라, '대기업/공공기관'을 사칭하거나 '택배/결제/승인' 등 정상 업무를 위장하여 수신자를 속이려는 명백한 기만 정황이 있으면 true
+
+Step 4. 구조적 기만(Structural Impersonation) 여부 판정 → is_impersonation
+   - 단순히 특정 단어가 아닌, '공공기관의 통보 형식'이나 '기업의 공식 서비스 흐름' 등 **정상적인 문장 구조와 레이아웃을 정교하게 모방**한 경우 true
+
 Step 4-1. 모호한 행동 유도(Vague CTA) 여부 판정 → is_vague_cta
-   - 텍스트 자체가 의도적으로 범용어/모호한 표현으로만 구성되어 있고, URL/채널 클릭이 주된 공격 벡터인 경우 true
-   - 예: "확실하게 보여드리겠습니다", "들어오셔서 성과 지켜봐주세요", "결과로 증명하겠습니다" 등
-   - 텍스트만 봤을 때 정상 메시지로 오인될 가능성이 높으나 링크가 실제 스팸 목적인 패턴
+   - 텍스트 자체가 범용어/모호한 표현으로만 구성되어 있고, 특정 문맥 없이 클릭만을 유도하는 패턴인 경우 true
+   - 이러한 패턴은 CNN 모델이 일반적인 권유 문구와 스팸을 구분하기 어렵게 만듦
+
 Step 4-2. 사적 관계/경조사 위장 (Personal Lure) 판단 → is_personal_lure
-   - 정상적인 사적 대화나 경조사를 100% 모방하여 악성 클릭을 유도하는 경우 true
-   - 예: "[부고] OOO님 모친상", "모바일 청첩장", "번호 저장해놔", "오랜만이네 잘 지내?" 등
-Step 4-3. 필터 회피용 쓰레기 토큰 (Garbage Obfuscation) 판단 → is_garbage_obfuscation
-   - 구체적인 도박/성인 의도는 없으나, 필터 우회를 위해 의미 없는 문자 조각(`l0`, `ㄹ`, `R3993` 등)이나 파편화된 코드 위주로 구성된 경우 true.
-   - 이는 Naive Bayes 모델 학습 시 '정상 단어'를 '스팸 단어'로 오염시킬 위험이 매우 큼.
-Step 5. [Naive Bayes 보호 목적 안내]
-   is_impersonation / is_vague_cta / is_personal_lure / is_garbage_obfuscation 네 시그널은 단순 스팸 판정이 아니라,
-   **Naive Bayes 학습 모델 오염 방지**를 위해 추출합니다.
+   - 안부 인사, 부고, 청첩장 등 지인 간의 일상적인 **문장 나열 패턴(Sequential Pattern)**을 100% 모방한 경우 true
+
+Step 4-3. 필터 회피용 벡터 노이즈 (Garbage Obfuscation) 판단 → is_garbage_obfuscation
+   - 필터 우회를 위해 의미 없는 문자 조각(`l0`, `ㄹ`, `R3993` 등)이나 파편화된 코드가 섞인 경우 true
+   - 이는 CNN 모델의 임베딩 레이어에서 **고주파 노이즈**로 작용하여 특징 추출을 방해함
+
+Step 5. [CNN 모델 강건성(Robustness) 유지 안내]
+   is_impersonation / is_vague_cta / is_personal_lure / is_garbage_obfuscation 네 시그널은 **CNN의 합성곱 필터(Convolutional Filter)가 정상 문맥을 '악성 패턴'으로 잘못 정의하는 것을 방지**하기 위해 추출합니다.
    ⚠️ 중요: 이 시그널은 **메시지가 SPAM으로 확정된 경우에만** 의미를 가집니다. HAM 메시지에서는 항상 false로 설정하세요.
-   이 시그널이 true이면 해당 메시지는 스팸으로 즉시 차단되지만, **모델 학습에서는 제외**됩니다.
-   판단 기준 (SPAM 확정 후에만 적용): "이 메시지의 단어/표현이 NB 학습에 사용되면, 향후 정상 메시지를 스팸으로 오분류할 위험이 있는가?"
-   - 사칭: 정상 업무 용어(입금, 승인, 택배 등)를 스팸 맥락에서 사용 → NB 오탐 위험 높음
-   - Vague CTA: 일상 범용어만으로 구성된 클릭 유도 → 공통 단어 오염 위험
-   - Personal Lure: 사적 대화/경조사 100% 모방 → 일상어 오염 위험
-   - Garbage Obfuscation: 무의미한 문자/난독화 파편 → 단순 쓰레기 토큰 오염 위험
+   이 시그널이 true이면 해당 메시지는 즉시 차단되지만, **모델 학습 데이터(Training Set)에서는 제외**됩니다.
+
+   **판단 기준 (SPAM 확정 후 적용):** "이 메시지의 구조적 패턴이 CNN 학습에 사용될 경우, 향후 유사한 구조의 정상 메시지를 오탐(False Positive)할 위험이 있는가?"
+   - 사칭: 정상 업무의 '알림 구조'를 스팸 특징으로 학습 → 유사한 정상 알림 오탐 위험
+   - Vague CTA: 보편적인 '권유/안내 패턴'을 스팸 특징으로 학습 → 일반적인 제안 메시지 오탐 위험
+   - Personal Lure: 지인 간 '안부/경조사 문장 흐름'을 스팸 특징으로 학습 → 실제 안부 메시지 오탐 위험
+   - Garbage: 무의미한 벡터 노이즈가 특징 맵(Feature Map)을 왜곡 → 모델의 일반화 성능 저하
+
 Step 6. SPAM 확정 조건:
    - 의도가 매우 명확 (spam_probability >= 0.85): harm_anchor=true면 SPAM (route_or_cta 무시)
    - 의도가 애매 (spam_probability < 0.85): harm_anchor=true AND route_or_cta=true 일 때만 SPAM
@@ -522,7 +528,7 @@ Step 6. SPAM 확정 조건:
 "ham_code": "HAM-1|HAM-2|HAM-3|null",
 "spam_code": "0|1|2|3|null",
 "spam_probability": 0.0,
-"reason": "한국어로 판단 근거 작성 (과거 유사 사례가 있다면 반드시 언급)",
+"reason": "한국어로 판단 근거 작성. 특히 CNN 모델이 오해할 수 있는 '문장 구조적 특징'을 언급할 것",
 "signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false, "is_personal_lure": false, "is_garbage_obfuscation": false }}
 }}
 """

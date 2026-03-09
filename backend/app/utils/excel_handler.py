@@ -361,6 +361,9 @@ class ExcelHandler:
                      # Fallback for backward compatibility if function doesn't accept start_index yet
                      results = processing_function(messages)
                 except Exception as e:
+                    from ..main import CancellationException
+                    if isinstance(e, CancellationException):
+                        raise  # [Phase 4] 취소 예외는 상위로 재전파 (강제 종료 처리)
                     logger.error(f"Batch Processing Failed: {e}")
                     # Create error results
                     results = [{"is_spam": None, "reason": f"Error: {e}"} for _ in messages]
@@ -689,6 +692,9 @@ class ExcelHandler:
                 except TypeError:
                      results = processing_function(messages)
                 except Exception as e:
+                    from ..main import CancellationException
+                    if isinstance(e, CancellationException):
+                        raise  # [Phase 4] 취소 예외는 상위로 재전파 (강제 종료 처리)
                     logger.error(f"Batch Processing Failed: {e}")
                     results = [{"is_spam": None, "reason": f"Error: {e}"} for _ in messages]
 
