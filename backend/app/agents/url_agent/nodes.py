@@ -396,7 +396,56 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
     """
     SMS 본문에서 URL 추출 (한글 도메인 지원)
     난독화된 텍스트가 있으면 디코딩된 텍스트에서 URL 추출
+    pre_parsed_urls가 있으면 (KISA TXT 배치) 본문 추출 대신 파싱된 URL 사용
     """
+    # [Batch KISA TXT] 파일에서 파싱한 URL이 있으면 본문 추출 스킵
+    # pre_parsed_only_mode: KISA TXT면 URL 없을 때 본문 추출도 스킵 (난독화 오추출 방지)
+    pre_parsed = state.get("pre_parsed_urls") or []
+    pre_parsed_only_mode = state.get("pre_parsed_only_mode", False)
+    if pre_parsed_only_mode and not pre_parsed:
+        # KISA TXT + URL 없음 → 본문 추출 안 함
+        logger.info("[URL Agent] Pre-parsed only mode: no URL in file, skip extraction")
+        return {
+            "target_urls": [],
+            "current_url": None,
+            "visited_history": [],
+            "scraped_data": {},
+            "depth": 0,
+            "is_final": True,
+            "is_spam": False,
+            "reason": "No URL in file (pre-parsed only mode)"
+        }
+    if pre_parsed:
+        unique_urls = []
+        seen = set()
+        for raw_url in pre_parsed:
+            if not raw_url or len(raw_url) < 4:
+                continue
+            url = raw_url.strip().rstrip('.,;!?)]}"\'')
+            if not url.startswith(("http://", "https://")):
+                url = "http://" + url
+            if len(url) < 10:
+                continue
+            converted = convert_korean_domain_to_punycode(url)
+            if converted not in seen:
+                seen.add(converted)
+                unique_urls.append(converted)
+        max_urls = int(os.getenv("MAX_URLS_PER_MESSAGE", "3"))
+        if len(unique_urls) > max_urls:
+            unique_urls = unique_urls[:max_urls]
+            logger.info(f"[URL Agent] Pre-parsed URLs limited to {max_urls}")
+        logger.info(f"[URL Agent] Using pre-parsed URLs (skip extract): {unique_urls}")
+        return {
+            "target_urls": unique_urls,
+            "current_url": unique_urls[0] if unique_urls else None,
+            "visited_history": [],
+            "scraped_data": {},
+            "depth": 0,
+            "is_final": False if unique_urls else True,
+            "is_spam": False if not unique_urls else None,
+            "reason": "No URL found" if not unique_urls else "Pre-parsed URL used"
+        }
+    
     # 난독화 디코딩된 텍스트가 있으면 우선 사용
     message = state.get("decoded_text") or state.get("sms_content", "")
     

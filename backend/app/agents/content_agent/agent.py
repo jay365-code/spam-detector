@@ -264,7 +264,13 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                     
                     try:
                         from langchain_core.messages import HumanMessage
-                        response = await llm.ainvoke([HumanMessage(content=prompt)])
+                        # [Fix] Add explicit 45s timeout to prevent 300s hang
+                        try:
+                            response = await asyncio.wait_for(llm.ainvoke([HumanMessage(content=prompt)]), timeout=45.0)
+                        except asyncio.TimeoutError as e:
+                            logger.warning(f"[{provider}] LLM Timeout occurred (45s). Tenacity will retry.")
+                            raise Exception("Async LLM Timeout") from e
+                        
                         content = _normalize_llm_content(response.content)
                         
                         # Gemini Safety Filter Block 처리
@@ -1043,7 +1049,14 @@ Step 6. SPAM 확정 조건:
                     provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
                     if key_manager.is_quota_exhausted(provider):
                         raise QuotaExhaustedNoRetryError(f"{provider} quota globally exhausted. No retry.")
-                    response = await llm.ainvoke([HumanMessage(content=prompt)])
+                    # [Fix] Add explicit 45s timeout
+                    import asyncio
+                    try:
+                        response = await asyncio.wait_for(llm.ainvoke([HumanMessage(content=prompt)]), timeout=45.0)
+                    except asyncio.TimeoutError as e:
+                        logger.warning(f"[{provider}] Summary LLM Timeout occurred (45s). Tenacity will retry.")
+                        raise Exception("Async Summary LLM Timeout") from e
+                        
                     key_manager.report_success(provider)
                     return response
                 except Exception as e:
@@ -1080,9 +1093,13 @@ Step 6. SPAM 확정 조건:
                         # We need to refresh `llm` instance with new key!
                         # However, we cannot easily reassign outer scope `llm` variable from inner function without `nonlocal`
                         # OR we can just call `self._get_chat_model().ainvoke` directly inside here.
-                        
                         new_llm = self._get_chat_model()
-                        response = await new_llm.ainvoke([HumanMessage(content=prompt)])
+                        try:
+                            response = await asyncio.wait_for(new_llm.ainvoke([HumanMessage(content=prompt)]), timeout=45.0)
+                        except asyncio.TimeoutError as e:
+                            logger.warning(f"[ContentAgent] Rotated Summary LLM Timeout occurred (45s). Tenacity will retry.")
+                            raise Exception("Async Summary LLM Timeout after rotation") from e
+                            
                         key_manager.report_success(provider)
                         return response
                         

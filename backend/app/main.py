@@ -1142,13 +1142,15 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
             )
 
         # Wrapper for process_message to inject HITL logic (Batch Compatible)
-        def process_message_with_hitl(messages: list, start_index: int = 0, total_count: int = 0) -> list:
+        def process_message_with_hitl(messages: list, start_index: int = 0, total_count: int = 0, pre_parsed_urls: list = None) -> list:
             """
             Processes a batch of messages.
             1. Rule Filter (Stage 1) - Individual
             2. RAG Filter (Stage 2) - Batch
             3. URL Filter (Stage 3) - Parallel for SPAM items
             4. HITL Check - Individual (Blocking)
+            
+            pre_parsed_urls: KISA TXT 파일에서 탭으로 파싱한 URL 목록 (있으면 본문 추출 대신 사용)
             """
             
             import asyncio
@@ -1184,7 +1186,7 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                     # Use global agents (Thread-safe/Async-safe assumed)
                     batch_graph = create_batch_graph(rag_filter, url_filter, ibse_service, playwright_manager=local_manager)
 
-                    async def process_single_item(index, message, s1_res):
+                    async def process_single_item(index, message, s1_res, url_from_file: str = "", from_kisa_txt: bool = False):
                         import time
                         start_time = time.time() # [Time Tracking] Start
 
@@ -1223,6 +1225,8 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                             "message": message,
                             "s1_result": s1_res,
                             "prefetched_context": context_data, # [Batch Optimization] Inject Context
+                            "pre_parsed_url": url_from_file.strip() if url_from_file else None,  # KISA TXT 파싱 URL (본문 추출 대신 사용)
+                            "pre_parsed_only_mode": from_kisa_txt,  # KISA TXT면 URL 없을 때 본문 추출 스킵
                             "content_result": None,
                             "url_result": None,
                             "ibse_result": None,
@@ -1271,6 +1275,11 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                     # Monotonic counter for progress
                     completed_count = 0
                     
+                    # pre_parsed_urls: KISA TXT에서 오면 사용, Excel이면 None
+                    url_list = pre_parsed_urls if pre_parsed_urls else [""] * len(messages)
+                    is_kisa_txt = pre_parsed_urls is not None  # KISA TXT면 URL 없을 때 본문 추출 스킵
+                    def _url_at(i): return url_list[i] if i < len(url_list) else ""
+                    
                     async def sem_task(index, msg, s1):
                         # Set Batch ID for this context task
                         batch_id_context.set(f"Batch {index+1}")
@@ -1285,14 +1294,22 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                             return index, {"is_spam": None, "reason": f"Skipped (Global {provider} Quota Exhausted)"}
 
                             
-                        # Smart Concurrency: Check for URL (including obfuscated)
-                        is_url_msg = has_potential_url(msg)
+                        # Smart Concurrency: Check for URL (본문 추출 또는 KISA TXT 파싱 URL)
+                        is_url_msg = has_potential_url(msg) or bool(_url_at(index).strip())
                         selected_sem = sem_browser if is_url_msg else sem_llm
                         queue_type = "Browser" if is_url_msg else "LLM-Only"
                         
                         # Terminology: 'Queued' means created and waiting for worker slot
                         logger.debug(f"Queued in {queue_type} Queue (Waiting for semaphore...)")
-                        async with selected_sem:
+                        # [Phase 2] 세마포어 대기 vs 실행 타임아웃 분리
+                        queue_timeout = int(os.getenv("BATCH_QUEUE_TIMEOUT_SEC", "600"))
+                        task_timeout = int(os.getenv("BATCH_TASK_TIMEOUT_SEC", "300"))
+                        try:
+                            await asyncio.wait_for(selected_sem.acquire(), timeout=queue_timeout)
+                        except asyncio.TimeoutError:
+                            logger.warning(f"Task {index+1} queue timeout after {queue_timeout}s (waiting for {queue_type} slot)")
+                            return index, {"is_spam": None, "reason": f"Queue timeout ({queue_timeout}s)"}
+                        try:
                             if manager.is_cancelled(client_id):
                                 logger.info(f"Cancelled after semaphore acquisition.")
                                 return index, {"is_spam": None, "reason": "Cancelled"}
@@ -1302,10 +1319,9 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                                 return index, {"is_spam": None, "reason": f"Aborted (Global {provider} Quota Exhausted)"}
                                 
                             logger.debug(f"Acquired {queue_type} semaphore. Starting process...")
-                            # [Phase 4] Per-task timeout: 한 항목이 5분 이상 멈추면 조기 종료 (무한 대기 방지)
-                            task_timeout = int(os.getenv("BATCH_TASK_TIMEOUT_SEC", "300"))
+                            # [Phase 4] Per-task timeout: 실행 시간만 별도 제한 (세마포어 대기와 분리)
                             try:
-                                idx, res = await asyncio.wait_for(process_single_item(index, msg, s1), timeout=task_timeout)
+                                idx, res = await asyncio.wait_for(process_single_item(index, msg, s1, _url_at(index), is_kisa_txt), timeout=task_timeout)
                             except asyncio.TimeoutError:
                                 logger.warning(f"Task {index+1} timed out after {task_timeout}s")
                                 return index, {"is_spam": None, "reason": f"Timeout ({task_timeout}s)"}
@@ -1334,6 +1350,8 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                             except Exception as ws_ex:
                                 logger.warning(f"WS Streaming Failed: {ws_ex}")
                             return idx, res
+                        finally:
+                            selected_sem.release()
 
                     # Create tasks (create_task으로 취소 가능하게)
                     tasks = [asyncio.create_task(sem_task(i, messages[i], s1_results[i])) for i in range(len(messages))]

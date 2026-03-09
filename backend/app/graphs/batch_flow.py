@@ -9,6 +9,8 @@ class BatchState(TypedDict):
     message: str
     s1_result: Dict[str, Any] # Rule check result
     prefetched_context: Optional[Dict[str, Any]] # [Batch Optimization] Injected Context
+    pre_parsed_url: Optional[str] # KISA TXT에서 탭으로 파싱한 URL (있으면 본문 추출 대신 사용)
+    pre_parsed_only_mode: Optional[bool]  # KISA TXT면 URL 없을 때 본문 추출 스킵 (Chat/Excel은 False)
     
     # Results
     content_result: Optional[Dict[str, Any]]
@@ -53,10 +55,14 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         msg = state["message"]
         content_result = state.get("content_result", {})
         s1 = state.get("s1_result", {})
+        pre_parsed_url = state.get("pre_parsed_url")
+        pre_parsed_only_mode = state.get("pre_parsed_only_mode", False)
         # 난독화 디코딩된 텍스트가 있으면 전달
         decoded_text = s1.get("decoded_text")
         # URL Agent is already Async - Content 결과를 컨텍스트로 전달
-        res = await url_agent.acheck(msg, content_context=content_result, decoded_text=decoded_text, playwright_manager=playwright_manager)
+        # pre_parsed_url: KISA TXT에서 파싱한 URL이 있으면 본문 추출 대신 사용
+        # pre_parsed_only_mode: KISA TXT면 URL 없을 때 본문 추출 스킵
+        res = await url_agent.acheck(msg, content_context=content_result, decoded_text=decoded_text, pre_parsed_url=pre_parsed_url, pre_parsed_only_mode=pre_parsed_only_mode, playwright_manager=playwright_manager)
         return {"url_result": res}
 
     async def ibse_node(state: BatchState):

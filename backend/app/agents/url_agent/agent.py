@@ -144,7 +144,7 @@ class UrlAnalysisAgent:
                 "reason": f"ISAA Error: {str(e)}"
             }
 
-    async def acheck(self, message: str, status_callback: Callable[[str], Awaitable[None]] = None, content_context: Dict[str, Any] = None, decoded_text: str = None, playwright_manager: Any = None) -> Dict[str, Any]:
+    async def acheck(self, message: str, status_callback: Callable[[str], Awaitable[None]] = None, content_context: Dict[str, Any] = None, decoded_text: str = None, pre_parsed_url: str = None, pre_parsed_only_mode: bool = False, playwright_manager: Any = None) -> Dict[str, Any]:
         """
         Async version of check for WebSocket compatibility with Status Streaming
         
@@ -153,16 +153,21 @@ class UrlAnalysisAgent:
             status_callback: 상태 업데이트 콜백
             content_context: Content Agent 분석 결과 (URL Agent 판단 시 참고용)
             decoded_text: 난독화 디코딩된 텍스트 (있으면 URL 추출 시 사용)
+            pre_parsed_url: KISA TXT에서 탭으로 파싱한 URL (있으면 본문 추출 대신 사용)
+            pre_parsed_only_mode: KISA TXT면 URL 없을 때 본문 추출 스킵 (본문에서 추출 안 함)
         """
+        # pre_parsed_url이 있으면 리스트로 전달 (extract_node에서 본문 추출 스킵)
+        pre_parsed_urls = [pre_parsed_url.strip()] if pre_parsed_url and pre_parsed_url.strip() else []
         initial_state = {
             "sms_content": message,
             "decoded_text": decoded_text,  # 난독화 디코딩 텍스트
+            "pre_parsed_urls": pre_parsed_urls,  # KISA TXT 파싱 URL (본문 추출 대신 사용)
+            "pre_parsed_only_mode": pre_parsed_only_mode,  # KISA TXT면 URL 없을 때 본문 추출 스킵
             "target_urls": [],
             "visited_history": [],
             "scraped_data": {},
             "depth": 0,
             "max_depth": 2, 
-            "is_final": False,
             "is_final": False,
             "content_context": content_context,  # Content Agent 결과 전달
             "playwright_manager": playwright_manager

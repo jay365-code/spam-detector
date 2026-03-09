@@ -684,13 +684,15 @@ class ExcelHandler:
                     raise CancellationException("Processing cancelled by user")
                 
                 messages = [item["message"] for item in batch_buffer]
+                # [Batch KISA TXT] 파일에서 파싱한 URL 전달 (본문 추출 대신 사용)
+                pre_parsed_urls = [item.get("url", "") for item in batch_buffer]
                 
                 try:
-                    # Pass start_index to processing_function for correct UI indexing
-                    # Argument name is start_idx in this function definition
-                    results = processing_function(messages, start_index=start_idx, total_count=total_rows)
+                    # Pass start_index, pre_parsed_urls (KISA TXT) to processing_function
+                    results = processing_function(messages, start_index=start_idx, total_count=total_rows, pre_parsed_urls=pre_parsed_urls)
                 except TypeError:
-                     results = processing_function(messages)
+                    # Fallback: 이전 시그니처 호환 (Excel 등 pre_parsed_urls 미지원)
+                    results = processing_function(messages, start_index=start_idx, total_count=total_rows)
                 except Exception as e:
                     from ..main import CancellationException
                     if isinstance(e, CancellationException):
