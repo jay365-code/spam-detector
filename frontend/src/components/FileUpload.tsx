@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useState, useRef } from 'react';
+import React, { useCallback, useState, useRef } from 'react';
 import { UploadCloud, FileSpreadsheet, Loader2, CheckCircle } from 'lucide-react';
 
 interface FileUploadProps {
@@ -11,7 +11,7 @@ interface FileUploadProps {
 export const FileUpload: React.FC<FileUploadProps> = ({ clientId, onUploadStart, onUploadComplete, onFileSelect }) => {
     const [isDragOver, setIsDragOver] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
-    const [uploadStatus, setUploadStatus] = useState<'idle' | 'selected' | 'uploading' | 'success' | 'error'>('idle');
+    const [uploadStatus, setUploadStatus] = useState<'idle' | 'selected' | 'uploading' | 'success' | 'error' | 'cancelled'>('idle');
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [fileName, setFileName] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -63,9 +63,14 @@ export const FileUpload: React.FC<FileUploadProps> = ({ clientId, onUploadStart,
             }
 
             const data = await response.json();
-            console.log('Upload success:', data);
-            setUploadStatus('success');
-            onUploadComplete(data.filename);
+            console.log('Upload response:', data);
+            if (data.status === 'cancelled') {
+                setUploadStatus('cancelled');
+                // onUploadComplete 호출 안 함 → 기존 결과(로그) 유지
+            } else {
+                setUploadStatus('success');
+                onUploadComplete(data.filename);
+            }
 
         } catch (error) {
             console.error('Error uploading file:', error);
@@ -186,6 +191,25 @@ export const FileUpload: React.FC<FileUploadProps> = ({ clientId, onUploadStart,
                             className="ml-2 px-3 py-1 text-xs bg-slate-700/50 hover:bg-slate-700 rounded text-slate-400 z-30"
                         >
                             New Upload
+                        </button>
+                    </div>
+                )}
+
+                {uploadStatus === 'cancelled' && (
+                    <div className="flex items-center gap-3">
+                        <FileSpreadsheet className="w-5 h-5 text-amber-400" />
+                        <span className="text-sm text-amber-300">중지됨 (기존 결과 유지)</span>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setUploadStatus('idle');
+                                setSelectedFile(null);
+                                setFileName(null);
+                                onFileSelect?.();
+                            }}
+                            className="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded text-white z-30"
+                        >
+                            새 파일
                         </button>
                     </div>
                 )}
