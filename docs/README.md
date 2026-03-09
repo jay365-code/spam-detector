@@ -11,7 +11,7 @@
 
 - **🛡️ FP Sentinel (오탐 방지 정책 에이전트)**
   - 스팸 의사결정의 마지막 단계에서 작동하여 **차단(Enforcement)과 학습(Learning) 정책을 분리**합니다.
-  - 다음 룰셋으로 Type_B(FP-민감 스팸)를 식별하여, 나이브 베이즈(Naive Bayes) 학습 데이터 오염을 방지합니다:
+  - 다음 룰셋으로 Type_B(FP-민감 스팸)를 식별하여, 학습 데이터 오염을 방지합니다:
     - **P0**: URL CONFIRMED SAFE → 무조건 Ham (c_impersonation 무시)
     - **R1**: `is_impersonation=True` + URL 있음 → Type_B
     - **R1.2**: `is_vague_cta=True` + URL SPAM 확인 → Type_B

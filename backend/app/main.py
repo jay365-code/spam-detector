@@ -54,10 +54,11 @@ class CancellationException(Exception):
 shutdown_requested = False
 
 def _signal_handler(signum, frame):
-    """SIGINT(Ctrl+C) 시 shutdown 플래그만 설정. 배치 워커가 주기적으로 확인."""
+    """SIGINT(Ctrl+C) 시 shutdown 플래그 설정 후 KeyboardInterrupt로 프로세스 종료."""
     global shutdown_requested
     shutdown_requested = True
     logger.info("Shutdown requested (Ctrl+C)")
+    raise KeyboardInterrupt()  # 프로세스 종료 (기본 동작 복원)
 
 # Windows에서 SIGINT 등록 (Ctrl+C)
 try:
@@ -1030,9 +1031,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                         msg_text = f"🚫 **스팸 확정** ({int(prob*100)}%) - {raw_code}. {code_desc}\n"
                                     msg_text += f"- **사유**: {reason}\n"
                                     
-                                    # NB Protection Label Info
+                                    # 학습 보호 라벨 안내
                                     if learning_label == "HAM":
-                                        msg_text += f"💡 **NB 보호**: 해당 메시지는 정상 토큰 오염 방지를 위해 학습 데이터에서 제외(HAM 처리)되었습니다.\n"
+                                        msg_text += f"💡 **학습 보호**: 해당 메시지는 정상 토큰 오염 방지를 위해 학습 데이터에서 제외(HAM 처리)되었습니다.\n"
                                 elif final_is_spam is None:
                                     msg_text = f"⚠️ **판단 보류 (HITL)**\n- **사유**: {reason}\n"
                                 else:

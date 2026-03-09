@@ -665,12 +665,12 @@ Step 6. SPAM 확정 조건:
                 is_spam = True
 
         # ========== HAM SIGNAL DEFENSE ==========
-        # NB 보호 시그널(is_impersonation, is_vague_cta, is_personal_lure, is_garbage_obfuscation)은
+        # 학습 보호 시그널(is_impersonation, is_vague_cta, is_personal_lure, is_garbage_obfuscation)은
         # SPAM 확정 메시지에만 의미가 있음. HAM으로 판정된 경우 강제로 false로 초기화.
         if not is_spam:
             if any([signals.get("is_impersonation"), signals.get("is_vague_cta"), 
                     signals.get("is_personal_lure"), signals.get("is_garbage_obfuscation")]):
-                logger.debug("[HAM Signal Defense] HAM 판정 메시지의 NB 보호 시그널을 false로 초기화")
+                logger.debug("[HAM Signal Defense] HAM 판정 메시지의 학습 보호 시그널을 false로 초기화")
             signals["is_impersonation"] = False
             signals["is_vague_cta"] = False
             signals["is_personal_lure"] = False

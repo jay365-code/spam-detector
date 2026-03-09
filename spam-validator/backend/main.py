@@ -158,7 +158,7 @@ async def compare_results(
     )
     
     # ----------------------------------------------------
-    # Type B (FP Sentinel Override - NB 보호) 처리:
+    # Type B (FP Sentinel Override - 학습 보호) 처리:
     # 1. Human이 SPAM (True) 이고 AI가 Type B인 경우 -> AI도 SPAM (True) 으로 간주 (뒷단 검출 예정이므로 FN 제외)
     # 2. Human이 HAM (False) 이고 AI가 Type B인 경우 -> AI도 HAM (False) 으로 간주 (FP로 잡히지 않도록)
     # ----------------------------------------------------
