@@ -489,6 +489,13 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
         if converted not in seen:
             seen.add(converted)
             unique_urls.append(converted)
+    
+    # 메시지당 URL 상한 (처리 시간 단축, 자원 고갈 방지)
+    max_urls = int(os.getenv("MAX_URLS_PER_MESSAGE", "3"))
+    if len(unique_urls) > max_urls:
+        original_count = len(unique_urls)
+        unique_urls = unique_urls[:max_urls]
+        logger.info(f"[URL Agent] URLs limited to {max_urls} (was {original_count})")
             
     logger.info(f"[URL Agent] Extracted URLs: {unique_urls}")
     

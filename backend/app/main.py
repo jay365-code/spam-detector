@@ -1244,17 +1244,8 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                             duration = round(time.time() - start_time, 2)
                             logger.info(f"완료 | {verdict} | code={final_code} | prob={final_prob} | {duration}s")
                             
-                            # [User Request] Generate Final Summary for Logging (Batch Mode)
-                            # graph output contains content/url results needed for summary
-                            content_res = graph_output.get("content_result")
-                            url_res = graph_output.get("url_result")
-                            
-                            if content_res:
-                                # We fire and forget (audit log) - ensuring it logs to console
-                                try:
-                                    await rag_filter.generate_final_summary(message, content_res, url_res)
-                                except Exception as ex:
-                                    logger.warning(f"Batch Summary Gen Error: {ex}")
+                            # [Batch Mode] generate_final_summary 비활성화 - 1782회 LLM 호출 제거, 처리 시간 단축
+                            # Excel/UI에는 reason, classification_code 등 구조화 결과만 사용됨
                             
                             # Add duration to result
                             final_res["duration_seconds"] = duration

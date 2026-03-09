@@ -644,9 +644,13 @@ class PlaywrightManager:
                     await self.stop()
                     continue
                 
-                # [Phase 2] ERR_ABORTED: 즉시 실패 반환 (재시도 무의미)
+                # [Phase 2] ERR_ABORTED / ERR_CONNECTION_RESET: 즉시 실패 반환 (재시도 무의미)
                 if "err_aborted" in err_str or "net::err_aborted" in err_str:
                     result["error"] = "ERR_ABORTED (Blocked)"
+                    result["status"] = "error"
+                    return result
+                if "err_connection_reset" in err_str or "connection_reset" in err_str:
+                    result["error"] = "ERR_CONNECTION_RESET"
                     result["status"] = "error"
                     return result
                 
@@ -660,9 +664,8 @@ class PlaywrightManager:
                     result["error"] = str(e)
                     result["status"] = "error"
                 
-                # [처리시간 유지] Timeout/기타는 2회 시도만 (attempt 0, 1)
-                if attempt >= 1:
-                    break
+                # [빠른 포기] Timeout/기타는 1회 시도만 (재시도 없음)
+                break
 
 
         # If we reached here (not returned), it means we failed or loop attempt failed inside semaphore
