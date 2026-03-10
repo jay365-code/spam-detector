@@ -182,7 +182,7 @@ candidates_40: {candidates_40_json}
                     }
                     if _supports_temp:
                         _kwargs["temperature"] = 0.0
-                    response = await asyncio.wait_for(client.chat.completions.create(**_kwargs), timeout=45.0)
+                    response = await asyncio.wait_for(client.chat.completions.create(**_kwargs), timeout=90.0)
                     content = response.choices[0].message.content
                     
                 elif self.provider == "GEMINI":
@@ -211,7 +211,7 @@ candidates_40: {candidates_40_json}
                         HumanMessage(content=user_prompt)
                     ]
                     
-                    response = await asyncio.wait_for(llm.ainvoke(messages), timeout=45.0)
+                    response = await asyncio.wait_for(llm.ainvoke(messages), timeout=90.0)
                     content = _normalize_llm_content(response.content)
                     
                 elif self.provider == "CLAUDE":
@@ -225,7 +225,7 @@ candidates_40: {candidates_40_json}
                         messages=[
                             {"role": "user", "content": user_prompt}
                         ]
-                    ), timeout=45.0)
+                    ), timeout=90.0)
                     content = response.content[0].text
                     
                 else:
