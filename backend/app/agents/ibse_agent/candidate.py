@@ -191,12 +191,14 @@ def generate_candidates_node(state: IBSEState) -> dict:
     
     generator = CandidateGenerator()
     
-    # PRD FR-2.4 Candidates Count
-    # Candidates 20: Top 80
-    # Candidates 40: Top 120
+    # PRD FR-2.4 Candidates Count (Revised to prevent LLM timeouts)
+    # 200개의 문자열 후보를 전부 LLM에 넘기면 프롬프트 크기와 연산 과부하로 45초 이상의
+    # 응답 타임아웃이 빈번히 발생함. 휴리스틱 점수 상위 10~15개씩만 넘겨도 충분함.
+    # Candidates 20: Top 10
+    # Candidates 40: Top 10
     
-    c20 = generator.generate(match_text, original_text, max_byte_len=20, top_k=80)
-    c40 = generator.generate(match_text, original_text, max_byte_len=40, top_k=120)
+    c20 = generator.generate(match_text, original_text, max_byte_len=20, top_k=10)
+    c40 = generator.generate(match_text, original_text, max_byte_len=40, top_k=10)
     
     return {
         "candidates_20": c20,

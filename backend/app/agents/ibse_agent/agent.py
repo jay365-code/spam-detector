@@ -15,7 +15,17 @@ def should_continue(state: IBSEState) -> Literal["retry", "end"]:
     Decide whether to retry (repair) or end.
     """
     error = state.get("error")
+    final_result = state.get("final_result", {})
+    decision = final_result.get("decision") if final_result else None
     retry_count = state.get("retry_count", 0)
+    
+    if not error:
+        return "end"
+        
+    # Do not retry at graph level if API failed or max retries were exceeded
+    if decision == "unextractable":
+        logger.warning(f"IBSE skipping graph retry due to unextractable decision or API error: {error}")
+        return "end"
     
     # If error exists and we haven't retried yet (max 1 retry)
     if error and retry_count < 1:
