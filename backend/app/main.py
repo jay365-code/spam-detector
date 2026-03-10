@@ -839,8 +839,12 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                             "content": ""
                         }, client_id)
                         
+                        manager.clear_cancellation(client_id)
+
                         # Helper for Status Updates
                         async def send_status(text: str):
+                            if manager.is_cancelled(client_id):
+                                raise CancellationException("Chat processing cancelled by user")
                             await manager.send_personal_message({
                                 "type": "PROCESS_STATUS",
                                 "content": text
@@ -848,10 +852,29 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                             
                         # Helper for generic text chunk
                         async def send_text_chunk(text: str):
+                            if manager.is_cancelled(client_id):
+                                raise CancellationException("Chat processing cancelled by user")
                             await manager.send_personal_message({
                                 "type": "CHAT_STREAM_CHUNK",
                                 "content": text
                             }, client_id)
+
+                        async def run_with_cancellation(coro):
+                            task = asyncio.create_task(coro)
+                            async def watch_cancellation():
+                                while not task.done():
+                                    if manager.is_cancelled(client_id):
+                                        logger.info(f"Cancellation watcher triggered for {client_id}")
+                                        task.cancel()
+                                        break
+                                    await asyncio.sleep(0.5)
+                            watcher = asyncio.create_task(watch_cancellation())
+                            try:
+                                return await task
+                            except asyncio.CancelledError:
+                                raise CancellationException("Chat processing cancelled by user")
+                            finally:
+                                watcher.cancel()
 
                         # --- MODE DISPATCHER ---
                         
@@ -863,7 +886,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                              spaceless_msg = re.sub(r'[ \t\r\n\f\v]+', '', user_msg)
                              
                              try:
-                                 ibse_result = await ibse_service.process_message(spaceless_msg, status_callback=send_status)
+                                 ibse_result = await run_with_cancellation(ibse_service.process_message(spaceless_msg, status_callback=send_status))
                                  
                                  sig = ibse_result.get('signature')
                                  decision = ibse_result.get('decision')
@@ -882,6 +905,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
 
                                  await send_text_chunk(response_text)
                                  
+                             except CancellationException:
+                                 logger.info(f"IBSE Chat cancellation confirmed for {client_id}")
+                                 await manager.send_personal_message({"type": "CHAT_STREAM_CHUNK", "content": "\n🚫 **사용자에 의해 분석이 중지되었습니다.**\n"}, client_id)
                              except Exception as e:
                                  logger.error(f"IBSE execution error: {e}")
                                  await send_text_chunk(f"⚠️ **오류 발생**: {str(e)}")
@@ -892,7 +918,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                             s1_url = rule_filter.check(user_msg)
                             decoded_text_url = s1_url.get("decoded_text")
                             try:
-                                isaa_result = await url_filter.acheck(user_msg, status_callback=send_status, decoded_text=decoded_text_url)
+                                isaa_result = await run_with_cancellation(url_filter.acheck(user_msg, status_callback=send_status, decoded_text=decoded_text_url))
                                 
                                 analysis_text = f"**[ISAA URL 분석 결과]**\n"
                                 if isaa_result["is_spam"]:
@@ -908,6 +934,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 analysis_text += f"- 팝업/캡차: {details.get('popup_count', 0)}개 / {'있음' if details.get('captcha_detected') else '없음'}\n"
 
                                 await send_text_chunk(analysis_text)
+                            except CancellationException:
+                                logger.info(f"URL Chat cancellation confirmed for {client_id}")
+                                await manager.send_personal_message({"type": "CHAT_STREAM_CHUNK", "content": "\n🚫 **사용자에 의해 분석이 중지되었습니다.**\n"}, client_id)
                             except Exception as e:
                                 error_msg = str(e).lower()
                                 if "quota" in error_msg or "429" in error_msg or "exhausted" in error_msg:
@@ -917,51 +946,58 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
 
                         # 3. TEXT Mode (Content Only) - Isolated!
                         elif mode == "TEXT":
-                            # Use new async check with callbacks
-                            s1 = rule_filter.check(user_msg) # Stage 1 is fast/local
-                            
-                            # Rule-based HAM (e.g., Non-Korean message)
-                            if s1.get("is_spam") is False:
-                                s1_code = s1.get("classification_code", "HAM-5")
-                                s1_reason = s1.get("reason", "Rule-based HAM")
+                            try:
+                                # Use new async check with callbacks
+                                s1 = rule_filter.check(user_msg) # Stage 1 is fast/local
+                                
+                                # Rule-based HAM (e.g., Non-Korean message)
+                                if s1.get("is_spam") is False:
+                                    s1_code = s1.get("classification_code", "HAM-5")
+                                    s1_reason = s1.get("reason", "Rule-based HAM")
+                                    code_map = SPAM_CODE_MAP
+                                    code_desc = code_map.get(s1_code, "외국어 메시지")
+                                    
+                                    msg_text = f"✅ **정상 문자** - {s1_code}. {code_desc}\n- 사유: {s1_reason}\n"
+                                    await send_text_chunk(msg_text)
+                                    
+                                    # Signal End of Stream
+                                    await manager.send_personal_message({
+                                        "type": "CHAT_STREAM_END",
+                                        "content": ""
+                                    }, client_id)
+                                    continue
+                                
+                                # Calls Content Agent asynchronously
+                                s2_result = await run_with_cancellation(rag_filter.acheck(user_msg, s1, status_callback=send_status))
+                                
+                                # Format & Send Result
+                                final_is_spam = s2_result.get("is_spam")
+                                reason = s2_result.get("reason")
+                                prob = s2_result.get("spam_probability", 0)
+                                code = s2_result.get("classification_code", "Unk")
+                                
                                 code_map = SPAM_CODE_MAP
-                                code_desc = code_map.get(s1_code, "외국어 메시지")
+                                import re
+                                msg_text = ""
                                 
-                                msg_text = f"✅ **정상 문자** - {s1_code}. {code_desc}\n- 사유: {s1_reason}\n"
+                                if final_is_spam:
+                                    match = re.search(r'\d+', str(code))
+                                    raw_code = match.group(0) if match else str(code)
+                                    code_desc = code_map.get(raw_code, "기타")
+                                    msg_text = f"🚫 **스팸 의심** ({int(prob*100)}%) - {raw_code}. {code_desc}\n- 사유: {reason}\n"
+                                elif final_is_spam is None:
+                                    msg_text = f"⚠️ **판단 보류 (HITL)**\n- 사유: {reason}\n"
+                                else:
+                                    msg_text = f"✅ **정상 문자**\n- 사유: {reason}\n"
+                                    
                                 await send_text_chunk(msg_text)
-                                
-                                # Signal End of Stream
-                                await manager.send_personal_message({
-                                    "type": "CHAT_STREAM_END",
-                                    "content": ""
-                                }, client_id)
-                                continue
-                            
-                            # Calls Content Agent asynchronously
-                            s2_result = await rag_filter.acheck(user_msg, s1, status_callback=send_status)
-                            
-                            # Format & Send Result
-                            final_is_spam = s2_result.get("is_spam")
-                            reason = s2_result.get("reason")
-                            prob = s2_result.get("spam_probability", 0)
-                            code = s2_result.get("classification_code", "Unk")
-                            
-                            code_map = SPAM_CODE_MAP
-                            import re
-                            msg_text = ""
-                            
-                            if final_is_spam:
-                                match = re.search(r'\d+', str(code))
-                                raw_code = match.group(0) if match else str(code)
-                                code_desc = code_map.get(raw_code, "기타")
-                                msg_text = f"🚫 **스팸 의심** ({int(prob*100)}%) - {raw_code}. {code_desc}\n- 사유: {reason}\n"
-                            elif final_is_spam is None:
-                                msg_text = f"⚠️ **판단 보류 (HITL)**\n- 사유: {reason}\n"
-                            else:
-                                msg_text = f"✅ **정상 문자**\n- 사유: {reason}\n"
-                                
-                            await send_text_chunk(msg_text)
-                            # NOTE: No Auto-IBSE or URL check here. Completely Isolated.
+                                # NOTE: No Auto-IBSE or URL check here. Completely Isolated.
+                            except CancellationException:
+                                logger.info(f"TEXT Chat cancellation confirmed for {client_id}")
+                                await manager.send_personal_message({"type": "CHAT_STREAM_CHUNK", "content": "\n🚫 **사용자에 의해 분석이 중지되었습니다.**\n"}, client_id)
+                            except Exception as text_err:
+                                logger.error(f"TEXT Mode Error: {text_err}")
+                                await manager.send_personal_message({"type": "CHAT_STREAM_CHUNK", "content": f"\n⚠️ **분석 중 오류 발생**: {text_err}\n"}, client_id)
 
                         # 4. Unified / Smart Mode (Default)
                         else:
@@ -1001,7 +1037,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                             
                             try:
                                 # Invoke Graph
-                                graph_output = await cv_graph.ainvoke(input_state)
+                                graph_output = await run_with_cancellation(cv_graph.ainvoke(input_state))
                                 final_res = graph_output.get("final_result", {})
                                 
                                 final_is_spam = final_res.get("is_spam")
@@ -1042,9 +1078,12 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 if final_res.get("url_result") or final_is_spam:
                                     await send_text_chunk("\n---\n**📝 종합 의견**\n\n")
                                     url_res = graph_output.get("url_result")
-                                    summary = await rag_filter.generate_final_summary(user_msg, final_res, url_res)
+                                    summary = await run_with_cancellation(rag_filter.generate_final_summary(user_msg, final_res, url_res))
                                     await send_text_chunk(summary)
 
+                            except CancellationException:
+                                logger.info(f"Unified Chat cancellation confirmed for {client_id}")
+                                await manager.send_personal_message({"type": "CHAT_STREAM_CHUNK", "content": "\n🚫 **사용자에 의해 분석이 중지되었습니다.**\n"}, client_id)
                             except Exception as graph_err:
                                 logger.error(f"Chat Graph Execution Error: {graph_err}")
                                 await send_text_chunk(f"\n⚠️ **시스템 분석 오류**: {graph_err}\n")

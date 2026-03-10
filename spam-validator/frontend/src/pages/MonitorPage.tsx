@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { FolderPickerModal } from '../FolderPickerModal';
 import { useEffect } from 'react'; // Added useEffect import
 
 interface Memo {
@@ -100,7 +99,6 @@ export default function MonitorPage() {
     const [loading, setLoading] = useState(false);
     const [trendData, setTrendData] = useState<TrendResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
 
     // Memo State
     const [memos, setMemos] = useState<Memo[]>([]);
@@ -128,29 +126,16 @@ export default function MonitorPage() {
         }
     }, [folderPath]);
 
-    const handleSelectFolder = () => {
-        setIsFolderPickerOpen(true);
-    };
-
-    const handleFolderPicked = (path: string) => {
-        setFolderPath(path);
-        // Optional: Auto load?
-        // handleLoadTrend(); // Let user click load manually to be safe
-    };
-
     const handleLoadTrend = async () => {
         setLoading(true);
         setError(null);
         setSelectedDate(null);
 
         try {
+            const params = folderPath.trim() ? { folder_path: folderPath.trim() } : {};
             const [trendRes, memosRes] = await Promise.all([
-                axios.get(`http://localhost:8001/api/monitor/trend`, {
-                    params: { folder_path: folderPath }
-                }),
-                axios.get(`http://localhost:8001/api/monitor/memos`, {
-                    params: { folder_path: folderPath }
-                }).catch(() => ({ data: [] })) // Ignore error if memos.json doesn't exist yet
+                axios.get(`/api/monitor/trend`, { params }),
+                axios.get(`/api/monitor/memos`, { params }).catch(() => ({ data: [] })) // Ignore error if memos.json doesn't exist yet
             ]);
 
             setTrendData(trendRes.data);
@@ -181,13 +166,12 @@ export default function MonitorPage() {
         if (!activeMemoItem || !activeMemoDate) return;
         setIsSavingMemo(true);
         try {
-            const res = await axios.post('http://localhost:8001/api/monitor/memos', {
+            const params = folderPath.trim() ? { folder_path: folderPath.trim() } : {};
+            const res = await axios.post('/api/monitor/memos', {
                 date: activeMemoDate,
                 item: activeMemoItem,
                 memo: activeMemoContent
-            }, {
-                params: { folder_path: folderPath }
-            });
+            }, { params });
 
             setMemos(prev => {
                 const filtered = prev.filter(m => !(m.date === activeMemoDate && m.item === activeMemoItem));
@@ -195,9 +179,7 @@ export default function MonitorPage() {
                     // If emptied, we effectively delete it (or leave it empty). 
                     // We should ideally call delete API, but saving empty string works as a clear.
                     if (res.data.id) {
-                        axios.delete(`http://localhost:8001/api/monitor/memos/${res.data.id}`, {
-                            params: { folder_path: folderPath }
-                        }).catch(console.error);
+                        axios.delete(`/api/monitor/memos/${res.data.id}`, { params }).catch(console.error);
                     }
                     return filtered;
                 }
@@ -221,9 +203,8 @@ export default function MonitorPage() {
 
         setIsSavingMemo(true);
         try {
-            await axios.delete(`http://localhost:8001/api/monitor/memos/${existing.id}`, {
-                params: { folder_path: folderPath }
-            });
+            const params = folderPath.trim() ? { folder_path: folderPath.trim() } : {};
+            await axios.delete(`/api/monitor/memos/${existing.id}`, { params });
             setMemos(prev => prev.filter(m => m.id !== existing.id));
             setIsMemoModalOpen(false);
         } catch (err) {
@@ -242,9 +223,8 @@ export default function MonitorPage() {
         setDetailSearch('');
 
         try {
-            const res = await axios.get(`http://localhost:8001/api/monitor/day/${date}`, {
-                params: { folder_path: folderPath }
-            });
+            const params = folderPath.trim() ? { folder_path: folderPath.trim() } : {};
+            const res = await axios.get(`/api/monitor/day/${date}`, { params });
             setDetailData(res.data);
         } catch (err: any) {
             console.error(err);
@@ -840,18 +820,17 @@ export default function MonitorPage() {
                 <div className="flex items-end gap-4">
                     <div className="flex-1 space-y-2">
                         <label
-                            className="text-sm font-semibold text-slate-700 flex items-center gap-2 group cursor-pointer hover:text-indigo-600 transition-colors"
-                            onClick={handleSelectFolder}
-                            title="폴더 선택 (브라우저 지원 시)"
+                            className="text-sm font-semibold text-slate-700 flex items-center gap-2"
+                            title="서버 데이터 폴더 경로 (문자열 직접 복사/붙여넣기 사용)"
                         >
-                            <FolderSearch size={16} className="text-indigo-500 group-hover:scale-110 transition-transform" /> Target Folder
+                            <FolderSearch size={16} className="text-indigo-500" /> Target Folder
                         </label>
                         <input
                             type="text"
                             value={folderPath}
                             onChange={(e) => setFolderPath(e.target.value)}
                             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all font-mono text-slate-600"
-                            placeholder="C:\path\to\json\files"
+                            placeholder="입력하지 않으면 서버 내장 기본 경로(data/비교분석)가 사용됩니다."
                         />
                     </div>
                     <div className="w-[150px] space-y-2">
@@ -887,13 +866,6 @@ export default function MonitorPage() {
             {trendData && !selectedDate && renderTrendView()}
             {selectedDate && renderDetailView()}
 
-            {/* Folder Picker Modal */}
-            <FolderPickerModal
-                isOpen={isFolderPickerOpen}
-                onClose={() => setIsFolderPickerOpen(false)}
-                onSelect={handleFolderPicked}
-                initialPath={folderPath}
-            />
             {/* Memo Modal */}
             {isMemoModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">

@@ -751,6 +751,17 @@ function App() {
     return { cleanReason, note, isManual };
   };
 
+  const handleStopChat = async () => {
+    try {
+      await fetch(`http://localhost:8000/cancel/${clientId}`, {
+        method: 'POST'
+      });
+      console.log('Chat cancellation requested');
+    } catch (error) {
+      console.error('Chat cancel failed:', error);
+    }
+  };
+
   const handleClearChat = () => {
     // Optional: Logic to clear logs or reset other states if needed
     console.log("Chat cleared");
@@ -857,6 +868,7 @@ function App() {
             hitlRequest={hitlRequest}
             onHitlResponse={handleHitlResponse}
             onSendMessage={handleSendMessage}
+            onStopGeneration={handleStopChat}
             onClearChat={handleClearChat}
             isConnected={isConnected}
           />

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { MessageSquare, AlertTriangle, Check, X, Bot, User, Send } from 'lucide-react';
+import { MessageSquare, AlertTriangle, Check, X, User, Send, Square } from 'lucide-react';
 
 interface ChatInterfaceProps {
     clientId: string;
@@ -8,16 +8,24 @@ interface ChatInterfaceProps {
     hitlRequest: any | null;
     onHitlResponse: (decision: string, comment?: string) => void;
     onSendMessage: (message: string, mode: "TEXT" | "URL" | "Unified" | "IBSE") => void; // Updated prop
+    onStopGeneration?: () => void; // New prop for stopping generation
     onClearChat?: () => void; // Optional prop to clear chat on parent
     isConnected: boolean; // New prop to track connection status
 }
 
 // ... imports
-export const ChatInterface: React.FC<ChatInterfaceProps> = ({ clientId, ws, hitlRequest, onHitlResponse, onSendMessage, onClearChat, isConnected }) => {
+export const ChatInterface: React.FC<ChatInterfaceProps> = ({ ws, hitlRequest, onHitlResponse, onSendMessage, onStopGeneration, onClearChat, isConnected }) => {
     const [messages, setMessages] = useState<any[]>([]);
     const [inputText, setInputText] = useState('');
     const [hitlComment, setHitlComment] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isStopping, setIsStopping] = useState(false);
+
+    useEffect(() => {
+        if (!isGenerating) {
+            setIsStopping(false);
+        }
+    }, [isGenerating]);
     const [mode, setMode] = useState<"TEXT" | "URL" | "Unified" | "IBSE">("Unified"); // Default to Unified
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -342,14 +350,25 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ clientId, ws, hitl
                         style={{ height: 'auto' }}
                     />
                     <button
-                        onClick={handleSend}
-                        className={`absolute right-2 bottom-2 p-2 rounded-full text-white transition-colors mb-1 mr-1 ${!inputText.trim() || isGenerating || !isConnected
+                        onClick={() => {
+                            if (isGenerating && onStopGeneration) {
+                                setIsStopping(true);
+                                onStopGeneration();
+                            } else {
+                                handleSend();
+                            }
+                        }}
+                        className={`absolute right-2 bottom-2 p-2 rounded-full text-white transition-colors mb-1 mr-1 ${!isConnected
                             ? 'bg-slate-600 cursor-not-allowed text-slate-400'
-                            : 'bg-blue-500 hover:bg-blue-600'
+                            : isGenerating
+                                ? isStopping ? 'bg-slate-500 cursor-not-allowed text-slate-300' : 'bg-blue-500 hover:bg-blue-600 animate-pulse'
+                                : !inputText.trim()
+                                    ? 'bg-slate-600 cursor-not-allowed text-slate-400'
+                                    : 'bg-blue-500 hover:bg-blue-600'
                             }`}
-                        disabled={!inputText.trim() || isGenerating || !isConnected}
+                        disabled={!isConnected || isStopping || (!isGenerating && !inputText.trim())}
                     >
-                        <Send className="w-4 h-4" />
+                        {isGenerating ? <Square className="w-4 h-4 text-white" /> : <Send className="w-4 h-4 text-white" />}
                     </button>
                 </div>
             </div>

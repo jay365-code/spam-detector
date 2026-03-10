@@ -210,3 +210,31 @@ cd frontend
 npm install
 npm run dev
 ```
+
+## 🌐 외부 접속 공유 안내 (localtunnel)
+
+Spam Validator의 모니터(SAM) 화면을 제 3자에게 외부에서 공유하려면 `localtunnel`을 사용합니다. 
+터널을 열면 로컬 망이 없거나 소스 코드가 없는 사용자도 접속하여 백엔드의 데이터를 브라우저에서 볼 수 있습니다.
+
+### 1단계: 프론트엔드 호스트 개방 실행
+프론트엔드 서버가 외부 Host Header를 받아들이도록 `--host` 옵션을 주어 실행합니다. (5174 포트 강제 고정)
+```bash
+cd spam-validator/frontend
+npm run dev -- --host
+```
+
+### 2단계: 터널 생성 및 주소 공유
+새 터미널을 열고 아래 명령어로 로컬터널을 실행합니다.
+```bash
+npx localtunnel --port 5174
+```
+출력되는 URL(`your url is: https://...loca.lt`)을 복사하여 제 3자에게 전달합니다.
+
+### 3단계: 비밀번호(Tunnel Password) 인증
+localtunnel 피싱 방지 정책으로 인하여, 공유받은 제 3자가 처음 링크에 접속하면 **Tunnel Password**를 묻습니다.
+* **비밀번호**: 터널을 실행한 PC의 공인 IP 주소입니다.
+* 패스워드 확인 방법: 터널을 연 PC에서 브라우저로 [https://loca.lt/mytunnelpassword](https://loca.lt/mytunnelpassword) 에 접속하여 나오는 숫자 4개 마디의 IP를 제 3자에게 알려주면 됩니다.
+
+> **💡 데이터 로드 팁**
+> 
+> 제 3자의 브라우저 UI 상단 **"Target Folder"** 란은 **값을 반드시 비워둔 채로** 놔두면 됩니다. 빈 값으로 둘 경우, 서버가 자체 내장된 기본 폴더(`data/비교분석`)의 데이터를 안전하게 일괄 로드합니다.

@@ -17,6 +17,14 @@ import string
 
 logger = get_logger(__name__)
 
+# 기본 데이터 폴더 경로 (spam-validator/backend -> spam-validator -> Spam Detector -> data/비교분석)
+DEFAULT_FOLDER_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data", "비교분석"))
+
+def _get_target_folder(folder_path: Optional[str]) -> str:
+    if not folder_path or str(folder_path).strip() == "":
+        return DEFAULT_FOLDER_PATH
+    return str(folder_path).strip()
+
 router = APIRouter(prefix="/api/monitor", tags=["monitor"])
 
 # --- Models ---
@@ -94,11 +102,13 @@ def load_json_files(folder_path: str) -> List[Dict[str, Any]]:
     return loaded_data
 
 @router.get("/trend", response_model=MonitorTrendResponse)
-async def get_trend(folder_path: str = Query(..., description="Absolute path to JSON folder")):
+async def get_trend(folder_path: Optional[str] = Query(None, description="Absolute path to JSON folder (optional)")):
     """
     지정된 폴더의 JSON 파일들을 로드하여 일별 추세 데이터를 반환합니다.
+    (경로 생략 시 서버의 기본 data/비교분석 폴더 사용)
     """
-    data = load_json_files(folder_path)
+    target_path = _get_target_folder(folder_path)
+    data = load_json_files(target_path)
     if not data:
         return MonitorTrendResponse(dates=[], kappas=[], fn_rates=[], daily_summaries=[])
 
@@ -175,11 +185,12 @@ async def get_trend(folder_path: str = Query(..., description="Absolute path to 
     )
 
 @router.get("/day/{date}", response_model=MonitorDailyResponse)
-async def get_daily_detail(date: str, folder_path: str = Query(..., description="Absolute path to JSON folder")):
+async def get_daily_detail(date: str, folder_path: Optional[str] = Query(None, description="Absolute path to JSON folder (optional)")):
     """
     특정 날짜의 상세 데이터를 반환합니다 (소스별 내역, 통합 Diffs).
     """
-    data = load_json_files(folder_path)
+    target_path = _get_target_folder(folder_path)
+    data = load_json_files(target_path)
     target_items = [d for d in data if d['date'] == date]
     
     if not target_items:
@@ -277,31 +288,33 @@ def _write_memos(folder_path: str, memos: List[Dict[str, Any]]):
         raise HTTPException(status_code=500, detail="Failed to save memo.")
 
 @router.get("/memos", response_model=List[MemoResponse])
-async def get_memos(folder_path: str = Query(..., description="Absolute path to JSON folder")):
+async def get_memos(folder_path: Optional[str] = Query(None, description="Absolute path to JSON folder (optional)")):
     """
     선택한 폴더의 memos.json에서 메모 목록을 가져옵니다.
     """
-    if not os.path.exists(folder_path):
+    target_path = _get_target_folder(folder_path)
+    if not os.path.exists(target_path):
          raise HTTPException(status_code=400, detail="Folder does not exist")
-    return _read_memos(folder_path)
+    return _read_memos(target_path)
 
 @router.post("/memos", response_model=MemoResponse)
 async def save_memo(
     request: MemoRequest, 
-    folder_path: str = Query(..., description="Absolute path to JSON folder")
+    folder_path: Optional[str] = Query(None, description="Absolute path to JSON folder (optional)")
 ):
     """
     새 메모를 추가하거나 기존 메모(같은 날짜+항목)를 업데이트합니다.
     """
     try:
-        print(f"DEBUG: Entering POST /memos with folder_path '{folder_path}'")
+        target_path = _get_target_folder(folder_path)
+        print(f"DEBUG: Entering POST /memos with target_path '{target_path}'")
         print(f"DEBUG: request payload: {request}")
         
-        if not os.path.exists(folder_path):
-            print(f"DEBUG: Folder path does not exist: {folder_path}")
+        if not os.path.exists(target_path):
+            print(f"DEBUG: Folder path does not exist: {target_path}")
             raise HTTPException(status_code=400, detail="Folder does not exist")
 
-        memos = _read_memos(folder_path)
+        memos = _read_memos(target_path)
         print(f"DEBUG: Loaded {len(memos)} existing memos.")
 
         # Check if memo already exists for this date and item
@@ -326,8 +339,8 @@ async def save_memo(
             memos.append(new_memo)
             response_data = new_memo
             
-        _write_memos(folder_path, memos)
-        print(f"DEBUG: Successfully wrote memos to {folder_path}")
+        _write_memos(target_path, memos)
+        print(f"DEBUG: Successfully wrote memos to {target_path}")
         return response_data
     except Exception as e:
         import traceback
@@ -338,22 +351,23 @@ async def save_memo(
 @router.delete("/memos/{memo_id}")
 async def delete_memo(
     memo_id: str,
-    folder_path: str = Query(..., description="Absolute path to JSON folder")
+    folder_path: Optional[str] = Query(None, description="Absolute path to JSON folder (optional)")
 ):
     """
     메모를 삭제합니다.
     """
-    if not os.path.exists(folder_path):
+    target_path = _get_target_folder(folder_path)
+    if not os.path.exists(target_path):
          raise HTTPException(status_code=400, detail="Folder does not exist")
 
-    memos = _read_memos(folder_path)
+    memos = _read_memos(target_path)
     initial_len = len(memos)
     memos = [m for m in memos if m.get('id') != memo_id]
     
     if len(memos) == initial_len:
          raise HTTPException(status_code=404, detail="Memo not found")
          
-    _write_memos(folder_path, memos)
+    _write_memos(target_path, memos)
     return {"success": True}
 
 @router.get("/fs/list", response_model=FolderListResponse)
