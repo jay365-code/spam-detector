@@ -154,9 +154,11 @@ candidates_40: {candidates_40_json}
         from app.core.llm_manager import key_manager
         import time
 
-        max_retries = 10 # Safety break, though rotation should limit it
+        max_retries = 3 # Safety break, limit total attempts
+        attempt = 0
         
-        while True:
+        while attempt < max_retries:
+            attempt += 1
             # [병렬 처리] 다른 컴포넌트가 이미 모든 키를 소진했으면 즉시 중단
             if key_manager.is_quota_exhausted(self.provider):
                 logger.warning(f"[LLMSelector] {self.provider} quota already exhausted. Skipping.")
@@ -245,11 +247,15 @@ candidates_40: {candidates_40_json}
                     except ImportError:
                         pass
 
-                # Quota Exceeded / Rate Limit check (429 error) OR Timeout
+                # Timeout logic separated
                 is_timeout = isinstance(e, asyncio.TimeoutError) or "timeout" in error_msg
+                if is_timeout:
+                    logger.warning(f"[LLMSelector] Timeout Detected (Attempt {attempt}/{max_retries}). Sleeping 5s before retry...")
+                    await asyncio.sleep(5)
+                    continue
 
-                if is_timeout or is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
-                    logger.warning(f"[LLMSelector] {'Timeout' if is_timeout else '429/Quota'} Detected. Error: {error_msg}")
+                if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
+                    logger.warning(f"[LLMSelector] 429/Quota Detected. Error: {error_msg}")
                     logger.warning(f"[LLMSelector] {provider} issue detected. Attempting key rotation...")
                     
                     current_key = self.api_key
@@ -272,6 +278,10 @@ candidates_40: {candidates_40_json}
                 
                 logger.error(f"LLM Call Error: {e}")
                 return {"error": str(e), "decision": "unextractable"}
+                
+        # Loop finished without return -> max retries exceeded
+        logger.error(f"[LLMSelector] Max retries ({max_retries}) exceeded.")
+        return {"error": "Max retries exceeded", "decision": "unextractable"}
 
     def _parse_json(self, content: str) -> dict:
         try:

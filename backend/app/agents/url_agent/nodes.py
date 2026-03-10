@@ -265,15 +265,19 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
 
                     is_timeout = isinstance(e, asyncio.TimeoutError) or "timeout" in error_msg
 
-                    if is_timeout or is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
-                        logger.warning(f"[URL Agent] Vision API {'Timeout' if is_timeout else 'Quota'} Detected. Error: {error_msg}")
+                    if is_timeout:
+                        logger.warning(f"[URL Agent] Vision API Timeout Detected. Tenacity will backoff and retry.")
+                        raise Exception("Vision API Timeout") from e
+
+                    if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
+                        logger.warning(f"[URL Agent] Vision API Quota Detected. Error: {error_msg}")
                         logger.warning(f"[URL Agent] Vision API {provider} issue. Rotating key...")
                         # [동시성 개선] 실패한 키 전달 및 글로벌 소진 확인
                         is_rotated = key_manager.rotate_key(provider, failed_key=api_key)
                         
                         if not is_rotated:
                             logger.error(f"[URL Agent] Vision API Global exhaustion reached for {provider}.")
-                            raise Exception(f"{provider} vision quota/timeout globally exhausted. No retry.") from e
+                            raise Exception(f"{provider} vision quota globally exhausted. No retry.") from e
                         
                         if attempt < max_quota_tries - 1:
                             logger.info(f"[URL Agent] Switching to next {provider} key instantly (Attempt {attempt+1}/{max_quota_tries})...")
@@ -754,6 +758,9 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                 response = await asyncio.wait_for(llm.ainvoke(prompt), timeout=45.0)
                 key_manager.report_success(provider)
                 return response
+            except asyncio.TimeoutError as e:
+                logger.warning(f"[URL Agent] {provider} LLM Timeout occurred (45s). Tenacity will sleep and retry.")
+                raise Exception("Async LLM Timeout") from e
             except Exception as e:
                 error_msg = str(e).lower()
                 
