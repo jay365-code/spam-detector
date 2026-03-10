@@ -53,7 +53,7 @@ class ExcelHandler:
                 row_data.append(ws.cell(row=row_idx, column=col_idx).value)
             data_rows.append(row_data)
         
-        # 구분 콜럼 기준 정렬: SPAM("o") → Type_B → HAM
+        # 구분 콜럼 기준 정렬: SPAM("o") -> Type_B (살구색) -> HAM
         def sort_key(row):
             gubun_val = row[gubun_col_idx - 1] if len(row) >= gubun_col_idx else ""
             reason_val = row[reason_col_idx - 1] if reason_col_idx and len(row) >= reason_col_idx else ""
@@ -63,9 +63,9 @@ class ExcelHandler:
 
             if gubun_val == "o":
                 return 0
-            elif is_type_b:
+            elif is_type_b:  # Type_B (FP Sentinel)
                 return 1
-            else:
+            else:  # 일반 HAM
                 return 2
         
         data_rows.sort(key=sort_key)
@@ -123,10 +123,37 @@ class ExcelHandler:
         # 정렬 스타일 정의
         center_align = Alignment(horizontal='center', vertical='center')
         wrap_vcenter_align = Alignment(wrap_text=True, vertical='center')
-        # 강조4 80% 더 밝게 (Gold, Accent 4, Lighter 80%) = FFE699
-        spam_fill = PatternFill(start_color="FFE699", end_color="FFE699", fill_type="solid")
+        from openpyxl.styles import Border, Side, Font
+        # 폰트 스타일 정의
+        base_font = Font(size=10)
+        msg_font = Font(size=10.5)
+        
+        # 강조 (Gold, Accent 4, Lighter 80%) = FFF2CC
+        spam_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+        
+        # 테두리: 얇은 실선(thin), 색상: 밝은 회색(BFBFBF: 배경1, 25% 더 어둡게)
+        border_side = Side(style='thin', color='BFBFBF')
+        box_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
+        
+        # 헤더(1행) 폰트 적용 (10.5) 및 테두리 적용
+        header_font = Font(size=10.5, bold=True)
+        for col_idx in range(1, ws.max_column + 1):
+            header_cell = ws.cell(row=1, column=col_idx)
+            header_cell.font = header_font
+            header_cell.border = box_border
         
         for row_idx in range(2, ws.max_row + 1):
+            # 행 단위 전체 셀에 테두리 및 기본 폰트 적용
+            for col_idx in range(1, ws.max_column + 1):
+                cell = ws.cell(row=row_idx, column=col_idx)
+                cell.border = box_border
+                
+                # 폰트 적용 (메시지는 10.5, 나머지는 10)
+                if msg_col and col_idx == msg_col:
+                    cell.font = msg_font
+                else:
+                    cell.font = base_font
+                
             # 구분 컬럼 중앙 정렬
             if gubun_col:
                 ws.cell(row=row_idx, column=gubun_col).alignment = center_align
@@ -152,13 +179,13 @@ class ExcelHandler:
             if url_len_col:
                 ws.cell(row=row_idx, column=url_len_col).alignment = center_align
             
-            # 메시지 컬럼: 자동줄바꿈 + 세로 중앙
+            # 메시지 컬럼: 세로 중앙 (자동줄바꿈 해제)
             if msg_col:
-                ws.cell(row=row_idx, column=msg_col).alignment = wrap_vcenter_align
+                ws.cell(row=row_idx, column=msg_col).alignment = Alignment(vertical='center')
             
-            # Reason 컬럼: 자동줄바꿈 + 세로 중앙
+            # Reason 컬럼: VCenter만 적용 (자동줄바꿈 해제)
             if reason_col:
-                ws.cell(row=row_idx, column=reason_col).alignment = wrap_vcenter_align
+                ws.cell(row=row_idx, column=reason_col).alignment = Alignment(vertical='center')
             
             # SPAM(o), Type_B, TEXT+URL분리인 경우 메시지 셀 채우기 적용
             if gubun_col and msg_col:
@@ -174,20 +201,21 @@ class ExcelHandler:
                     is_separated = True
 
                 cell = ws.cell(row=row_idx, column=msg_col)
+                vcenter_align = Alignment(vertical='center')
                 if gubun_val == "o":  # 일반 SPAM
                     cell.fill = spam_fill
-                    cell.alignment = wrap_vcenter_align
-                elif is_type_b:  # Type_B (FP-Sensitive Spam): 분홍 = #FFB3BA
-                    type_b_fill = PatternFill(start_color="FFB3BA", end_color="FFB3BA", fill_type="solid")
+                    cell.alignment = vcenter_align
+                elif is_type_b:  # Type_B (FP-Sensitive Spam): 피드백 반영 = #FFCCCC
+                    type_b_fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
                     cell.fill = type_b_fill
-                    cell.alignment = wrap_vcenter_align
+                    cell.alignment = vcenter_align
                 elif is_separated: # TEXT-HAM + URL-SPAM
                     # Target fill color FFD1D1 for URL-SPAM from HAM text
                     pink_fill = PatternFill(start_color="FFD1D1", end_color="FFD1D1", fill_type="solid")
                     cell.fill = pink_fill
-                    cell.alignment = wrap_vcenter_align
+                    cell.alignment = vcenter_align
                 else:
-                    cell.alignment = wrap_vcenter_align
+                    cell.alignment = vcenter_align
 
 
     def is_short_url(self, url: str) -> bool:
@@ -234,15 +262,24 @@ class ExcelHandler:
         ws.append(headers)
         
         # Style Definition
-        header_font = Font(bold=True)
+        header_font = Font(bold=True, size=10.5)
+        base_font = Font(size=10)
+        msg_font = Font(size=10.5)
         header_align = Alignment(horizontal='center', vertical='center')
         header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid") # Light Grey
+        
+        # 데이터 행 정렬(일반: 세로만 중앙)
+        data_align = Alignment(vertical='center')
         
         # Apply Style to Header
         for cell in ws[1]:
             cell.font = header_font
             cell.alignment = header_align
             cell.fill = header_fill
+            
+        # 컬럼 너비 조정 (픽셀 -> 엑셀 width 환산)
+        # URL(중복제거) 컬럼 303 픽셀 -> 약 42.5
+        ws.column_dimensions[get_column_letter(1)].width = 42.5
             
         # Write Data
         row_num = 2
@@ -252,9 +289,16 @@ class ExcelHandler:
                 info['len'], 
                 self._sanitize_cell_value(info['code'])
             ])
-            # 데이터 셀 모두 가운데 정렬
-            for col_idx in range(1, 4):
-                ws.cell(row=row_num, column=col_idx).alignment = header_align
+            # 데이터 셀 폰트 적용 (URL=10.5, 나머지=10)
+            ws.cell(row=row_num, column=1).font = msg_font
+            ws.cell(row=row_num, column=2).font = base_font
+            ws.cell(row=row_num, column=3).font = base_font
+            
+            # 정렬 일반 적용 (기본: 가로 일반/세로 가운데, 분류: 우측/들여쓰기 1)
+            cls_align = Alignment(horizontal='right', vertical='center', indent=1)
+            for col_idx in range(1, 3):
+                ws.cell(row=row_num, column=col_idx).alignment = data_align
+            ws.cell(row=row_num, column=3).alignment = cls_align
             
             row_num += 1
 
@@ -273,17 +317,31 @@ class ExcelHandler:
         ws.append(headers)
         
         # Styling
-        header_font = Font(bold=True)
+        header_font = Font(bold=True, size=10.5)
+        base_font = Font(size=10)
+        msg_font = Font(size=10.5)
+        msg_fill = PatternFill(start_color="D8EFD3", end_color="D8EFD3", fill_type="solid")
+        
         header_align = Alignment(horizontal='center', vertical='center')
         header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+        
+        # 데이터 행 정렬(일반)
+        data_align = Alignment(vertical='center')
         
         for cell in ws[1]:
             cell.font = header_font
             cell.alignment = header_align
             cell.fill = header_fill
             
+        # 컬럼 너비 조정 (픽셀 -> 엑셀 width 환산)
+        # 메시지 컬럼 806 픽셀 -> 약 114.4
+        ws.column_dimensions[get_column_letter(1)].width = 114.4
+        # 문자열 컬럼 400 픽셀 -> 약 56.4
+        ws.column_dimensions[get_column_letter(2)].width = 56.4
+            
         # Write Data
         # blocklist_data = [{"msg":..., "sig":..., "len":..., "code":...}, ...]
+        row_num = 2
         for item in blocklist_data:
             ws.append([
                 self._sanitize_cell_value(item['msg']), 
@@ -291,6 +349,20 @@ class ExcelHandler:
                 item['len'], 
                 self._sanitize_cell_value(item['code'])
             ])
+            # 데이터 셀 폰트 및 채우기 적용
+            ws.cell(row=row_num, column=1).font = msg_font
+            ws.cell(row=row_num, column=1).fill = msg_fill
+            ws.cell(row=row_num, column=2).font = base_font
+            ws.cell(row=row_num, column=3).font = base_font
+            ws.cell(row=row_num, column=4).font = base_font
+            
+            # 데이터 셀 정렬 속성 적용 (분류는 정렬 우측/들여쓰기 1)
+            cls_align = Alignment(horizontal='right', vertical='center', indent=1)
+            for col_idx in range(1, 4):
+                ws.cell(row=row_num, column=col_idx).alignment = data_align
+            ws.cell(row=row_num, column=4).alignment = cls_align
+            
+            row_num += 1
 
 
     def process_file(self, file_path: str, output_path: str, processing_function, progress_callback=None, batch_size: int = 1):
@@ -392,9 +464,12 @@ class ExcelHandler:
                     is_type_b = semantic_val == "Type_B"
                     
                     if is_type_b:
-                        # Type_B: 구분/분류 공란 (Learning HAM, Enforcement SPAM이지만 엔소기로는 공란으로 표시)
+                        # Type_B: 구분 공란, 분류 코드는 입력
                         gubun_val = ""
-                        code_val = ""
+                        raw_val = str(result.get("classification_code", ""))
+                        import re
+                        match = re.search(r'\d+', raw_val)
+                        code_val = match.group(0) if match else raw_val
                     elif result.get("is_spam") is True:
                         gubun_val = "o"
                         raw_val = str(result.get("classification_code", ""))
@@ -433,21 +508,21 @@ class ExcelHandler:
                     ws.cell(row=row_idx, column=out_token_col_idx, value=out_token_val)
 
                     # --- URL Collection Logic ---
-                    # Collect URLs if SPAM or malicious URL extracted from HAM
+                    # Only collect URL from the input column if SPAM or extracted from HAM
                     if result.get("is_spam") is True or result.get("malicious_url_extracted"):
-                        # URL중복 제거 시트에는 classification_code 원본 사용 (Type_B여도 실제 코드 표시)
                         raw_url_code = str(result.get("classification_code", ""))
                         _m = re.search(r'\d+', raw_url_code)
                         url_dedup_code = _m.group(0) if _m else raw_url_code
                         if not result.get("is_spam"):
                             url_dedup_code = extracted_url_code
-                        # re is already imported globally
-                        url_pattern = r'(?:https?://|www\.)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:/[a-zA-Z0-9./?=&%_-]*)?'
-                        urls = re.findall(url_pattern, batch_buffer[idx][1])
+                        
+                        # Use the directly mapped input URL, not regex from message
+                        url_val = ws.cell(row=row_idx, column=get_col_idx("URL", len(headers) + 1)).value
+                        urls = [url_val] if url_val else []
                         
                         for url in urls:
-                            # Clean URL (exclude trailing punctuation often caught by regex)
-                            url = url.rstrip('.,;!?)]}"\'')
+                            # Clean URL
+                            url = str(url).strip().rstrip('.,;!?)]}"\'')
                             
                             if not self.is_short_url(url):
                                  # Only non-short URLs
@@ -464,11 +539,15 @@ class ExcelHandler:
                         
                         clean_msg = re.sub(r'[ \t\r\n\f\v]+', '', str(batch_buffer[idx][1]))
                         
+                        raw_ibse_code = str(result.get("classification_code", ""))
+                        m_ibse = re.search(r'\d+', raw_ibse_code)
+                        ibse_code = m_ibse.group(0) if m_ibse else raw_ibse_code
+                        
                         blocklist_data.append({
                             "msg": clean_msg, 
                             "sig": result.get("ibse_signature"),
                             "len": result.get("ibse_len", 0),
-                            "code": code_val
+                            "code": ibse_code
                         })
 
                     # Callback (Progress) 
@@ -725,9 +804,11 @@ class ExcelHandler:
                     is_type_b = semantic_class == "Type_B"
                     
                     if is_type_b:
-                        # Type_B: 구분/분류 공란 (메시지 색만 주황으로 처리됨)
+                        # Type_B: 구분 공란, 분류 코드 입력
                         gubun_val = ""
-                        code_val = ""
+                        raw_code = str(result.get("classification_code", ""))
+                        match = re.search(r'\d+', raw_code)
+                        code_val = match.group(0) if match else raw_code
                     elif is_spam is True:
                         gubun_val = "o"
                         raw_code = str(result.get("classification_code", ""))
@@ -772,31 +853,16 @@ class ExcelHandler:
                     # --- URL Collection Logic ---
                     # Only collect URLs from SPAM messages or extracted from HAM
                     if result.get("is_spam") is True or result.get("malicious_url_extracted"):
-                        target_url = url_val.strip()
-                        if not target_url:
-                             # Stricter URL Pattern: Exclude special chars in domain (only allow alphanumeric, dot, hyphen)
-                             # Original: r'(https?://\S+|www\.\S+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})'
-                             # New: Enforce domain part to be standard, but include path
-                             url_pattern = r'(?:https?://|www\.)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:/[a-zA-Z0-9./?=&%_-]*)?'
-                             match = re.search(url_pattern, msg_val)
-                             if match:
-                                 target_url = match.group(0)
+                        target_url = url_val.strip() if url_val else ""
                         
                         if target_url:
                             # Clean URL
                             target_url = target_url.rstrip('.,;!?)]}"\'')
                             
-                            # Additional Safety: Check for special chars in domain part
-                            # If URL contains chars like ⑨, it's likely a visual trick (homograph) or trash
-                            # We filter out URLs containing non-ascii/non-standard chars if not intended
+                            # Additional Safety
                             if not re.search(r'[^\x00-\x7F]', target_url): # If pure ASCII (simple check) => Good
                                  pass 
                             else:
-                                 # If it has non-ascii, verification:
-                                 # Allow Korean domains? .한국 etc. 
-                                 # But user example "0000 00000 vt⑨8g.COm" -> exclude.
-                                 # Let's simple check: exclude if contains specific special symbols?
-                                 # Or just rely on is_short_url and strict regex earlier.
                                  pass
 
                             if not self.is_short_url(target_url):
@@ -821,11 +887,15 @@ class ExcelHandler:
                         clean_msg = re.sub(r'[ \t\r\n\f\v]+', '', msg_val)
                         clean_sig = str(result.get("ibse_signature")).replace(" ", "").replace("\n", "").replace("\r", "")
                         
+                        raw_ibse_code = str(result.get("classification_code", ""))
+                        m_ibse = re.search(r'\d+', raw_ibse_code)
+                        ibse_code = m_ibse.group(0) if m_ibse else raw_ibse_code
+                        
                         blocklist_data.append({
                             "msg": clean_msg, 
                             "sig": clean_sig, # whitespace removed signature
                             "len": result.get("ibse_len", 0),
-                            "code": code_val
+                            "code": ibse_code
                         })
 
                     # Progress
