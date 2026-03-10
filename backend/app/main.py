@@ -863,10 +863,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                              spaceless_msg = re.sub(r'[ \t\r\n\f\v]+', '', user_msg)
                              
                              try:
-                                 ibse_result = await loop.run_in_executor(
-                                     None, 
-                                     lambda: ibse_service.process_message(spaceless_msg, status_callback=send_status)
-                                 )
+                                 ibse_result = await ibse_service.process_message(spaceless_msg, status_callback=send_status)
                                  
                                  sig = ibse_result.get('signature')
                                  decision = ibse_result.get('decision')
@@ -1301,14 +1298,11 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                         
                         # Terminology: 'Queued' means created and waiting for worker slot
                         logger.debug(f"Queued in {queue_type} Queue (Waiting for semaphore...)")
-                        # [Phase 2] 세마포어 대기 vs 실행 타임아웃 분리
-                        queue_timeout = int(os.getenv("BATCH_QUEUE_TIMEOUT_SEC", "600"))
+                        
+                        # [Phase 2] 세마포어 대기(제한 없음) 후 실행 타임아웃(300초) 적용
                         task_timeout = int(os.getenv("BATCH_TASK_TIMEOUT_SEC", "300"))
-                        try:
-                            await asyncio.wait_for(selected_sem.acquire(), timeout=queue_timeout)
-                        except asyncio.TimeoutError:
-                            logger.warning(f"Task {index+1} queue timeout after {queue_timeout}s (waiting for {queue_type} slot)")
-                            return index, {"is_spam": None, "reason": f"Queue timeout ({queue_timeout}s)"}
+                        await selected_sem.acquire()
+                        
                         try:
                             if manager.is_cancelled(client_id):
                                 logger.info(f"Cancelled after semaphore acquisition.")

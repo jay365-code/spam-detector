@@ -67,9 +67,8 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
 
     async def ibse_node(state: BatchState):
         msg = state["message"]
-        # Offload sync IBSE Agent to executor
-        loop = asyncio.get_running_loop()
-        res = await loop.run_in_executor(None, lambda: ibse_service.process_message(msg))
+        # IBSE Agent is now Async
+        res = await ibse_service.process_message(msg)
         return {"ibse_result": res}
 
     def aggregator_node(state: BatchState):

@@ -1,6 +1,7 @@
 import os
 import json
 import dataclasses
+import asyncio
 from typing import List, Optional
 from .state import IBSEState, Candidate
 
@@ -118,7 +119,7 @@ candidates_40: {candidates_40_json}
         """런타임에 LLM_PROVIDER 반영"""
         return os.getenv("LLM_PROVIDER", "OPENAI").upper()
 
-    def select(self, state: IBSEState, is_repair: bool = False) -> dict:
+    async def select(self, state: IBSEState, is_repair: bool = False) -> dict:
         message_id = state.get("message_id", "unknown")
         match_text = state.get("match_text", "")
         c20 = state.get("candidates_20", [])
@@ -147,9 +148,9 @@ candidates_40: {candidates_40_json}
                 candidates_40_json=c40_json
             )
             
-        return self._call_llm(system_prompt, user_prompt)
+        return await self._call_llm(system_prompt, user_prompt)
 
-    def _call_llm(self, system_prompt: str, user_prompt: str) -> dict:
+    async def _call_llm(self, system_prompt: str, user_prompt: str) -> dict:
         from app.core.llm_manager import key_manager
         import time
 
@@ -164,8 +165,8 @@ candidates_40: {candidates_40_json}
             self.api_key = key_manager.get_key(self.provider)
             try:
                 if self.provider == "OPENAI":
-                    from openai import OpenAI
-                    client = OpenAI(api_key=self.api_key)
+                    from openai import AsyncOpenAI
+                    client = AsyncOpenAI(api_key=self.api_key)
                     # o1/o3/o4/gpt-5 계열 reasoning 모델은 temperature 파라미터 미지원
                     _no_temp_prefixes = ("o1", "o3", "o4", "gpt-5")
                     _supports_temp = not any(self.model_name.startswith(p) for p in _no_temp_prefixes)
@@ -179,7 +180,7 @@ candidates_40: {candidates_40_json}
                     }
                     if _supports_temp:
                         _kwargs["temperature"] = 0.0
-                    response = client.chat.completions.create(**_kwargs)
+                    response = await asyncio.wait_for(client.chat.completions.create(**_kwargs), timeout=45.0)
                     content = response.choices[0].message.content
                     
                 elif self.provider == "GEMINI":
@@ -208,21 +209,21 @@ candidates_40: {candidates_40_json}
                         HumanMessage(content=user_prompt)
                     ]
                     
-                    response = llm.invoke(messages)
+                    response = await asyncio.wait_for(llm.ainvoke(messages), timeout=45.0)
                     content = _normalize_llm_content(response.content)
                     
                 elif self.provider == "CLAUDE":
                     import anthropic
-                    client = anthropic.Anthropic(api_key=self.api_key)
+                    client = anthropic.AsyncAnthropic(api_key=self.api_key)
                     model = self.model_name if "claude" in self.model_name else "claude-3-haiku-20240307"
-                    response = client.messages.create(
+                    response = await asyncio.wait_for(client.messages.create(
                         model=model,
                         max_tokens=1024,
                         system=system_prompt,
                         messages=[
                             {"role": "user", "content": user_prompt}
                         ]
-                    )
+                    ), timeout=45.0)
                     content = response.content[0].text
                     
                 else:
@@ -230,7 +231,7 @@ candidates_40: {candidates_40_json}
                 
                 return self._parse_json(content)
                 
-            except Exception as e:
+            except (Exception, asyncio.TimeoutError) as e:
                 error_msg = str(e).lower()
                 provider = self.provider
 
@@ -244,10 +245,12 @@ candidates_40: {candidates_40_json}
                     except ImportError:
                         pass
 
-                # Quota Exceeded / Rate Limit check (429 error)
-                if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
-                    logger.warning(f"[LLMSelector] 429/Quota Detected. Error: {error_msg}")
-                    logger.warning(f"[LLMSelector] {provider} Quota Exceeded detected. Attempting key rotation...")
+                # Quota Exceeded / Rate Limit check (429 error) OR Timeout
+                is_timeout = isinstance(e, asyncio.TimeoutError) or "timeout" in error_msg
+
+                if is_timeout or is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
+                    logger.warning(f"[LLMSelector] {'Timeout' if is_timeout else '429/Quota'} Detected. Error: {error_msg}")
+                    logger.warning(f"[LLMSelector] {provider} issue detected. Attempting key rotation...")
                     
                     current_key = self.api_key
                     
@@ -258,9 +261,9 @@ candidates_40: {candidates_40_json}
                         cooldown = key_manager.get_cooldown_remaining(provider)
                         if cooldown > 0:
                             logger.info(f"[LLMSelector] Global cooldown activated. Pausing {cooldown:.1f}s...")
-                            time.sleep(cooldown)
+                            await asyncio.sleep(cooldown) # Use async sleep
                         else:
-                            time.sleep(1) # Short delay before retry
+                            await asyncio.sleep(1) # Short delay before retry
                             
                         continue
                     else:
@@ -281,14 +284,14 @@ candidates_40: {candidates_40_json}
             logger.error(f"JSON Parse Error: {e} | Content: {content}")
             return {"error": "JSON Parse Error", "raw_content": content}
 
-def select_signature_node(state: IBSEState) -> dict:
+async def select_signature_node(state: IBSEState) -> dict:
     match_text = state.get("match_text", "")
     if not match_text:
         return {"error": "No match_text"}
     
     selector = LLMSelector()
     is_repair = bool(state.get("error"))
-    result = selector.select(state, is_repair=is_repair)
+    result = await selector.select(state, is_repair=is_repair)
     
     # Post-processing: Ensure 'signature' matches 'text_original' of the chosen candidate
     candidate_id = result.get("chosen_candidate_id")

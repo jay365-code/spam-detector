@@ -247,10 +247,11 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
                             {"type": "image_url", "image_url": f"data:image/jpeg;base64,{screenshot_b64}"}
                         ]
                     )
-                    response = await llm.ainvoke([message])
+                    # [Timeout] Vision API can be slow (images), wait up to 60s
+                    response = await asyncio.wait_for(llm.ainvoke([message]), timeout=60.0)
                     key_manager.report_success(provider)
                     return response
-                except Exception as e:
+                except (Exception, asyncio.TimeoutError) as e:
                     error_msg = str(e).lower()
                     
                     # [Fix] Explicit type check for Google API errors (Gemini)
@@ -262,18 +263,20 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
                     except ImportError:
                         pass
 
-                    if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
-                        logger.warning(f"[URL Agent] Vision API Quota Detected. Error: {error_msg}")
-                        logger.warning(f"[URL Agent] Vision API Quota Exceeded. Rotating key...")
+                    is_timeout = isinstance(e, asyncio.TimeoutError) or "timeout" in error_msg
+
+                    if is_timeout or is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
+                        logger.warning(f"[URL Agent] Vision API {'Timeout' if is_timeout else 'Quota'} Detected. Error: {error_msg}")
+                        logger.warning(f"[URL Agent] Vision API {provider} issue. Rotating key...")
                         # [동시성 개선] 실패한 키 전달 및 글로벌 소진 확인
                         is_rotated = key_manager.rotate_key(provider, failed_key=api_key)
                         
                         if not is_rotated:
                             logger.error(f"[URL Agent] Vision API Global exhaustion reached for {provider}.")
-                            raise Exception(f"{provider} vision quota globally exhausted. No retry.") from e
+                            raise Exception(f"{provider} vision quota/timeout globally exhausted. No retry.") from e
                         
                         if attempt < max_quota_tries - 1:
-                            logger.info(f"[URL Agent] Switching to empty {provider} key instantly (Attempt {attempt+1}/{max_quota_tries})...")
+                            logger.info(f"[URL Agent] Switching to next {provider} key instantly (Attempt {attempt+1}/{max_quota_tries})...")
                             continue
                         else:
                             logger.error(f"[URL Agent] All {provider} keys exhausted.")
@@ -747,7 +750,8 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
             api_key = key_manager.get_key(provider) # 실패 시 대조를 위해 키 보관
             llm = get_llm() # Get fresh LLM (uses the same key)
             try:
-                response = await llm.ainvoke(prompt)
+                # [Phase 1] 45s Timeout added to prevent hangs
+                response = await asyncio.wait_for(llm.ainvoke(prompt), timeout=45.0)
                 key_manager.report_success(provider)
                 return response
             except Exception as e:

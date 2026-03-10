@@ -14,7 +14,7 @@ class IBSEAgentService:
 
     from typing import Callable, Optional
 
-    def process_message(self, text: str, message_id: str = None, status_callback: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
+    async def process_message(self, text: str, message_id: str = None, status_callback: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
         """
         Processes a single message text through the IBSE pipeline using LangGraph.
         """
@@ -79,10 +79,10 @@ class IBSEAgentService:
         try:
             logger.info(f"Starting IBSE Analysis for {message_id} (LangGraph)")
             
-            # Use stream to track progress
+            # Use astream to track progress (it's an async graph now)
             if status_callback: status_callback("분석 시작 (Graph Init)...")
             
-            for output in ibse_graph.stream(state):
+            async for output in ibse_graph.astream(state):
                 for node_name, node_state in output.items():
                     logger.info(f"IBSE Node Finished: {node_name}")
                     
