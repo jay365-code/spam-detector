@@ -146,6 +146,20 @@ export default function ValidatorPage() {
     const [error, setError] = useState<string | null>(null);
     const [isConfigOpen, setIsConfigOpen] = useState(true);
 
+    // Auto Mode State
+    const getTodayYYYYMMDD = () => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}${month}${day}`;
+    };
+
+    const [isAutoMode, setIsAutoMode] = useState(true);
+    const [autoDate, setAutoDate] = useState(getTodayYYYYMMDD());
+    const [autoType, setAutoType] = useState("A");
+
+
     // Viewer State
     const [selectedDiff, setSelectedDiff] = useState<DiffItem | null>(null);
     const [filter, setFilter] = useState<'ALL' | 'FN' | 'FP'>('ALL');
@@ -200,24 +214,42 @@ export default function ValidatorPage() {
     };
 
     const handleCompare = async () => {
-        if (!humanFile || !llmFile) {
-            setError("Please select both files.");
-            return;
-        }
         setLoading(true);
         setError(null);
         setData(null);
         setSelectedDiff(null);
 
-        const formData = new FormData();
-        formData.append("human_file", humanFile);
-        formData.append("llm_file", llmFile);
-        formData.append("sheet_name", sheetName);
-
         try {
-            const res = await axios.post("http://localhost:8001/compare", formData, {
-                headers: { "Content-Type": "multipart/form-data" },
-            });
+            let res;
+            if (isAutoMode) {
+                if (!autoDate || !autoType) {
+                    setError("Please enter both Date and Type.");
+                    setLoading(false);
+                    return;
+                }
+                const formData = new FormData();
+                formData.append("date", autoDate);
+                formData.append("file_type", autoType);
+                formData.append("sheet_name", sheetName);
+
+                res = await axios.post("http://localhost:8001/compare/auto", formData, {
+                    headers: { "Content-Type": "multipart/form-data" },
+                });
+            } else {
+                if (!humanFile || !llmFile) {
+                    setError("Please select both files.");
+                    setLoading(false);
+                    return;
+                }
+                const formData = new FormData();
+                formData.append("human_file", humanFile);
+                formData.append("llm_file", llmFile);
+                formData.append("sheet_name", sheetName);
+
+                res = await axios.post("http://localhost:8001/compare", formData, {
+                    headers: { "Content-Type": "multipart/form-data" },
+                });
+            }
             setData(res.data);
             setIsConfigOpen(false); // Auto close on success
         } catch (err: any) {
@@ -371,6 +403,22 @@ export default function ValidatorPage() {
                 </div>
 
                 <div className={cn("grid grid-cols-1 lg:grid-cols-4 gap-8 overflow-hidden transition-all duration-500 ease-in-out", isConfigOpen ? "mt-8 max-h-[500px] opacity-100" : "max-h-0 opacity-0")}>
+                    {/* Mode Switcher */}
+                    <div className="lg:col-span-4 flex gap-4 border-b border-slate-100 pb-4">
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setIsAutoMode(true); }}
+                            className={cn("px-4 py-2 font-bold rounded-lg text-sm transition-all shadow-sm", isAutoMode ? "bg-indigo-600 text-white" : "bg-white border text-slate-500 hover:bg-slate-50")}
+                        >
+                            Auto Load
+                        </button>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setIsAutoMode(false); }}
+                            className={cn("px-4 py-2 font-bold rounded-lg text-sm transition-all shadow-sm", !isAutoMode ? "bg-indigo-600 text-white" : "bg-white border text-slate-500 hover:bg-slate-50")}
+                        >
+                            Manual Upload
+                        </button>
+                    </div>
+
                     {/* Sheet Name Input */}
                     <div className="lg:col-span-1 space-y-2">
                         <label className="text-sm font-semibold text-slate-700">Target Sheet</label>
@@ -378,24 +426,58 @@ export default function ValidatorPage() {
                             type="text"
                             value={sheetName}
                             onChange={(e) => setSheetName(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
                             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all"
                             placeholder="e.g. Sheet1"
                         />
                         <p className="text-[11px] text-slate-400 pl-1">Name of the sheet to analyze</p>
                     </div>
 
-                    {/* File Inputs */}
+                    {/* File Inputs or Auto Inputs */}
                     <div className="lg:col-span-2 grid grid-cols-2 gap-4">
-                        <FileInput
-                            label="Human (Ground Truth)"
-                            file={humanFile}
-                            onChange={(e) => handleFileChange(e, setHumanFile)}
-                        />
-                        <FileInput
-                            label="AI (Prediction)"
-                            file={llmFile}
-                            onChange={(e) => handleFileChange(e, setLlmFile)}
-                        />
+                        {isAutoMode ? (
+                            <>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Date (YYYYMMDD)</label>
+                                    <input
+                                        type="text"
+                                        value={autoDate}
+                                        onChange={(e) => setAutoDate(e.target.value)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all"
+                                        placeholder="e.g. 20260101"
+                                    />
+                                    <p className="text-[11px] text-slate-400 pl-1">Target test split date</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Type</label>
+                                    <select
+                                        value={autoType}
+                                        onChange={(e) => setAutoType(e.target.value)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all"
+                                    >
+                                        <option value="A">Type A</option>
+                                        <option value="B">Type B</option>
+                                        <option value="C">Type C</option>
+                                    </select>
+                                    <p className="text-[11px] text-slate-400 pl-1">Target test split delimiter</p>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <FileInput
+                                    label="Human (Ground Truth)"
+                                    file={humanFile}
+                                    onChange={(e) => handleFileChange(e, setHumanFile)}
+                                />
+                                <FileInput
+                                    label="AI (Prediction)"
+                                    file={llmFile}
+                                    onChange={(e) => handleFileChange(e, setLlmFile)}
+                                />
+                            </>
+                        )}
                     </div>
 
                     {/* Action Button */}

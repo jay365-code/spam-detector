@@ -80,6 +80,8 @@ async def toggle_console_log(request: ConsoleToggle):
     return set_console_enabled(request.enabled)
 
 
+import os
+
 @app.post("/compare")
 async def compare_results(
     human_file: UploadFile = File(...),
@@ -89,21 +91,52 @@ async def compare_results(
     logger.info(f"비교 요청 | Human: {human_file.filename} | LLM: {llm_file.filename} | Sheet: {sheet_name}")
     
     try:
-        # Load Excels
         human_content = await human_file.read()
         llm_content = await llm_file.read()
-        
-        # Strict loading: raises ValueError if sheet_name not found
         df_human = pd.read_excel(io.BytesIO(human_content), sheet_name=sheet_name)
         df_llm = pd.read_excel(io.BytesIO(llm_content), sheet_name=sheet_name)
-        
     except ValueError as e:
-        # Sheet not found or other Excel error
         logger.warning(f"Sheet not found: {sheet_name} - {e}")
-        raise HTTPException(status_code=400, detail=f"Sheet '{sheet_name}' not found or error loading excel: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Sheet '{sheet_name}' not found or error: {str(e)}")
     except Exception as e:
         logger.exception("Excel 로드 중 오류")
         raise HTTPException(status_code=400, detail=f"Error reading excel file: {str(e)}")
+
+    return _process_dataframes(df_human, df_llm, sheet_name)
+
+@app.post("/compare/auto")
+async def compare_auto(
+    date: str = Form(...),
+    file_type: str = Form(...),
+    sheet_name: str = Form("육안분석(시뮬결과35_150)")
+):
+    logger.info(f"자동 비교 요청 | Date: {date} | Type: {file_type} | Sheet: {sheet_name}")
+    
+    curr_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(os.path.dirname(curr_dir))
+    
+    human_path = os.path.join(base_dir, "spams", f"MMSC스팸추출_{date}_{file_type}.xlsx")
+    llm_path = os.path.join(base_dir, "spams", "SD Output", f"MMSC스팸추출_{date}_{file_type}.xlsx")
+    
+    if not os.path.exists(human_path):
+        raise HTTPException(status_code=404, detail=f"Human file not found: {human_path}")
+    if not os.path.exists(llm_path):
+        raise HTTPException(status_code=404, detail=f"LLM file not found: {llm_path}")
+        
+    try:
+        df_human = pd.read_excel(human_path, sheet_name=sheet_name)
+        df_llm = pd.read_excel(llm_path, sheet_name=sheet_name)
+    except ValueError as e:
+        logger.warning(f"Sheet not found: {sheet_name} - {e}")
+        raise HTTPException(status_code=400, detail=f"Sheet '{sheet_name}' not found or error: {str(e)}")
+    except Exception as e:
+        logger.exception("Excel 로드 중 오류")
+        raise HTTPException(status_code=400, detail=f"Error reading excel file: {str(e)}")
+
+    return _process_dataframes(df_human, df_llm, sheet_name)
+
+
+def _process_dataframes(df_human, df_llm, sheet_name):
 
     # Check Columns
     required_cols = ["메시지", "구분"]
