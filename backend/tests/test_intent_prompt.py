@@ -21,10 +21,17 @@ class MockAgent:
 
         if provider == "GEMINI":
             from langchain_google_genai import ChatGoogleGenerativeAI
+            safety_settings = {
+                "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
+                "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
+                "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
+                "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+            }
             self.llm = ChatGoogleGenerativeAI(
                 model=self.model_name,
                 google_api_key=os.getenv("GEMINI_API_KEY"),
-                temperature=0.0
+                temperature=0.0,
+                safety_settings=safety_settings
             )
         else:
             from langchain_openai import ChatOpenAI

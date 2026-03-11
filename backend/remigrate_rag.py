@@ -85,11 +85,18 @@ def get_llm():
         if not api_key:
             raise ValueError("GEMINI_API_KEY is not set in .env")
         logger.info(f"LLM: GEMINI / Model: {model}")
+        safety_settings = {
+            "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
+            "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
+            "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
+            "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+        }
         return ChatGoogleGenerativeAI(
             model=model,
             google_api_key=api_key,
             temperature=0.0,
             max_retries=2,
+            safety_settings=safety_settings
         )
     elif provider == "OPENAI":
         from langchain_openai import ChatOpenAI
