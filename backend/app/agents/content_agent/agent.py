@@ -404,6 +404,20 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 
                 # [비Quota 에러] tenacity가 재시도하도록 위로 전파
                 logger.exception(f"{provider} Async API Error (Network/Transient)")
+                
+                # [강제 해제] Timeout이나 Network Error 발생 시 캐시된 세션(Client)이 죽은 소켓을 물고 있을 수 있음
+                # 따라서 다음 Tenacity 재시도 시에는 무조건 새로운 Client 객체를 생성하게 만들어야 함.
+                cache_key = f"{provider}_{current_api_key}_{model_name}"
+                try:
+                    current_loop = asyncio.get_running_loop()
+                    dict_key = (cache_key, current_loop)
+                except RuntimeError:
+                    dict_key = (cache_key, None)
+                    
+                if dict_key in self._loop_bound_clients:
+                    del self._loop_bound_clients[dict_key]
+                    logger.info(f"[ContentAnalysisAgent] Invalidated cached client for {provider} due to network error.")
+                    
                 raise e
                 
         # 루프가 정상 return 없이 종료된 경우 (이론상 미도달)
@@ -746,14 +760,20 @@ Step 6. SPAM 확정 조건:
             logger.info(f"RAG Details | injected_labels=SPAM:{spam_hits}/HAM:{ham_hits} | injected_ids={injected_ids}")
             
             try:
-                # Bridge sync check to async LLM call
-                import asyncio
+                # Bridge sync check to async LLM call safely
                 try:
-                    loop = asyncio.get_event_loop()
+                    current_loop = asyncio.get_running_loop()
                 except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                content = loop.run_until_complete(self._aquery_llm_with_retry(prompt))
+                    current_loop = None
+
+                if current_loop and current_loop.is_running():
+                    # If we are already in an event loop (e.g., FastAPI/Jupyter sync context that's weirdly nested)
+                    import nest_asyncio
+                    nest_asyncio.apply()
+                    content = current_loop.run_until_complete(self._aquery_llm_with_retry(prompt))
+                else:
+                    # Clean isolated run
+                    content = asyncio.run(self._aquery_llm_with_retry(prompt))
             except Exception as e:
                 logger.error(f"Sync bridging for LLM failed: {e}")
                 # Fallback to a legacy sync query if needed, or just re-raise
