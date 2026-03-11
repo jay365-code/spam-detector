@@ -303,15 +303,20 @@ export default function ValidatorPage() {
 
     // JSON 저장 함수
     const handleSaveJson = async () => {
-        if (!data || !humanFile) return;
+        if (!data) return;
+        if (!isAutoMode && !humanFile) return;
 
-        // 파일명에서 날짜와 식별자 추출 (예: MMSC스팸추출_20260101_A.xlsx -> 20260101_A)
-        const match = humanFile.name.match(/(\d{8})_([A-Z])/);
         let filename = 'comparison_result.json';
 
-        if (match) {
-            const [_, date, type] = match;
-            filename = `일별비교_${date}_${type}.json`;
+        if (isAutoMode) {
+            filename = `일별비교_${autoDate}_${autoType}.json`;
+        } else if (humanFile) {
+            // 파일명에서 날짜와 식별자 추출 (예: MMSC스팸추출_20260101_A.xlsx -> 20260101_A)
+            const match = humanFile.name.match(/(\d{8})_([A-Z])/);
+            if (match) {
+                const [_, date, type] = match;
+                filename = `일별비교_${date}_${type}.json`;
+            }
         }
 
         const jsonString = JSON.stringify(data, null, 2);
