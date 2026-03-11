@@ -16,9 +16,6 @@ import idna  # Punycode 변환용
 import google.api_core.exceptions
 from bs4 import BeautifulSoup
 
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_anthropic import ChatAnthropic
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import PromptTemplate
 
@@ -98,33 +95,56 @@ def get_llm():
     model_name = os.getenv("LLM_MODEL", "gpt-4o-mini")
     
     api_key = key_manager.get_key(provider)
-    cache_key = f"{provider}_{api_key}_{model_name}"
     
-    import asyncio
+    if not api_key:
+        logger.warning(f"[URL_LLM] No key found for {provider}. Check LLMKeyManager.")
+        raise ValueError(f"No API key available for {provider}")
+
     try:
         current_loop = asyncio.get_running_loop()
     except RuntimeError:
         current_loop = None
-        
+
+    cache_key = f"{provider}_{api_key}_{model_name}"
     dict_key = (cache_key, current_loop)
-    global _loop_bound_clients
+
     if dict_key in _loop_bound_clients:
         return _loop_bound_clients[dict_key]
-    
-    logger.info(f"[URL Agent] Instantiating new LLM client for {provider} ({model_name})")
-    
+
+    logger.info(f"⚡ [URL_LLM] Instantiating new LLM client for {provider} ({model_name})")
+
     if provider == "GEMINI":
+        from langchain_google_genai import ChatGoogleGenerativeAI
         safety_settings = {
             "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
             "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
             "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
             "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
         }
-        client = ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=0, convert_system_message_to_human=True, max_retries=0, safety_settings=safety_settings)
+        client = ChatGoogleGenerativeAI(
+            model=model_name,
+            google_api_key=api_key,
+            temperature=0.0,
+            safety_settings=safety_settings,
+            convert_system_message_to_human=True,
+            max_retries=0
+        )
     elif provider == "CLAUDE":
-        client = ChatAnthropic(model=model_name, anthropic_api_key=api_key, temperature=0, max_retries=0)
-    else:
-        client = ChatOpenAI(model=model_name, api_key=api_key, temperature=0.0, max_retries=0)
+        from langchain_anthropic import ChatAnthropic
+        client = ChatAnthropic(
+            model=model_name,
+            anthropic_api_key=api_key,
+            temperature=0.0,
+            max_retries=0
+        )
+    else: # OPENAI
+        from langchain_openai import ChatOpenAI
+        client = ChatOpenAI(
+            model=model_name,
+            api_key=api_key,
+            temperature=0.0,
+            max_retries=0
+        )
         
     _loop_bound_clients[dict_key] = client
     return client

@@ -11,10 +11,10 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from app.core.logging_config import get_logger
 from app.core.llm_manager import key_manager
 
-# New imports added as per instruction
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_anthropic import ChatAnthropic
-from langchain_openai import ChatOpenAI
+# New imports added as per instruction (Moved to local scope to fix 23s startup delay)
+# from langchain_google_genai import ChatGoogleGenerativeAI
+# from langchain_anthropic import ChatAnthropic
+# from langchain_openai import ChatOpenAI
 
 logger = get_logger(__name__)
 
@@ -193,7 +193,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         logger.info(f"[ContentAnalysisAgent] Instantiating new LLM client for {provider} ({model_name})")
         
         if provider == "GEMINI":
-            
+            from langchain_google_genai import ChatGoogleGenerativeAI
             # [Safety Settings]
             safety_settings = {
                 "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
@@ -214,7 +214,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             )
             
         elif provider == "CLAUDE":
-            
+            from langchain_anthropic import ChatAnthropic
             client = ChatAnthropic(
                 model=model_name, 
                 anthropic_api_key=api_key, 
@@ -223,7 +223,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             )
             
         else: # OPENAI
-            
+            from langchain_openai import ChatOpenAI
             client = ChatOpenAI(
                 model=model_name, 
                 api_key=api_key, 
@@ -233,6 +233,10 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
 
         self._loop_bound_clients[dict_key] = client
         return client
+
+    # Define SafetyBlockRetryError to handle Gemini PROHIBITED_CONTENT cases
+    class SafetyBlockRetryError(Exception):
+        pass
 
     async def _aquery_llm(self, prompt: str) -> str:
         """
@@ -278,30 +282,17 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                             finish_reason = response.response_metadata.get("finish_reason", "")
                             meta_str = str(response.response_metadata)
                             if finish_reason == "SAFETY" or "PROHIBITED_CONTENT" in meta_str or "block_reason" in meta_str:
-                                logger.warning("[Gemini] Response blocked by safety filters (PROHIBITED_CONTENT). Returning fallback SPAM verdict.")
-                                content = json.dumps({
-                                    "label": "SPAM",
-                                    "spam_probability": 0.99,
-                                    "classification_code": "2",
-                                    "reason": "Safety Filter Blocked: Content was flagged as prohibited (likely highly offensive, explicit, or related to illegal activities).",
-                                    "signals": {"harm_anchor": True, "route_or_cta": True, "is_impersonation": False, "is_vague_cta": False, "is_personal_lure": False}
-                                })
+                                logger.warning(f"[Gemini] Response blocked by safety filters (PROHIBITED_CONTENT): {meta_str}")
+                                raise self.SafetyBlockRetryError("Response blocked by safety filters (PROHIBITED_CONTENT)")
                             
+                    except self.SafetyBlockRetryError:
+                        raise
                     except Exception as e:
                         # Check for safety filter block which might raise specific exceptions or return empty/stopped response
-                        # LangChain might raise an error for blocked content or return a finish_reason
-                        # For now, let's catch generic errors and let the outer loop handle quota, 
-                        # but if it's a safety block (often 400 or specific error), we might want to handle it.
                         err_str = str(e).lower()
                         if "safety" in err_str or "blocked" in err_str or "prohibited" in err_str:
-                            logger.warning("[Gemini] Response blocked by safety filters. Returning fallback SPAM verdict.")
-                            content = json.dumps({
-                                "label": "SPAM",
-                                "spam_probability": 0.99,
-                                "classification_code": "2",
-                                "reason": "Safety Filter Blocked: Content was flagged as prohibited (likely highly offensive or explicit), which strongly indicates SPAM.",
-                                "signals": {"harm_anchor": True, "route_or_cta": True, "is_impersonation": False, "is_vague_cta": False, "is_personal_lure": False}
-                            })
+                            logger.warning(f"[Gemini] Response blocked by safety filters exception: {e}")
+                            raise self.SafetyBlockRetryError(f"Response blocked by safety filters: {e}")
                         else:
                             raise e
                     
@@ -427,7 +418,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception(lambda e: not isinstance(e, QuotaExhaustedNoRetryError)),
+        retry=retry_if_exception(lambda e: not isinstance(e, (QuotaExhaustedNoRetryError, ContentAnalysisAgent.SafetyBlockRetryError))),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True
     )
@@ -767,13 +758,36 @@ Step 6. SPAM 확정 조건:
                     current_loop = None
 
                 if current_loop and current_loop.is_running():
-                    # If we are already in an event loop (e.g., FastAPI/Jupyter sync context that's weirdly nested)
                     import nest_asyncio
                     nest_asyncio.apply()
                     content = current_loop.run_until_complete(self._aquery_llm_with_retry(prompt))
                 else:
-                    # Clean isolated run
                     content = asyncio.run(self._aquery_llm_with_retry(prompt))
+                    
+            except self.SafetyBlockRetryError as e:
+                logger.warning(f"Safety filter blocked initial request. Retrying WITHOUT RAG examples.")
+                # Clear RAG examples and rebuild prompt
+                context_data['rag_examples'] = []
+                prompt_retry, _ = self._build_prompt(message, detected_pattern, context_data)
+                
+                try:
+                    if current_loop and current_loop.is_running():
+                        content = current_loop.run_until_complete(self._aquery_llm_with_retry(prompt_retry))
+                    else:
+                        content = asyncio.run(self._aquery_llm_with_retry(prompt_retry))
+                except self.SafetyBlockRetryError:
+                    logger.warning("[Gemini] Response blocked by safety filters EVEN WITHOUT RAG. Returning fallback SPAM verdict.")
+                    content = json.dumps({
+                        "label": "SPAM",
+                        "spam_probability": 0.99,
+                        "classification_code": "2",
+                        "reason": "Safety Filter Blocked: Content was flagged as prohibited (likely highly offensive or explicit) even after removing context. Assuming High-Risk SPAM.",
+                        "signals": {"harm_anchor": True, "route_or_cta": True, "is_impersonation": False, "is_vague_cta": False, "is_personal_lure": False}
+                    })
+                except Exception as retry_e:
+                    logger.error(f"Sync bridging retry for LLM failed: {retry_e}")
+                    raise retry_e
+                    
             except Exception as e:
                 logger.error(f"Sync bridging for LLM failed: {e}")
                 # Fallback to a legacy sync query if needed, or just re-raise
@@ -798,8 +812,8 @@ Step 6. SPAM 확정 조건:
                 logger.error(f"LLM 분석 중 Quota 소진 오류 발생: {e}")
                 return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": f"Quota Exhausted Error: {e}"}
             else:
-                logger.exception("LLM 분석 중 오류 발생")
-                return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": f"Error (LLM Fail): {e}"}
+                logger.exception(f"LLM 분석 중 오류 발생: {e}")
+                return {"is_spam": False, "spam_probability": 0.99, "classification_code": "2", "reason": f"Error (LLM Fail / Safety Block Retry Failed): {e}"}
 
     from typing import Callable, Awaitable, Optional
 
@@ -875,6 +889,27 @@ Step 6. SPAM 확정 조건:
             # Run async LLM call with retry
             try:
                 content = await self._aquery_llm_with_retry(prompt)
+            except self.SafetyBlockRetryError as e:
+                logger.warning("Safety filter blocked initial request (async). Retrying WITHOUT RAG examples.")
+                if status_callback:
+                    await status_callback("⚠️ 안전 필터 차단됨. RAG 예시 제외 후 재분석 시도 중...")
+                
+                # Clear RAG examples and rebuild prompt
+                context_data['rag_examples'] = []
+                prompt_retry, _ = self._build_prompt(message, detected_pattern, context_data)
+                
+                # Retry Call
+                try:
+                    content = await self._aquery_llm_with_retry(prompt_retry)
+                except self.SafetyBlockRetryError:
+                    logger.warning("[Gemini] Response blocked by safety filters EVEN WITHOUT RAG. Returning fallback SPAM verdict.")
+                    content = json.dumps({
+                        "label": "SPAM",
+                        "spam_probability": 0.99,
+                        "classification_code": "2",
+                        "reason": "Safety Filter Blocked: Content was flagged as prohibited (likely highly offensive or explicit) even after removing context. Assuming High-Risk SPAM.",
+                        "signals": {"harm_anchor": True, "route_or_cta": True, "is_impersonation": False, "is_vague_cta": False, "is_personal_lure": False}
+                    })
             except QuotaExhaustedNoRetryError as e:
                 logger.error(f"Async LLM query failure (Quota Exhausted): {e}")
                 return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": f"Error: {e}"}
@@ -899,10 +934,10 @@ Step 6. SPAM 확정 조건:
             return result
             
         except Exception as e:
-            logger.exception("Async LLM 분석 중 오류 발생")
+            logger.exception(f"Async LLM 분석 중 오류 발생: {e}")
             if status_callback:
                 await status_callback(f"⚠️ 오류 발생: {str(e)}")
-            return {"is_spam": False, "spam_probability": 0.0, "classification_code": None, "reason": f"Error: {e}"}
+            return {"is_spam": False, "spam_probability": 0.99, "classification_code": "2", "reason": f"Error (LLM Fail / Safety Block Retry Failed): {e}"}
 
     async def check_batch(self, messages: list[str], stage1_results: list[dict]) -> list[dict]:
         """

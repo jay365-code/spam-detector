@@ -230,6 +230,16 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                  cause = "악성 URL 탐지" if final.get("malicious_url_extracted") else "URL 접근 불가(timeout/bot-block)"
                  final["reason"] = f"{existing_reason} | [FP Sentinel Override] {cause} Type_B 확정 차단"
 
+        # Ruleset 1.6: Type_B (Safety Block)
+        # 구글 안전 필터 등에 의해 강제 차단(Safety Filter Blocked)된 메시지
+        # → 정상적인 서비스/학교 안내문자일 확률이 높으므로 URL/서명 유무와 상관없이 강제 Type_B 편입하여 오탐(FP) 집계를 막음
+        elif final.get("is_spam") is True and "Safety Filter Blocked" in final.get("reason", ""):
+            semantic_class = "Type_B"
+            learning_label = "HAM"
+            existing_reason = final.get("reason", "")
+            if "[FP Sentinel Override]" not in existing_reason:
+                final["reason"] = f"{existing_reason} | [FP Sentinel Override] 안전 필터 차단 감지로 인한 Type_B 전환"
+
         # Rulset 2: Type_A (Pure Spam)
         elif final.get("is_spam") is True:
              semantic_class = "Type_A"
