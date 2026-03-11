@@ -114,7 +114,13 @@ def get_llm():
     logger.info(f"[URL Agent] Instantiating new LLM client for {provider} ({model_name})")
     
     if provider == "GEMINI":
-        client = ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=0, convert_system_message_to_human=True, max_retries=0)
+        safety_settings = {
+            "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
+            "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
+            "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
+            "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+        }
+        client = ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=0, convert_system_message_to_human=True, max_retries=0, safety_settings=safety_settings)
     elif provider == "CLAUDE":
         client = ChatAnthropic(model=model_name, anthropic_api_key=api_key, temperature=0, max_retries=0)
     else:
@@ -231,12 +237,19 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
                 else:
                     logger.info(f"[URL Agent] Instantiating new Vision LLM client for {provider} ({model_name})")
                     
+                    safety_settings = {
+                        "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
+                        "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
+                        "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
+                        "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+                    }
                     llm = ChatGoogleGenerativeAI(
                         model=model_name,
                         google_api_key=api_key,
                         temperature=0,
                         convert_system_message_to_human=True,
-                        max_retries=0
+                        max_retries=0,
+                        safety_settings=safety_settings
                     )
                     _loop_bound_clients[dict_key] = llm
                 

@@ -983,10 +983,17 @@ Step 6. SPAM 확정 조건:
 
         if provider == "GEMINI":
             api_key = key_manager.get_key("GEMINI")
+            safety_settings = {
+                "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
+                "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
+                "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
+                "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+            }
             return ChatGoogleGenerativeAI(
                 model=self.model_name if "gemini" in self.model_name else "gemini-1.5-flash",
                 google_api_key=api_key,
-                temperature=0.0  # 분류 작업에 적합한 가장 낮은 temperature
+                temperature=0.0,  # 분류 작업에 적합한 가장 낮은 temperature
+                safety_settings=safety_settings
             )
         elif provider == "CLAUDE":
             api_key = key_manager.get_key("CLAUDE")
