@@ -240,6 +240,25 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              semantic_class = "Ham"
              learning_label = "HAM"
              
+        # Type_B Sub-classification
+        if semantic_class == "Type_B":
+             # 본문에 있는 url은 분석은 하되, type 결정에는 input text의 url만 사용
+             pre_parsed = state.get("pre_parsed_url")
+             is_input_url_present = bool((pre_parsed or "").strip())
+             has_url_alert = final.get("malicious_url_extracted") is True or u_blocked or u_spam
+             has_url_subtype = has_url_alert and is_input_url_present
+             
+             has_sig = bool(final.get("ibse_signature"))
+             
+             if has_url_subtype and has_sig:
+                 semantic_class = "Type_B (URL, SIGNATURE)"
+             elif has_url_subtype:
+                 semantic_class = "Type_B (URL)"
+             elif has_sig:
+                 semantic_class = "Type_B (SIGNATURE)"
+             else:
+                 semantic_class = "Type_B (NONE)"
+             
         final["semantic_class"] = semantic_class
         final["learning_label"] = learning_label
         
@@ -276,6 +295,10 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         
         # 또는 s1에서 이미 추출한 decoded_urls가 있으면 사용
         if s1.get("decoded_urls"):
+            has_url = True
+            
+        # [NEW] KISA TXT 등으로 pre_parsed_url 이 명시적으로 넘어온 경우
+        if state.get("pre_parsed_url"):
             has_url = True
         
         # If Content Spam -> Run URL (if exists) AND IBSE (Parallel)

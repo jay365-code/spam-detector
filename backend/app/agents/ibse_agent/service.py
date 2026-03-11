@@ -126,7 +126,7 @@ class IBSEAgentService:
         # Calculate Candidate Count safely
         c_count = len(final_state.get("candidates_20", [])) + len(final_state.get("candidates_40", []))
 
-        return {
+        result = {
             "message_id": message_id,
             "decision": final.get("decision", "unknown"),
             "signature": final.get("signature"),
@@ -134,3 +134,6 @@ class IBSEAgentService:
             "byte_len": final.get("byte_len_cp949", 0),
             "candidates_count": c_count
         }
+        
+        logger.info(f"IBSE Result for {message_id}: decision={result['decision']}, sig={result['signature']}, len={result['byte_len']}")
+        return result

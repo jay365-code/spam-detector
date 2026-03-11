@@ -139,6 +139,12 @@ async def compare_results(
         else:
              df['code'] = ""
 
+        # Determine Semantic Class column
+        if 'Semantic Class' in df.columns:
+            df['semantic_class'] = df['Semantic Class'].fillna("").astype(str)
+        else:
+            df['semantic_class'] = ""
+
         # Occurrence Index for Duplicates
         # This handles multiple identical messages by assigning 1, 2, 3...
         df['cc_idx'] = df.groupby('norm_msg').cumcount() + 1
@@ -243,10 +249,21 @@ async def compare_results(
         })
 
     # 자동 요약 생성
+    type_b_url_count = len(df_l[df_l['semantic_class'] == "Type_B (URL)"])
+    type_b_sig_count = len(df_l[df_l['semantic_class'] == "Type_B (SIGNATURE)"])
+    type_b_both_count = len(df_l[df_l['semantic_class'] == "Type_B (URL, SIGNATURE)"])
+    type_b_none_count = len(df_l[df_l['semantic_class'] == "Type_B (NONE)"])
+    type_b_total_count = len(df_l[df_l['semantic_class'].str.startswith("Type_B")])
+
     summary_dict = {
         "sheet_used": sheet_name,
         "total_human": len(df_h),
         "total_llm": len(df_l),
+        "type_b_total_count": type_b_total_count,
+        "type_b_url_count": type_b_url_count,
+        "type_b_sig_count": type_b_sig_count,
+        "type_b_both_count": type_b_both_count,
+        "type_b_none_count": type_b_none_count,
         "human_spam_count": int(df_h['is_spam'].sum()),
         "llm_spam_count": int(df_l['is_spam'].sum()),
         "human_spam_rate": float(df_h['is_spam'].mean()) if len(df_h) > 0 else 0.0,

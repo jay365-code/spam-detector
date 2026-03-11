@@ -769,17 +769,17 @@ function App() {
 
   // [New] Filter & Count Logic
   const allCount = logs.length;
-  const spamCount = logs.filter(l => l?.result?.is_spam && l?.result?.semantic_class !== 'Type_B').length;
+  const spamCount = logs.filter(l => l?.result?.is_spam && !l?.result?.semantic_class?.startsWith('Type_B')).length;
   const hamCount = logs.filter(l => l?.result && !l.result.is_spam).length;
-  const fpSensitiveCount = logs.filter(l => l?.result?.semantic_class === 'Type_B').length;
+  const fpSensitiveCount = logs.filter(l => l?.result?.semantic_class?.startsWith('Type_B')).length;
 
   const filteredLogs = logs
     .map((log, originalIdx) => ({ ...log, originalIdx }))
     .filter(log => {
       // Apply Filter
-      if (logFilter === 'SPAM' && (!log.result || !log.result.is_spam || log.result.semantic_class === 'Type_B')) return false;
+      if (logFilter === 'SPAM' && (!log.result || !log.result.is_spam || log.result.semantic_class?.startsWith('Type_B'))) return false;
       if (logFilter === 'HAM' && (!log.result || log.result.is_spam)) return false;
-      if (logFilter === 'FP_SENSITIVE' && log.result?.semantic_class !== 'Type_B') return false;
+      if (logFilter === 'FP_SENSITIVE' && !log.result?.semantic_class?.startsWith('Type_B')) return false;
 
       // Apply Search
       if (searchQuery.trim()) {
@@ -1012,9 +1012,9 @@ function App() {
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         {log.result ? (
                           <>
-                            {log.result.semantic_class === 'Type_B' ? (
+                            {log.result.semantic_class?.startsWith('Type_B') ? (
                               <span className="text-orange-400 flex items-center gap-1 bg-orange-400/10 px-1.5 rounded text-xs font-bold whitespace-nowrap">
-                                <AlertCircle className="w-3 h-3" /> FP SENSITIVE ({Math.round(log.result.spam_probability * 100)}%) - {getCodeDescription(log.result.classification_code) || '사칭/위장형 스팸'}
+                                <AlertCircle className="w-3 h-3" /> FP SENSITIVE ({Math.round(log.result.spam_probability * 100)}%) - {log.result.semantic_class.replace('Type_B ', '')} - {getCodeDescription(log.result.classification_code) || '사칭/위장형 스팸'}
                               </span>
                             ) : log.result.is_spam ? (
                               <span className="text-red-400 flex items-center gap-1 bg-red-400/10 px-1.5 rounded text-xs font-bold whitespace-nowrap">

@@ -145,9 +145,22 @@ def generate_summary_text(metrics: Dict[str, Any], advanced: Dict[str, Any]) -> 
     fp = metrics['fp']
     fn = metrics['fn']
     
+    type_b_total = metrics.get('type_b_total_count', 0)
+    type_b_url = metrics.get('type_b_url_count', 0)
+    type_b_sig = metrics.get('type_b_sig_count', 0)
+    type_b_both = metrics.get('type_b_both_count', 0)
+    type_b_none = metrics.get('type_b_none_count', 0)
+    
     summary = f"""본 LLM 기반 Spam Detector는 Human 판정 대비 **Accuracy {accuracy_pct}%**를 달성했으며, Cohen's Kappa **κ={kappa}** ({kappa_status})로 우연적 일치를 제외하더라도 통계적으로 유의미한 합의를 보입니다.
 
 불일치 케이스는 총 {fp + fn}건 (FN {fn}건, FP {fp}건)이며, 이는 운영 정책 조정 및 모델 튜닝을 통해 개선 가능한 영역입니다.
+
+**Type_B (FP Sentinel 보호) 분석**:
+총 **{type_b_total}**건이 학습 데이터 오염 방지를 위해 Type_B로 분류되었습니다.
+- **Type_B (URL, SIGNATURE)**: {type_b_both}건
+- **Type_B (URL)**: {type_b_url}건
+- **Type_B (SIGNATURE)**: {type_b_sig}건
+- **Type_B (NONE)**: {type_b_none}건 (단속 무기 미추출 케이스)
 
 **종합 판정**: 본 모델은 **{primary_status}** 수준입니다."""
     

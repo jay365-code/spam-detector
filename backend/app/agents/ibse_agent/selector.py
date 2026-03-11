@@ -4,8 +4,7 @@ import dataclasses
 import asyncio
 from typing import List, Optional
 from .state import IBSEState, Candidate
-
-# Logger Setup
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception, before_sleep_log
 
 
 def _normalize_llm_content(content) -> str:
@@ -108,6 +107,49 @@ candidates_40: {candidates_40_json}
     def __init__(self):
         from app.core.llm_manager import key_manager
         self._key_manager = key_manager
+        self._loop_bound_clients = {}
+
+    def _get_cached_client(self, provider: str, api_key: str, model_name: str):
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        cache_key = f"{provider}_{api_key}_{model_name}"
+        dict_key = (cache_key, current_loop)
+
+        if dict_key in self._loop_bound_clients:
+            return self._loop_bound_clients[dict_key]
+
+        logger.info(f"[LLMSelector] Instantiating new LLM client for {provider} ({model_name})")
+        
+        if provider == "OPENAI":
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=api_key, max_retries=0)
+        elif provider == "GEMINI":
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            safety_settings = {
+                "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
+                "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
+                "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
+                "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+            }
+            client = ChatGoogleGenerativeAI(
+                model=model_name if "gemini" in model_name else "gemini-1.5-flash",
+                google_api_key=api_key,
+                temperature=0.0,
+                safety_settings=safety_settings,
+                convert_system_message_to_human=True,
+                max_retries=0
+            )
+        elif provider == "CLAUDE":
+            import anthropic
+            client = anthropic.AsyncAnthropic(api_key=api_key, max_retries=0)
+        else:
+            raise ValueError(f"Unsupported provider: {provider}")
+            
+        self._loop_bound_clients[dict_key] = client
+        return client
 
     @property
     def model_name(self) -> str:
@@ -152,24 +194,24 @@ candidates_40: {candidates_40_json}
 
     async def _call_llm(self, system_prompt: str, user_prompt: str) -> dict:
         from app.core.llm_manager import key_manager
-        import time
 
-        max_retries = 3 # Safety break, limit total attempts
-        attempt = 0
-        
-        while attempt < max_retries:
-            attempt += 1
-            # [병렬 처리] 다른 컴포넌트가 이미 모든 키를 소진했으면 즉시 중단
-            if key_manager.is_quota_exhausted(self.provider):
-                logger.warning(f"[LLMSelector] {self.provider} quota already exhausted. Skipping.")
-                return {"error": "Quota exhausted", "decision": "unextractable"}
-            # [KeyManager 동기화] 호출 시마다 현재 키 사용 (Content Agent 등과 index 공유)
-            self.api_key = key_manager.get_key(self.provider)
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=1, max=5),
+            retry=retry_if_exception(lambda e: "No retry." not in str(e)),
+            before_sleep=before_sleep_log(logger, logging.WARNING),
+            reraise=True
+        )
+        async def do_call():
+            provider = self.provider
+            if key_manager.is_quota_exhausted(provider):
+                raise Exception(f"{provider} quota globally exhausted. No retry.")
+            
+            api_key = key_manager.get_key(provider)
+            client_instance = self._get_cached_client(provider, api_key, self.model_name)
+            
             try:
-                if self.provider == "OPENAI":
-                    from openai import AsyncOpenAI
-                    client = AsyncOpenAI(api_key=self.api_key)
-                    # o1/o3/o4/gpt-5 계열 reasoning 모델은 temperature 파라미터 미지원
+                if provider == "OPENAI":
                     _no_temp_prefixes = ("o1", "o3", "o4", "gpt-5")
                     _supports_temp = not any(self.model_name.startswith(p) for p in _no_temp_prefixes)
                     _kwargs = {
@@ -182,62 +224,37 @@ candidates_40: {candidates_40_json}
                     }
                     if _supports_temp:
                         _kwargs["temperature"] = 0.0
-                    response = await asyncio.wait_for(client.chat.completions.create(**_kwargs), timeout=90.0)
+                    response = await asyncio.wait_for(client_instance.chat.completions.create(**_kwargs), timeout=120.0)
                     content = response.choices[0].message.content
                     
-                elif self.provider == "GEMINI":
-                    from langchain_google_genai import ChatGoogleGenerativeAI
-                    
-                    # [Safety Settings]
-                    safety_settings = {
-                        "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
-                        "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
-                        "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
-                        "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
-                    }
-                    
-                    llm = ChatGoogleGenerativeAI(
-                        model=self.model_name if "gemini" in self.model_name else "gemini-1.5-flash",
-                        google_api_key=self.api_key,
-                        temperature=0.0,
-                        safety_settings=safety_settings,
-                        convert_system_message_to_human=True
-                    )
-                    
-                    # System prompt handling
+                elif provider == "GEMINI":
                     from langchain_core.messages import SystemMessage, HumanMessage
                     messages = [
                         SystemMessage(content=system_prompt),
                         HumanMessage(content=user_prompt)
                     ]
-                    
-                    response = await asyncio.wait_for(llm.ainvoke(messages), timeout=90.0)
+                    response = await asyncio.wait_for(client_instance.ainvoke(messages), timeout=120.0)
                     content = _normalize_llm_content(response.content)
                     
-                elif self.provider == "CLAUDE":
-                    import anthropic
-                    client = anthropic.AsyncAnthropic(api_key=self.api_key)
+                elif provider == "CLAUDE":
                     model = self.model_name if "claude" in self.model_name else "claude-3-haiku-20240307"
-                    response = await asyncio.wait_for(client.messages.create(
+                    response = await asyncio.wait_for(client_instance.messages.create(
                         model=model,
                         max_tokens=1024,
                         system=system_prompt,
                         messages=[
                             {"role": "user", "content": user_prompt}
                         ]
-                    ), timeout=90.0)
+                    ), timeout=120.0)
                     content = response.content[0].text
-                    
                 else:
-                    return {"error": f"Unsupported Provider: {self.provider}"}
+                    raise Exception(f"Unsupported Provider: {provider}. No retry.")
                 
-                return self._parse_json(content)
+                key_manager.report_success(provider)
+                return content
                 
             except (Exception, asyncio.TimeoutError) as e:
                 error_msg = str(e).lower()
-                provider = self.provider
-
-                # [Concurrency Fix] Explicit type check for Google API errors (Gemini)
                 is_google_quota_error = False
                 if provider == "GEMINI":
                     try:
@@ -247,41 +264,28 @@ candidates_40: {candidates_40_json}
                     except ImportError:
                         pass
 
-                # Timeout logic separated
                 is_timeout = isinstance(e, asyncio.TimeoutError) or "timeout" in error_msg
                 if is_timeout:
-                    logger.warning(f"[LLMSelector] Timeout Detected (Attempt {attempt}/{max_retries}). Sleeping 5s before retry...")
-                    await asyncio.sleep(5)
-                    continue
+                    logger.warning(f"[LLMSelector] Timeout Detected (120s). Tenacity will backoff and retry.")
+                    raise Exception("Async LLM Timeout") from e
 
                 if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
-                    logger.warning(f"[LLMSelector] 429/Quota Detected. Error: {error_msg}")
-                    logger.warning(f"[LLMSelector] {provider} issue detected. Attempting key rotation...")
+                    logger.warning(f"[LLMSelector] 429/Quota Detected. Rotating key...")
+                    is_rotated = key_manager.rotate_key(provider, failed_key=api_key)
+                    if not is_rotated:
+                        logger.error(f"[LLMSelector] Global exhaustion reached for {provider}.")
+                        raise Exception(f"{provider} quota globally exhausted. No retry.") from e
+                    raise e
                     
-                    current_key = self.api_key
-                    
-                    if key_manager.rotate_key(provider, failed_key=current_key):
-                        logger.info(f"[LLMSelector] Rotated to next {provider} key. Retrying...")
-                        self.api_key = key_manager.get_key(provider)
-                        
-                        cooldown = key_manager.get_cooldown_remaining(provider)
-                        if cooldown > 0:
-                            logger.info(f"[LLMSelector] Global cooldown activated. Pausing {cooldown:.1f}s...")
-                            await asyncio.sleep(cooldown) # Use async sleep
-                        else:
-                            await asyncio.sleep(1) # Short delay before retry
-                            
-                        continue
-                    else:
-                        logger.error(f"[LLMSelector] All {provider} keys exhausted or rotation failed.")
-                        return {"error": str(e), "decision": "unextractable"}
-                
                 logger.error(f"LLM Call Error: {e}")
-                return {"error": str(e), "decision": "unextractable"}
-                
-        # Loop finished without return -> max retries exceeded
-        logger.error(f"[LLMSelector] Max retries ({max_retries}) exceeded.")
-        return {"error": "Max retries exceeded", "decision": "unextractable"}
+                raise e
+
+        try:
+            content = await do_call()
+            return self._parse_json(content)
+        except Exception as e:
+            logger.error(f"[LLMSelector] Final Call failed after retries: {e}")
+            return {"error": str(e), "decision": "unextractable"}
 
     def _parse_json(self, content: str) -> dict:
         try:

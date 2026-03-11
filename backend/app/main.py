@@ -1073,6 +1073,13 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                     msg_text = f"✅ **정상 문자**\n- **사유**: {reason}\n"
                                 
                                 await send_text_chunk(msg_text)
+                                
+                                # Step B-2: Append IBSE Data if extracted
+                                ibse_sig = final_res.get("ibse_signature")
+                                ibse_len = final_res.get("ibse_len")
+                                if ibse_sig:
+                                    ibse_text = f"\n**[IBSE 시그니처 추출 결과]**\n- **시그니처**: `{ibse_sig}`\n- **길이**: {ibse_len} bytes (CP949)\n"
+                                    await send_text_chunk(ibse_text)
 
                                 # Step C: Post-processing Summary (RAG-based)
                                 if final_res.get("url_result") or final_is_spam:

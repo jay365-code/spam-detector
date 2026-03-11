@@ -193,7 +193,7 @@ class ExcelHandler:
                 reason_val = ws.cell(row=row_idx, column=reason_col).value if reason_col else ""
                 semantic_val = ws.cell(row=row_idx, column=semantic_col).value if semantic_col else ""
                 
-                is_type_b = bool(semantic_val and str(semantic_val) == "Type_B") or bool(
+                is_type_b = bool(semantic_val and str(semantic_val).startswith("Type_B")) or bool(
                     reason_val and "[FP Sentinel Override]" in str(reason_val)
                 )
                 is_separated = False
@@ -461,7 +461,7 @@ class ExcelHandler:
 
                     # Write Result
                     semantic_val = result.get("semantic_class", "")
-                    is_type_b = semantic_val == "Type_B"
+                    is_type_b = str(semantic_val).startswith("Type_B")
                     
                     if is_type_b:
                         # Type_B: 구분 공란, 분류 코드는 입력
@@ -801,7 +801,7 @@ class ExcelHandler:
                     # Logic
                     is_spam = result.get("is_spam")
                     semantic_class = result.get("semantic_class", "")
-                    is_type_b = semantic_class == "Type_B"
+                    is_type_b = str(semantic_class).startswith("Type_B")
                     
                     if is_type_b:
                         # Type_B: 구분 공란, 분류 코드 입력
