@@ -13,6 +13,7 @@ LLM_PROVIDERS = ["GEMINI", "OPENAI", "CLAUDE"]
 LLM_MODELS = {
     "GEMINI": [
         {"name": "Gemini 3.0 Flash Preview (Recommended)", "id": "gemini-3-flash-preview"},
+        {"name": "Gemini 3.1 Flash-Lite (Preview)", "id": "gemini-3.1-flash-lite-preview"},
     ],
     "OPENAI": [
         {"name": "GPT-5-mini", "id": "gpt-5-mini"},
