@@ -257,11 +257,12 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
                 else:
                     logger.info(f"[URL Agent] Instantiating new Vision LLM client for {provider} ({model_name})")
                     
+                    from langchain_google_genai import HarmCategory, HarmBlockThreshold
                     safety_settings = {
-                        "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
-                        "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
-                        "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
-                        "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+                        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
                     }
                     llm = ChatGoogleGenerativeAI(
                         model=model_name,
@@ -792,8 +793,27 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                 key_manager.report_success(provider)
                 return response
             except asyncio.TimeoutError as e:
-                logger.warning(f"[URL Agent] {provider} LLM Timeout occurred (45s). Tenacity will sleep and retry.")
-                raise Exception("Async LLM Timeout") from e
+                logger.warning(f"[URL Agent] {provider} LLM Timeout occurred (45s). Attempting Fallback to Sub Model.")
+                sub_model = os.getenv("LLM_SUB_MODEL", "gemini-3.1-flash-lite-preview")
+                fallback_key = key_manager.get_key("GEMINI")
+                if fallback_key:
+                    # _get_cached_client is not directly exposed here, we need ChatGoogleGenerativeAI
+                    try:
+                        from langchain_google_genai import ChatGoogleGenerativeAI
+                        fallback_llm = ChatGoogleGenerativeAI(
+                            model=sub_model,
+                            google_api_key=fallback_key,
+                            temperature=0,
+                            convert_system_message_to_human=True,
+                            max_retries=0
+                        )
+                        response = await asyncio.wait_for(fallback_llm.ainvoke(prompt), timeout=45.0)
+                        return response
+                    except Exception as fallback_e:
+                        logger.error(f"[URL Agent Fallback] Sub model failed: {fallback_e}")
+                        raise Exception("Async LLM Timeout (Fallback failed)") from e
+                else:
+                    raise Exception("Async LLM Timeout (No fallback key)") from e
             except Exception as e:
                 error_msg = str(e).lower()
                 

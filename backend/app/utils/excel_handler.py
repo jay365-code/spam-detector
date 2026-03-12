@@ -852,9 +852,10 @@ class ExcelHandler:
                     
                     # --- URL Collection Logic ---
                     # Only collect URLs from SPAM messages or extracted from HAM
+                    # 사용자의 조건: "메시지가 SPAM이고, 소스 text에 url 필드가 존재하면 TYPE B URL로 판단하고 엑셀 결과에 URL을 작성한다."
+                    # Type_B도 is_spam=True 이므로 해당 로직에 의해 자연스럽게 들어와야 함.
                     if result.get("is_spam") is True or result.get("malicious_url_extracted"):
                         target_url = url_val.strip() if url_val else ""
-                        
                         if target_url:
                             # Clean URL
                             target_url = target_url.rstrip('.,;!?)]}"\'')
@@ -871,13 +872,14 @@ class ExcelHandler:
                                      raw_url_code = str(result.get("classification_code", ""))
                                      _m = re.search(r'\d+', raw_url_code)
                                      url_dedup_code = _m.group(0) if _m else raw_url_code
-                                     if not is_spam:
+                                     if not result.get("is_spam"):
                                          url_dedup_code = extracted_url_code
                                      unique_urls[target_url] = {
                                          "len": self._lenb(target_url),
                                          "code": url_dedup_code,
                                          "malicious_url_extracted": result.get("malicious_url_extracted", False)
                                      }
+
 
                     # --- IBSE Collection Logic ---
                     if result.get("ibse_signature"):

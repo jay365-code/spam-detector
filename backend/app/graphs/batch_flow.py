@@ -255,8 +255,9 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # 본문에 있는 url은 분석은 하되, type 결정에는 input text의 url만 사용
              pre_parsed = state.get("pre_parsed_url")
              is_input_url_present = bool((pre_parsed or "").strip())
-             has_url_alert = final.get("malicious_url_extracted") is True or u_blocked or u_spam
-             has_url_subtype = has_url_alert and is_input_url_present
+
+             # 최종 결과가 SPAM 파생(Type_B 자체도 SPAM)이고 소스 데이터(KISA)의 URL 필드에 값이 존재하면 (URL) 서브타입 지정
+             has_url_subtype = is_input_url_present
              
              has_sig = bool(final.get("ibse_signature"))
              

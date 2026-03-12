@@ -1,4 +1,4 @@
-﻿#  Vibe Coding: AI-Human Collaboration Protocol
+#  Vibe Coding: AI-Human Collaboration Protocol
 
 이 문서는 AI 개발 파트너와 나(인간) 사이의 협업 방식을 정의합니다. 모든 작업은 이 지침을 최우선으로 따릅니다.
 
@@ -33,3 +33,12 @@
 
 ## 7. 테스트 (Testing)
 - 백엔드 테스트는 "pytest" 및 "pytest-asyncio"를 사용하며, 기존의 테스트 코드 구조(	ests/ 경로)를 참고하여 작성합니다.
+
+## 8. 새로운 작업 세션 (새로운 대화창) 시작 시
+- **명시적인 컨텍스트 설정:** 새로운 버전이나 주요 기능 개발을 위해 새 창(Agent)을 시작할 때는, 이전 작업의 완료 상태와 새로운 목표를 명시적으로 알려준다.
+- **Start Comment 예시:**
+  > "우리는 지금까지 스팸 탐지기 프로젝트의 v1.0(URL 분석 기반)을 완성했어. 현재 코드는 로컬 환경에 다 적용되어 있고 메인 브랜치에 커밋해 뒀어.
+  > 
+  > 이제부터는 v2.0 작업을 시작할 거야. 목표는 **'텍스트(Content) 내용 분석을 통한 스팸 차단 기능 추가'**야.
+  > 
+  > 작업 전에 먼저 backend/app/agents/content_agent/ 쪽 코드 구조를 확인하고, 앞으로 어떻게 개발할지 계획(implementation_plan.md)을 세워줘."

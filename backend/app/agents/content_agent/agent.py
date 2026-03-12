@@ -195,11 +195,12 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         if provider == "GEMINI":
             from langchain_google_genai import ChatGoogleGenerativeAI
             # [Safety Settings]
+            from langchain_google_genai import HarmCategory, HarmBlockThreshold
             safety_settings = {
-                "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
-                "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
-                "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
-                "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
             }
             
             # [CRITICAL] max_retries=0 disables Langchain's internal exponential backoff
@@ -272,8 +273,18 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                         try:
                             response = await asyncio.wait_for(llm.ainvoke([HumanMessage(content=prompt)]), timeout=45.0)
                         except asyncio.TimeoutError as e:
-                            logger.warning(f"[{provider}] LLM Timeout occurred (45s). Tenacity will retry.")
-                            raise Exception("Async LLM Timeout") from e
+                            logger.warning(f"[{provider}] LLM Timeout occurred (45s). Attempting Fallback to Sub Model.")
+                            sub_model = os.getenv("LLM_SUB_MODEL", "gemini-3.1-flash-lite-preview")
+                            fallback_key = key_manager.get_key("GEMINI")
+                            if fallback_key:
+                                fallback_llm = self._get_cached_client("GEMINI", fallback_key, sub_model)
+                                try:
+                                    response = await asyncio.wait_for(fallback_llm.ainvoke([HumanMessage(content=prompt)]), timeout=45.0)
+                                except Exception as fallback_e:
+                                    logger.error(f"[Fallback] Sub model also failed: {fallback_e}")
+                                    raise Exception("Async LLM Timeout (Fallback failed)") from e
+                            else:
+                                raise Exception("Async LLM Timeout (No fallback key)") from e
                         
                         content = _normalize_llm_content(response.content)
                         
@@ -1116,8 +1127,17 @@ Step 6. SPAM 확정 조건:
                     try:
                         response = await asyncio.wait_for(llm.ainvoke([HumanMessage(content=prompt)]), timeout=45.0)
                     except asyncio.TimeoutError as e:
-                        logger.warning(f"[{provider}] Summary LLM Timeout occurred (45s). Tenacity will retry.")
-                        raise Exception("Async Summary LLM Timeout") from e
+                        logger.warning(f"[{provider}] Summary LLM Timeout occurred. Attempting fallback.")
+                        sub_model = os.getenv("LLM_SUB_MODEL", "gemini-3.1-flash-lite-preview")
+                        fallback_key = key_manager.get_key("GEMINI")
+                        if fallback_key:
+                            fallback_llm = self._get_cached_client("GEMINI", fallback_key, sub_model)
+                            try:
+                                response = await asyncio.wait_for(fallback_llm.ainvoke([HumanMessage(content=prompt)]), timeout=45.0)
+                            except Exception:
+                                raise Exception("Async Summary LLM Timeout (Fallback failed)") from e
+                        else:
+                            raise Exception("Async Summary LLM Timeout") from e
                         
                     key_manager.report_success(provider)
                     return response
@@ -1159,8 +1179,17 @@ Step 6. SPAM 확정 조건:
                         try:
                             response = await asyncio.wait_for(new_llm.ainvoke([HumanMessage(content=prompt)]), timeout=45.0)
                         except asyncio.TimeoutError as e:
-                            logger.warning(f"[ContentAgent] Rotated Summary LLM Timeout occurred (45s). Tenacity will retry.")
-                            raise Exception("Async Summary LLM Timeout after rotation") from e
+                            logger.warning(f"[ContentAgent] Rotated Summary LLM Timeout. Attempting fallback.")
+                            sub_model = os.getenv("LLM_SUB_MODEL", "gemini-3.1-flash-lite-preview")
+                            fallback_key = key_manager.get_key("GEMINI")
+                            if fallback_key:
+                                fallback_llm = self._get_cached_client("GEMINI", fallback_key, sub_model)
+                                try:
+                                    response = await asyncio.wait_for(fallback_llm.ainvoke([HumanMessage(content=prompt)]), timeout=45.0)
+                                except Exception:
+                                    raise Exception("Async Summary LLM Timeout after rotation (Fallback failed)") from e
+                            else:
+                                raise Exception("Async Summary LLM Timeout after rotation") from e
                             
                         key_manager.report_success(provider)
                         return response

@@ -333,7 +333,8 @@ function App() {
         const data = JSON.parse(event.target?.result as string);
 
         // Restore logs and associated filename
-        setLogs(data.logs.map((l: any) => ({
+        const validLogs = (data.logs || []).filter((l: any) => l !== null && l !== undefined);
+        setLogs(validLogs.map((l: any) => ({
           ...l,
           timestamp: l.timestamp ? new Date(l.timestamp) : new Date()
         })));
@@ -784,9 +785,24 @@ function App() {
       // Apply Search
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
+        
+        // 검색 범위를 헤더 표시 텍스트까지 확장
+        let headerText = '';
+        if (log.result) {
+          if (log.result.semantic_class?.startsWith('Type_B')) {
+            headerText = `fp sensitive ${log.result.semantic_class.toLowerCase()} ${getCodeDescription(log.result.classification_code)?.toLowerCase() || ''}`;
+          } else if (log.result.is_spam) {
+            headerText = `spam ${getCodeDescription(log.result.classification_code)?.toLowerCase() || ''}`;
+          } else {
+            headerText = 'ham';
+          }
+        }
+
         const matchesMsg = log.message?.toLowerCase().includes(query);
         const matchesReason = log.result?.reason?.toLowerCase().includes(query);
-        return matchesMsg || matchesReason;
+        const matchesHeader = headerText.includes(query);
+        
+        return matchesMsg || matchesReason || matchesHeader;
       }
       return true;
     });
