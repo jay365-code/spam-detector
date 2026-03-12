@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Upload, FileSpreadsheet, RefreshCw, AlertCircle, ChevronRight, BarChart3, Search, Download, Check, Database, Copy, GitCompare, X } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { RagRegistrationModal } from '../RagRegistrationModal';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -781,10 +782,8 @@ export default function ValidatorPage() {
                             <span className="w-1 h-6 bg-indigo-500 rounded-full inline-block"></span>
                             분석 요약
                         </h3>
-                        <div className="prose prose-sm max-w-none text-slate-700 leading-relaxed">
-                            {data.auto_summary.split('\n\n').map((para, i) => (
-                                <p key={i} className="mb-3">{para}</p>
-                            ))}
+                        <div className="prose prose-sm max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap">
+                            <ReactMarkdown>{data.auto_summary.replace(/\*\*(.*?)\*\*(?=[가-힣])/g, '**$1** ')}</ReactMarkdown>
                         </div>
                     </div>
 

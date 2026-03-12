@@ -201,7 +201,8 @@ def _process_dataframes(df_human, df_llm, sheet_name):
     # 1. Human이 SPAM (True) 이고 AI가 Type B인 경우 -> AI도 SPAM (True) 으로 간주 (뒷단 검출 예정이므로 FN 제외)
     # 2. Human이 HAM (False) 이고 AI가 Type B인 경우 -> AI도 HAM (False) 으로 간주 (FP로 잡히지 않도록)
     # ----------------------------------------------------
-    type_b_mask = merged_all['reason_llm'].astype(str).str.contains(r'\[FP Sentinel Override\]|Type_B', case=False, na=False)
+    type_b_mask = merged_all['reason_llm'].astype(str).str.contains(r'\[FP Sentinel Override\]', case=False, na=False) | \
+                  merged_all['semantic_class_llm'].astype(str).str.contains(r'Type_B', case=False, na=False)
     
     # Human이 SPAM인 케이스
     merged_all.loc[type_b_mask & (merged_all['is_spam_human'] == True), 'is_spam_llm'] = True

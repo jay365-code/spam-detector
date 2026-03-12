@@ -857,7 +857,7 @@ function App() {
                 }}
               />
             </div>
-            {(isProcessing || (downloadUrl && progress.total > 0)) && (
+            {(isProcessing || downloadUrl) && (
               <div className="flex-1 max-w-sm min-w-[300px]">
                 <StatusPanel
                   current={progress.current}
