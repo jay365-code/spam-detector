@@ -531,31 +531,26 @@ function App() {
 
         // [New] Handle Batch Process Update (Real-time Streaming)
         if (data.type === 'BATCH_PROCESS_UPDATE') {
-          // Update Progress Logic (Moved inside to avoid early return issue)
+          // Update Progress Logic
           if (data.current !== undefined && data.total !== undefined) {
             setProgress({ current: data.current, total: data.total });
             if (data.current < data.total) {
               setIsProcessing(true);
             } else {
-              // Only set to false if we are sure it's done?
-              // Actually, batch update implies ongoing. 
-              // Wait for final "Processing complete" message safely, 
-              // but if current == total, we might be done.
               if (data.current === data.total) {
-                // Don't set isProcessing false here immediately, let the final response handle it 
-                // or just leave it true.
+                // Done matching backend logic
+                setIsProcessing(false); // Make sure to stop spinner when done
               }
             }
           }
 
+          // If this is just the initial broadcast, skip adding an empty log row
+          if (data.status === 'started') {
+              return;
+          }
+
           setLogs(prev => {
             const newLogs = [...prev];
-            // Ensure array is large enough (sparse array handling)
-            if (newLogs.length <= data.index) {
-              // Fill gaps if needed, though usually pushed sequentially on upload
-              // Here we just assign to the specific index
-            }
-
             // Construct Log Object
             const logItem = {
               excel_row_number: data.index + 2, // [Fix] Store Excel Row Number (Index + Header + 1-based)
@@ -769,14 +764,18 @@ function App() {
   };
 
   // [New] Filter & Count Logic
-  const allCount = logs.length;
-  const spamCount = logs.filter(l => l?.result?.is_spam && !l?.result?.semantic_class?.startsWith('Type_B')).length;
-  const hamCount = logs.filter(l => l?.result && !l.result.is_spam).length;
-  const fpSensitiveCount = logs.filter(l => l?.result?.semantic_class?.startsWith('Type_B')).length;
+  // Filter out completely undefined/null items from sparse arrays safely
+  const validLogs = logs.map((log, originalIdx) => ({ log, originalIdx })).filter(item => item.log != null);
+  console.log("DEBUG: All logs:", logs);
+  console.log("DEBUG: Valid logs:", validLogs);
+  
+  const allCount = validLogs.length;
+  const spamCount = validLogs.filter(({ log }) => log?.result?.is_spam && !log?.result?.semantic_class?.startsWith('Type_B')).length;
+  const hamCount = validLogs.filter(({ log }) => log?.result && !log.result.is_spam).length;
+  const fpSensitiveCount = validLogs.filter(({ log }) => log?.result?.semantic_class?.startsWith('Type_B')).length;
 
-  const filteredLogs = logs
-    .map((log, originalIdx) => ({ ...log, originalIdx }))
-    .filter(log => {
+  const filteredLogs = validLogs
+    .filter(({ log }) => {
       // Apply Filter
       if (logFilter === 'SPAM' && (!log.result || !log.result.is_spam || log.result.semantic_class?.startsWith('Type_B'))) return false;
       if (logFilter === 'HAM' && (!log.result || log.result.is_spam)) return false;
@@ -805,7 +804,8 @@ function App() {
         return matchesMsg || matchesReason || matchesHeader;
       }
       return true;
-    });
+    })
+    .map(({ log, originalIdx }) => ({ ...log, originalIdx }));
 
   return (
     <div className="h-screen bg-slate-900 text-white flex flex-col overflow-hidden">

@@ -1396,6 +1396,22 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                     # Create tasks (create_task으로 취소 가능하게)
                     tasks = [asyncio.create_task(sem_task(i, messages[i], s1_results[i])) for i in range(len(messages))]
                     
+                    # [UI Fix] Send initial state so frontend immediately knows Total count
+                    try:
+                        asyncio.run_coroutine_threadsafe(
+                            manager.send_personal_message({
+                                "type": "BATCH_PROCESS_UPDATE",
+                                "index": start_index,
+                                "message": "",
+                                "status": "started",
+                                "result": None,
+                                "current": start_index,
+                                "total": total_count
+                            }, client_id), loop
+                        )
+                    except Exception as ws_ex:
+                        logger.warning(f"Initial WS Streaming Failed: {ws_ex}")
+
                     # [Phase 4] 취소 모니터: 5초마다 is_cancelled 또는 Ctrl+C 확인 → 취소 시 모든 태스크 cancel
                     cancelled_by_user = False
                     async def cancel_checker():

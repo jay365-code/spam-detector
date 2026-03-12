@@ -34,7 +34,7 @@ class IBSEAgentService:
         
         # 2. General URL Regex (Normal URLs - Skip LLM)
         general_url_pattern = re.compile(
-            r'(?:https?://|www\.|(?:^|\s)[a-zA-Z0-9-]+\.(?:com|co\.kr|net|org|kr|xyz|me)(?:\s|$))', 
+            r'(?:https?://[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+|www\.[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+|(?:^|\s)[a-zA-Z0-9-]+\.(?:com|co\.kr|net|org|kr|xyz|me)(?:\s|$))', 
             re.IGNORECASE | re.ASCII
         )
         

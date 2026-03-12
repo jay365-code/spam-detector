@@ -200,7 +200,11 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                  
              existing_reason = final.get("reason", "")
              if "[FP Sentinel Override]" not in existing_reason:
-                 final["reason"] = f"{existing_reason} | [FP Sentinel Override] 사적/경조사 위장(Type_B) 확정 차단"
+                 has_sig = bool(final.get("ibse_signature"))
+                 if has_sig:
+                     final["reason"] = f"{existing_reason} | [FP Sentinel Override] 사적/경조사 위장(Type_B) + 시그니처: {final.get('ibse_signature')}"
+                 else:
+                     final["reason"] = f"{existing_reason} | [FP Sentinel Override] 사적/경조사 위장(Type_B) 확정 차단 (시그니처 없음)"
 
         # Ruleset 1.4: Type_B (Garbage Obfuscation)
         # 내용 없이 필터 우회용 문자 조각들로만 구성된 메시지 (학습 데이터 오염 방지)

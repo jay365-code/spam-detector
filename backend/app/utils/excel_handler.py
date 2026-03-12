@@ -651,39 +651,16 @@ class ExcelHandler:
                 counter += 1
             
             os.makedirs(output_dir, exist_ok=True)
-            
             # 2. Read Text File with Encoding Detection (UTF-8 prior to CP949)
-            # 2. Read Text File with Robust Encoding Detection (chardet)
-            import chardet
-
             raw_data = b""
             try:
                 with open(file_path, 'rb') as f:
-                    # Read enough bytes for detection (e.g., 100KB or full file)
                     raw_data = f.read()
             except Exception as e:
                 logger.error(f"Failed to read file for encoding detection: {e}")
                 raise e
 
-            # Detect encoding
-            detected = chardet.detect(raw_data)
-            encoding_used = detected.get('encoding')
-            confidence = detected.get('confidence', 0)
-            
-            logger.info(f"Detected encoding: {encoding_used} (Confidence: {confidence}) for {original_filename}")
-
-            # Fallback logic
-            # User report: "Previously worked without UTF-8 conversion" -> Likely EUC-KR/CP949 was default or successfully fell back
-            # PROBLEM: Chardet sometimes guesses ISO-8859-1 (Latin1) for EUC-KR files with high confidence.
-            # ISO-8859-1 ALWAYS succeeds in decoding but produces garbage (Mojibake).
-            # SOLUTION: We MUST try UTF-8 and CP949 (Korean) *strictly* first, regardless of what Chardet thinks.
-            # EUC-KR files: utf-8 fails → cp949 succeeds (correct fallback)
-            encodings_to_try = ['utf-8', 'cp949', 'euc-kr']
-            
-            if encoding_used and encoding_used.lower() not in encodings_to_try:
-                 encodings_to_try.append(encoding_used)
-            
-            encodings_to_try.append('latin1') # Last resort
+            encodings_to_try = ['utf-8', 'cp949', 'euc-kr', 'latin1']
             
             # Remove duplicates while preserving order
             encodings_to_try = list(dict.fromkeys(encodings_to_try))
