@@ -94,7 +94,18 @@ async def compare_results(
         human_content = await human_file.read()
         llm_content = await llm_file.read()
         df_human = pd.read_excel(io.BytesIO(human_content), sheet_name=sheet_name)
-        df_llm = pd.read_excel(io.BytesIO(llm_content), sheet_name=sheet_name)
+        
+        # Parse all sheets for LLM to get the signature sheet
+        xl_llm = pd.ExcelFile(io.BytesIO(llm_content))
+        df_llm = xl_llm.parse(sheet_name)
+        
+        # Find Signature sheet ('문자문장차단등록' or similar)
+        df_llm_sig = None
+        for s in xl_llm.sheet_names:
+            if '문자문장차단등록' in s or '차단' in s:
+                df_llm_sig = xl_llm.parse(s)
+                break
+                
     except ValueError as e:
         logger.warning(f"Sheet not found: {sheet_name} - {e}")
         raise HTTPException(status_code=400, detail=f"Sheet '{sheet_name}' not found or error: {str(e)}")
@@ -102,7 +113,7 @@ async def compare_results(
         logger.exception("Excel 로드 중 오류")
         raise HTTPException(status_code=400, detail=f"Error reading excel file: {str(e)}")
 
-    return _process_dataframes(df_human, df_llm, sheet_name)
+    return _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig)
 
 @app.post("/compare/auto")
 async def compare_auto(
@@ -125,7 +136,16 @@ async def compare_auto(
         
     try:
         df_human = pd.read_excel(human_path, sheet_name=sheet_name)
-        df_llm = pd.read_excel(llm_path, sheet_name=sheet_name)
+        
+        xl_llm = pd.ExcelFile(llm_path)
+        df_llm = xl_llm.parse(sheet_name)
+        
+        # Find Signature sheet
+        df_llm_sig = None
+        for s in xl_llm.sheet_names:
+            if '문자문장차단등록' in s or '차단' in s:
+                df_llm_sig = xl_llm.parse(s)
+                break
     except ValueError as e:
         logger.warning(f"Sheet not found: {sheet_name} - {e}")
         raise HTTPException(status_code=400, detail=f"Sheet '{sheet_name}' not found or error: {str(e)}")
@@ -133,10 +153,9 @@ async def compare_auto(
         logger.exception("Excel 로드 중 오류")
         raise HTTPException(status_code=400, detail=f"Error reading excel file: {str(e)}")
 
-    return _process_dataframes(df_human, df_llm, sheet_name)
+    return _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig)
 
-
-def _process_dataframes(df_human, df_llm, sheet_name):
+def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
 
     # Check Columns
     required_cols = ["메시지", "구분"]
@@ -282,6 +301,46 @@ def _process_dataframes(df_human, df_llm, sheet_name):
             "policy_interpretation": policy_tag
         })
 
+    # Generate Type B List
+    type_b_items = []
+    
+    # Pre-process signature signatures mapped by matching message text
+    signature_map = {}
+    if df_llm_sig is not None and not df_llm_sig.empty:
+        # Looking for '메시지' and '문자열' columns
+        msg_col = next((c for c in df_llm_sig.columns if '메시지' in str(c)), None)
+        sig_col = next((c for c in df_llm_sig.columns if '문자열' in str(c) or 'signature' in str(c).lower()), None)
+        
+        if msg_col and sig_col:
+            for _, sig_row in df_llm_sig.iterrows():
+                try:
+                    s_msg = normalize_text(str(sig_row[msg_col]))
+                    s_val = str(sig_row[sig_col])
+                    if s_val and s_val != 'nan':
+                        signature_map[s_msg] = s_val
+                except Exception:
+                    pass
+
+    type_b_df = df_l[df_l['semantic_class'].str.startswith("Type_B", na=False)]
+    for _, row in type_b_df.iterrows():
+        # Get URL if it exists
+        extracted_url = str(row['URL']) if 'URL' in row and pd.notna(row['URL']) else ""
+        
+        # Look up signature based on message content
+        norm_msg = normalize_text(str(row['메시지']))
+        extracted_signature = signature_map.get(norm_msg, "")
+        
+        type_b_items.append({
+            "message_preview": str(row['메시지'])[:80] + "...",
+            "message_full": str(row['메시지']),
+            "semantic_class": str(row['semantic_class']),
+            "llm_reason": str(row.get('reason', '')),
+            "llm_code": str(row.get('code', '')),
+            "is_spam": bool(row['is_spam']),
+            "extracted_url": extracted_url,
+            "extracted_signature": extracted_signature
+        })
+
     # 자동 요약 생성
     type_b_url_count = len(df_l[df_l['semantic_class'] == "Type_B (URL)"])
     type_b_sig_count = len(df_l[df_l['semantic_class'] == "Type_B (SIGNATURE)"])
@@ -332,6 +391,7 @@ def _process_dataframes(df_human, df_llm, sheet_name):
     return {
         "summary": summary_dict,
         "diffs": diffs,
+        "type_b_items": type_b_items,
         "missing_in_human": missing_in_human,
         "missing_in_llm": missing_in_llm,
         "auto_summary": auto_summary

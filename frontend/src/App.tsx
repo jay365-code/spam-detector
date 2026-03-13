@@ -1084,20 +1084,38 @@ function App() {
                       </div>
 
                       {log.result && (
-                        <div className="text-xs text-slate-500 mt-1 pl-2 border-l-2 border-slate-700">
-                          <div>{cleanReason}</div>
+                        <div className="text-xs text-slate-500 mt-1 pl-2 border-l-2 border-slate-700 space-y-1.5">
+                          <div className="text-slate-400 break-words">{cleanReason}</div>
+                          
+                          {/* URL 출력 보장 */}
+                          {log.result.url_result?.details?.extracted_url && log.result.url_result.details.extracted_url !== "Unknown" && (
+                            <div className="flex items-center gap-1.5 text-blue-400 border-l border-blue-500/30 pl-2">
+                              <span className="font-semibold border border-blue-400/30 bg-blue-400/10 px-1 py-0.5 rounded shadow-sm text-[10px] uppercase tracking-wider shrink-0">
+                                추출된 URL
+                              </span>
+                              <span className="bg-slate-800/80 px-1.5 py-1 rounded text-slate-300 font-mono text-[11px] break-all border border-slate-700/50">
+                                {log.result.url_result.details.extracted_url}
+                                {log.result.url_result.details.final_url && log.result.url_result.details.extracted_url !== log.result.url_result.details.final_url && (
+                                    <span className="text-slate-500 ml-1">→ {log.result.url_result.details.final_url}</span>
+                                )}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* 시그니처 출력 보장 */}
                           {log.result.ibse_signature && (
-                            <div className="mt-1.5 flex items-center gap-1.5 text-indigo-400">
-                              <span className="font-semibold border border-indigo-400/30 bg-indigo-400/10 px-1 rounded shadow-sm text-[10px] uppercase tracking-wider">
+                            <div className="flex items-center gap-1.5 text-indigo-400 border-l border-indigo-500/30 pl-2">
+                              <span className="font-semibold border border-indigo-400/30 bg-indigo-400/10 px-1 py-0.5 rounded shadow-sm text-[10px] uppercase tracking-wider shrink-0">
                                 시그니처
                               </span>
-                              <span className="bg-slate-800/80 px-1.5 py-0.5 rounded text-slate-300 font-mono text-[11px] break-all">
+                              <span className="bg-slate-800/80 px-1.5 py-1 rounded text-slate-300 font-mono text-[11px] break-all border border-slate-700/50">
                                 {log.result.ibse_signature}
                               </span>
                             </div>
                           )}
+                          
                           {(isManual || note) && (
-                            <div className="flex items-center gap-2 mt-1.5 text-blue-400/80">
+                            <div className="flex items-center gap-2 text-emerald-400/80 pt-1">
                               <User className="w-3 h-3" />
                               {note ? <span>{note}</span> : <span>Manual Decision</span>}
                             </div>

@@ -16,6 +16,11 @@ interface SummaryMetrics {
     sheet_used: string;
     total_human: number;
     total_llm: number;
+    type_b_total_count: number;
+    type_b_url_count: number;
+    type_b_sig_count: number;
+    type_b_both_count: number;
+    type_b_none_count: number;
     human_spam_count: number;
     llm_spam_count: number;
     human_spam_rate: number;
@@ -71,9 +76,21 @@ interface MissingRecord {
     reason: string;
 }
 
+interface TypeBItem {
+    message_preview: string;
+    message_full: string;
+    semantic_class: string;
+    llm_reason: string;
+    llm_code: string;
+    is_spam: boolean;
+    extracted_url?: string;
+    extracted_signature?: string;
+}
+
 interface CompareResponse {
     summary: SummaryMetrics;
     diffs: DiffItem[];
+    type_b_items: TypeBItem[];
     missing_in_human: MissingRecord[];
     missing_in_llm: MissingRecord[];
     auto_summary: string;
@@ -179,6 +196,39 @@ export default function ValidatorPage() {
         diffType: 'FN' | 'FP';
         reason: string;
     } | null>(null);
+
+    // Type B Viewer State
+    const [isTypeBModalOpen, setIsTypeBModalOpen] = useState(false);
+    const [typeBFilter, setTypeBFilter] = useState<'ALL' | 'URL' | 'SIGNATURE' | 'BOTH' | 'NONE'>('ALL');
+    const [typeBSearchText, setTypeBSearchText] = useState('');
+
+    // Human Error (AI Correctness) State
+    const [correctedIds, setCorrectedIds] = useState<Set<string>>(new Set());
+    const [isCorrecting, setIsCorrecting] = useState<string | null>(null);
+
+    // AI가 맞았음(Human Error) 처리 함수
+    const handleMarkAsHumanError = async (diffId: string) => {
+        setIsCorrecting(diffId);
+        try {
+            // TODO: 실제 백엔드 연동 API 호출
+            // await axios.post('http://localhost:8001/api/human-error', { diff_id: diffId });
+            
+            // 시뮬레이션 지연
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // 상태 업데이트
+            setCorrectedIds(prev => {
+                const next = new Set(prev);
+                next.add(diffId);
+                return next;
+            });
+        } catch (error) {
+            console.error("Failed to mark as human error:", error);
+            alert("처리 중 무언가 문제가 발생했습니다.");
+        } finally {
+            setIsCorrecting(null);
+        }
+    };
 
     // RAG 등록 모달 열기
     const handleOpenRagModal = (diff: DiffItem) => {
@@ -564,24 +614,52 @@ export default function ValidatorPage() {
                             </div>
 
                             {/* AI Stats */}
-                            <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-full bg-violet-50 flex items-center justify-center text-violet-600">
+                            <div className="bg-white border text-left border-slate-200 rounded-2xl p-6 flex flex-col items-start justify-between gap-4 shadow-sm">
+                                <div className="flex items-center gap-4 w-full">
+                                    <div className="w-12 h-12 rounded-full bg-violet-50 flex items-center justify-center text-violet-600 shrink-0">
                                         <span className="font-bold text-lg">AI</span>
                                     </div>
-                                    <div>
+                                    <div className="flex-1">
                                         <p className="text-sm font-bold text-slate-500">AI Model</p>
                                         <p className="text-2xl font-extrabold text-slate-800">{data.summary.total_llm.toLocaleString()} <span className="text-xs font-medium text-slate-400">msgs</span></p>
                                     </div>
                                 </div>
-                                <div className="flex gap-8 text-right">
-                                    <div>
-                                        <p className="text-xs font-bold text-slate-400 uppercase">Spam Count</p>
-                                        <p className="text-lg font-bold text-rose-600">{data.summary.llm_spam_count.toLocaleString()}</p>
+                                <div className="border-t border-slate-100 w-full pt-4 mt-2">
+                                    <div className="flex justify-between items-end mb-3">
+                                        <div>
+                                            <p className="text-xs font-bold text-slate-400 uppercase">Total AI SPAM</p>
+                                            <p className="text-2xl font-black text-rose-600 leading-none">
+                                                {(data.summary.llm_spam_count + data.summary.type_b_total_count).toLocaleString()} 
+                                            </p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-xs font-bold text-slate-400 uppercase">Spam Rate</p>
+                                            <p className="text-lg font-bold text-slate-700">
+                                                {(((data.summary.llm_spam_count + data.summary.type_b_total_count) / data.summary.total_llm) * 100).toFixed(1)}%
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className="text-xs font-bold text-slate-400 uppercase">Spam Rate</p>
-                                        <p className="text-lg font-bold text-slate-700">{(data.summary.llm_spam_rate * 100).toFixed(1)}%</p>
+                                    <div className="flex flex-col gap-1.5 w-full">
+                                         <div className="flex items-center justify-between bg-violet-50/50 rounded-lg px-3 py-2 border border-violet-100">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-violet-500"></div>
+                                                <span className="text-xs font-bold text-violet-800">일반 스팸 (Type A)</span>
+                                            </div>
+                                            <span className="text-sm font-bold text-violet-900">{data.summary.llm_spam_count.toLocaleString()}건</span>
+                                         </div>
+                                         <button 
+                                            onClick={() => setIsTypeBModalOpen(true)}
+                                            className="flex items-center justify-between bg-rose-50/50 rounded-lg px-3 py-2 border border-rose-100 hover:bg-rose-100 transition-colors cursor-pointer group"
+                                         >
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-rose-500 group-hover:animate-ping"></div>
+                                                <span className="text-xs font-bold text-rose-800">학습 보호용 (Type B)</span>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-sm font-bold text-rose-900">{data.summary.type_b_total_count.toLocaleString()}건</span>
+                                                <ChevronRight size={14} className="text-rose-400 group-hover:text-rose-600 group-hover:translate-x-0.5 transition-all" />
+                                            </div>
+                                         </button>
                                     </div>
                                 </div>
                             </div>
@@ -762,16 +840,18 @@ export default function ValidatorPage() {
                                 description="Human이 스팸으로 판정한 것 중 AI도 스팸으로 분류한 비율입니다."
                             />
                             <StatCard
-                                title="Missed (FN)"
-                                value={data.summary.fn}
-                                type={data.summary.fn > 0 ? "danger" : "neutral"}
-                                description="Human=SPAM, AI=HAM인 케이스. Human 오류일 가능성도 있습니다."
-                            />
-                            <StatCard
-                                title="False Alarm (FP)"
+                                title="사람이 놓친 스팸 (AI 검출)"
                                 value={data.summary.fp}
                                 type={data.summary.fp > 0 ? "warning" : "neutral"}
-                                description="Human=HAM, AI=SPAM인 케이스. AI가 맞을 가능성도 있습니다."
+                                description="사람은 정상이지만 AI가 스팸으로 본 건 (유형 2 불일치). AI가 사람의 실수를 잡은 것(Human Error)일 수 있습니다."
+                            />
+                            {/* AI Error Corrected Card */}
+                            <StatCard
+                                title="AI 교정률 (Human Error)"
+                                value={correctedIds.size}
+                                subValue={`/ ${data.summary.fp + data.summary.fn}건`}
+                                type={correctedIds.size > 0 ? "brand" : "neutral"}
+                                description="불일치 건 중 AI의 판단이 맞았음(사람의 실수)으로 확인 및 교정된 건수입니다."
                             />
                         </div>
                     </div>
@@ -875,33 +955,38 @@ export default function ValidatorPage() {
                                         <span className="text-sm">No items match</span>
                                     </div>
                                 )}
-                                {filteredDiffs?.map(diff => (
-                                    <div
-                                        key={diff.diff_id}
-                                        onClick={() => setSelectedDiff(diff)}
-                                        className={cn(
-                                            "p-3 rounded-xl cursor-pointer border transition-all text-left group",
-                                            selectedDiff?.diff_id === diff.diff_id
-                                                ? "bg-indigo-50 border-indigo-200 ring-1 ring-indigo-200 shadow-sm"
-                                                : "bg-white border-transparent hover:bg-slate-50 hover:border-slate-200"
-                                        )}
-                                    >
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className={cn(
-                                                "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border",
-                                                diff.diff_type === 'FN'
-                                                    ? "bg-rose-50 text-rose-700 border-rose-100"
-                                                    : "bg-amber-50 text-amber-700 border-amber-100"
-                                            )}>
-                                                {diff.diff_type === 'FN' ? 'Missed (FN)' : 'False Alarm (FP)'}
-                                            </span>
-                                            <span className="text-[10px] text-slate-400 font-mono">#{diff.diff_id.slice(0, 4)}</span>
+                                {filteredDiffs?.map(diff => {
+                                    const isCorrected = correctedIds.has(diff.diff_id);
+                                    return (
+                                        <div
+                                            key={diff.diff_id}
+                                            onClick={() => setSelectedDiff(diff)}
+                                            className={cn(
+                                                "p-3 rounded-xl cursor-pointer border transition-all text-left group relative",
+                                                selectedDiff?.diff_id === diff.diff_id
+                                                    ? "bg-indigo-50 border-indigo-200 ring-1 ring-indigo-200 shadow-sm"
+                                                    : "bg-white border-transparent hover:bg-slate-50 hover:border-slate-200"
+                                            )}
+                                        >
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className={cn(
+                                                    "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border",
+                                                    isCorrected 
+                                                        ? "bg-emerald-50 text-emerald-700 border-emerald-100" 
+                                                        : diff.diff_type === 'FN'
+                                                            ? "bg-rose-50 text-rose-700 border-rose-100"
+                                                            : "bg-amber-50 text-amber-700 border-amber-100"
+                                                )}>
+                                                    {isCorrected ? '✔ HUMAN ERROR' : (diff.diff_type === 'FN' ? '유형 1 (보수적 판단)' : '유형 2 (AI가 스팸 분류)')}
+                                                </span>
+                                                <span className="text-[10px] text-slate-400 font-mono">#{diff.diff_id.slice(0, 4)}</span>
+                                            </div>
+                                            <p className={cn("text-xs line-clamp-2 leading-relaxed group-hover:text-slate-900 break-all", isCorrected ? "text-slate-400" : "text-slate-600")}>
+                                                {diff.message_preview}
+                                            </p>
                                         </div>
-                                        <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed group-hover:text-slate-900">
-                                            {diff.message_preview}
-                                        </p>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
 
@@ -911,26 +996,51 @@ export default function ValidatorPage() {
                                 <div className="h-full flex flex-col">
                                     <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
                                         <div>
-                                            <span className={cn(
-                                                "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border",
-                                                selectedDiff.diff_type === 'FN'
-                                                    ? "bg-rose-50 text-rose-700 border-rose-100"
-                                                    : "bg-amber-50 text-amber-700 border-amber-100"
-                                            )}>
-                                                {selectedDiff.diff_type} Case
-                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <span className={cn(
+                                                    "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border",
+                                                    correctedIds.has(selectedDiff.diff_id) 
+                                                        ? "bg-emerald-50 text-emerald-700 border-emerald-100 shadow-sm shadow-emerald-100" 
+                                                        : selectedDiff.diff_type === 'FN'
+                                                            ? "bg-rose-50 text-rose-700 border-rose-100"
+                                                            : "bg-amber-50 text-amber-700 border-amber-100"
+                                                )}>
+                                                    {correctedIds.has(selectedDiff.diff_id) ? "✔ HUMAN ERROR" : (selectedDiff.diff_type === 'FN' ? '유형 1 (보수적 판단)' : '유형 2 (AI가 스팸 분류)')}
+                                                </span>
+                                            </div>
                                             <h4 className="font-bold text-lg text-slate-900 mt-2">Detail Analysis</h4>
                                             <p className="text-xs text-slate-400 font-mono mt-1">ID: {selectedDiff.diff_id}</p>
                                         </div>
 
-                                        {/* RAG 등록 버튼 */}
-                                        <button
-                                            onClick={() => handleOpenRagModal(selectedDiff)}
-                                            className="px-3 py-2 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg hover:bg-indigo-100 flex items-center gap-1.5 transition-colors"
-                                        >
-                                            <Database size={14} />
-                                            RAG 등록
-                                        </button>
+                                        <div className="flex gap-2">
+                                            {/* Human Error Mark Button */}
+                                            {!correctedIds.has(selectedDiff.diff_id) ? (
+                                                <button 
+                                                    onClick={() => handleMarkAsHumanError(selectedDiff.diff_id)}
+                                                    disabled={isCorrecting === selectedDiff.diff_id}
+                                                    className="px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                                                >
+                                                    {isCorrecting === selectedDiff.diff_id ? (
+                                                        <RefreshCw size={14} className="animate-spin" />
+                                                    ) : (
+                                                        <Check size={14} />
+                                                    )}
+                                                    AI가 맞았음(Human Error)
+                                                </button>
+                                            ) : (
+                                                <div className="px-3 py-2 rounded-lg text-xs font-bold shadow-sm flex items-center gap-1.5 bg-emerald-100 text-emerald-700 border border-emerald-200">
+                                                    <Check size={14} /> 교정 완료됨
+                                                </div>
+                                            )}
+                                            {/* RAG 등록 버튼 */}
+                                            <button
+                                                onClick={() => handleOpenRagModal(selectedDiff)}
+                                                className="px-3 py-2 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg hover:bg-indigo-100 flex items-center gap-1.5 transition-colors"
+                                            >
+                                                <Database size={14} />
+                                                RAG 등록
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div className="flex-1 overflow-y-auto space-y-6 custom-scrollbar pr-2">
@@ -1177,6 +1287,177 @@ export default function ValidatorPage() {
                             >
                                 Close
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Type B Viewer Modal */}
+            {isTypeBModalOpen && data && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in" onClick={() => setIsTypeBModalOpen(false)}></div>
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col relative animate-in zoom-in-95 duration-200">
+                        {/* Header */}
+                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                            <div>
+                                <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                    <Database className="text-rose-600" />
+                                    학습 보호용 데이터 (Type B)
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-1">스팸이 확실하지만, 모델 학습의 안전성을 위해 보수적으로 <strong>Type B (FP Sentinel) 처리된 건</strong>들입니다.</p>
+                            </div>
+                            <button onClick={() => setIsTypeBModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-lg transition-colors">
+                                <X size={20} className="text-slate-500" />
+                            </button>
+                        </div>
+                        
+                        {/* Filters */}
+                        <div className="px-6 py-4 border-b border-slate-100 bg-white flex items-center gap-2 overflow-x-auto">
+                            <button
+                                onClick={() => setTypeBFilter('ALL')}
+                                className={cn("px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all", typeBFilter === 'ALL' ? "bg-slate-800 text-white shadow-md shadow-slate-200" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}
+                            >
+                                전체 ({data.summary.type_b_total_count})
+                            </button>
+                            <button
+                                onClick={() => setTypeBFilter('URL')}
+                                className={cn("px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all", typeBFilter === 'URL' ? "bg-blue-600 text-white shadow-md shadow-blue-200" : "bg-blue-50 text-blue-700 hover:bg-blue-100")}
+                            >
+                                URL ({data.summary.type_b_url_count})
+                            </button>
+                            <button
+                                onClick={() => setTypeBFilter('SIGNATURE')}
+                                className={cn("px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all", typeBFilter === 'SIGNATURE' ? "bg-emerald-600 text-white shadow-md shadow-emerald-200" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100")}
+                            >
+                                SIGNATURE ({data.summary.type_b_sig_count})
+                            </button>
+                            <button
+                                onClick={() => setTypeBFilter('BOTH')}
+                                className={cn("px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all", typeBFilter === 'BOTH' ? "bg-purple-600 text-white shadow-md shadow-purple-200" : "bg-purple-50 text-purple-700 hover:bg-purple-100")}
+                            >
+                                둘 다 ({data.summary.type_b_both_count})
+                            </button>
+                            <button
+                                onClick={() => setTypeBFilter('NONE')}
+                                className={cn("px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all", typeBFilter === 'NONE' ? "bg-rose-600 text-white shadow-md shadow-rose-200" : "bg-rose-50 text-rose-700 hover:bg-rose-100")}
+                            >
+                                기타/NONE ({data.summary.type_b_none_count})
+                            </button>
+                            
+                            {/* Search Box */}
+                            <div className="flex-1 flex items-center justify-end px-4 gap-2 border-l border-slate-100 min-w-[250px]">
+                                <Search size={16} className="text-slate-400 shrink-0" />
+                                <input
+                                    type="text"
+                                    placeholder="분석 결과 및 메시지 내용 검색..."
+                                    value={typeBSearchText}
+                                    onChange={(e) => setTypeBSearchText(e.target.value)}
+                                    className="w-full bg-transparent border-none text-sm focus:ring-0 text-slate-700 placeholder:text-slate-400"
+                                />
+                                {typeBSearchText && (
+                                    <button onClick={() => setTypeBSearchText('')} className="p-1 hover:bg-slate-100 rounded-full transition-colors shrink-0">
+                                        <X size={14} className="text-slate-400" />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 overflow-auto p-0 bg-slate-50/50">
+                            {(data.type_b_items || []).filter(item => {
+                                // Category Filter
+                                let catMatch = true;
+                                if (typeBFilter === 'URL') catMatch = item.semantic_class === 'Type_B (URL)';
+                                else if (typeBFilter === 'SIGNATURE') catMatch = item.semantic_class === 'Type_B (SIGNATURE)';
+                                else if (typeBFilter === 'BOTH') catMatch = item.semantic_class === 'Type_B (URL, SIGNATURE)';
+                                else if (typeBFilter === 'NONE') catMatch = item.semantic_class === 'Type_B (NONE)';
+                                
+                                // Text Search Filter
+                                let textMatch = true;
+                                if (typeBSearchText.trim() !== '') {
+                                    const query = typeBSearchText.toLowerCase();
+                                    textMatch = item.message_full.toLowerCase().includes(query) || 
+                                                (item.llm_reason || '').toLowerCase().includes(query) ||
+                                                (item.extracted_url || '').toLowerCase().includes(query) ||
+                                                (item.extracted_signature || '').toLowerCase().includes(query);
+                                }
+                                
+                                return catMatch && textMatch;
+                            }).length === 0 ? (
+                                <div className="p-12 text-center text-slate-500">
+                                    {typeBSearchText ? `"${typeBSearchText}" 에 해당하는 검색 결과가 없습니다.` : "해당하는 조건의 데이터가 없습니다."}
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-slate-100">
+                                    {(data.type_b_items || []).filter(item => {
+                                        // Category Filter
+                                        let catMatch = true;
+                                        if (typeBFilter === 'URL') catMatch = item.semantic_class === 'Type_B (URL)';
+                                        else if (typeBFilter === 'SIGNATURE') catMatch = item.semantic_class === 'Type_B (SIGNATURE)';
+                                        else if (typeBFilter === 'BOTH') catMatch = item.semantic_class === 'Type_B (URL, SIGNATURE)';
+                                        else if (typeBFilter === 'NONE') catMatch = item.semantic_class === 'Type_B (NONE)';
+                                        
+                                        // Text Search Filter
+                                        let textMatch = true;
+                                        if (typeBSearchText.trim() !== '') {
+                                            const query = typeBSearchText.toLowerCase();
+                                            textMatch = item.message_full.toLowerCase().includes(query) || 
+                                                        (item.llm_reason || '').toLowerCase().includes(query) ||
+                                                        (item.extracted_url || '').toLowerCase().includes(query) ||
+                                                        (item.extracted_signature || '').toLowerCase().includes(query);
+                                        }
+                                        
+                                        return catMatch && textMatch;
+                                    }).map((item, idx) => (
+                                        <div key={idx} className="p-6 hover:bg-white transition-colors flex flex-col lg:flex-row gap-6">
+                                            <div className="flex-1 space-y-3">
+                                                <div className="flex items-center gap-2">
+                                                    <span className={cn(
+                                                        "px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider",
+                                                        item.semantic_class.includes('URL') && item.semantic_class.includes('SIGNATURE') ? "bg-purple-100 text-purple-700 border border-purple-200" :
+                                                        item.semantic_class.includes('URL') ? "bg-blue-100 text-blue-700 border border-blue-200" :
+                                                        item.semantic_class.includes('SIGNATURE') ? "bg-emerald-100 text-emerald-700 border border-emerald-200" :
+                                                        "bg-rose-100 text-rose-700 border border-rose-200"
+                                                    )}>
+                                                        {item.semantic_class.replace('Type_B ', '')}
+                                                    </span>
+                                                    {item.llm_code && (
+                                                        <span className="px-2 py-1 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-bold border border-slate-200">
+                                                            Code: {item.llm_code}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-sm font-medium text-slate-800 leading-relaxed break-all bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                                    {item.message_full}
+                                                </div>
+                                                
+                                                {(item.extracted_url || item.extracted_signature) && (
+                                                    <div className="flex flex-col gap-2 mt-2 bg-indigo-50/50 p-3 rounded-lg border border-indigo-100/50">
+                                                        {item.extracted_url && item.extracted_url.trim() !== '' && item.extracted_url !== 'nan' && (
+                                                            <div className="text-xs flex items-start gap-2">
+                                                                <span className="font-bold text-indigo-700 whitespace-nowrap bg-indigo-100 px-1.5 py-0.5 rounded text-[10px]">EXTRACTED URL</span>
+                                                                <span className="text-indigo-900 break-all bg-white px-2 py-0.5 rounded border border-indigo-100/50">{item.extracted_url}</span>
+                                                            </div>
+                                                        )}
+                                                        {item.extracted_signature && item.extracted_signature.trim() !== '' && item.extracted_signature !== 'nan' && (
+                                                            <div className="text-xs flex items-start gap-2">
+                                                                <span className="font-bold text-emerald-700 whitespace-nowrap bg-emerald-100 px-1.5 py-0.5 rounded text-[10px]">SIGNATURE</span>
+                                                                <span className="text-emerald-900 break-all bg-white px-2 py-0.5 rounded border border-emerald-100/50">{item.extracted_signature}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="lg:w-80 space-y-3">
+                                                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-100 pb-2">AI Reasoning</div>
+                                                <div className="text-sm text-slate-600 leading-relaxed font-mono whitespace-pre-wrap">
+                                                    {item.llm_reason || "사유 없음"}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
