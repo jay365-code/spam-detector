@@ -267,17 +267,20 @@ candidates_40: {candidates_40_json}
             except (Exception, asyncio.TimeoutError) as e:
                 error_msg = str(e).lower()
                 is_google_quota_error = False
+                is_timeout = isinstance(e, asyncio.TimeoutError) or "timeout" in error_msg
+                
                 if provider == "GEMINI":
                     try:
                         import google.api_core.exceptions
                         if isinstance(e, (google.api_core.exceptions.ResourceExhausted, google.api_core.exceptions.TooManyRequests)):
                             is_google_quota_error = True
+                        if isinstance(e, google.api_core.exceptions.DeadlineExceeded):
+                            is_timeout = True
                     except ImportError:
                         pass
 
-                is_timeout = isinstance(e, asyncio.TimeoutError) or "timeout" in error_msg
                 if is_timeout:
-                    logger.warning(f"[LLMSelector] Timeout Detected (120s). Tenacity will backoff and retry.")
+                    logger.warning(f"[LLMSelector] Timeout Detected (120s+). Network or prompt size issue. Tenacity will backoff and retry.")
                     raise Exception("Async LLM Timeout") from e
 
                 if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
