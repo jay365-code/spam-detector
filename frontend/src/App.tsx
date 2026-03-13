@@ -1086,6 +1086,16 @@ function App() {
                       {log.result && (
                         <div className="text-xs text-slate-500 mt-1 pl-2 border-l-2 border-slate-700">
                           <div>{cleanReason}</div>
+                          {log.result.ibse_signature && (
+                            <div className="mt-1.5 flex items-center gap-1.5 text-indigo-400">
+                              <span className="font-semibold border border-indigo-400/30 bg-indigo-400/10 px-1 rounded shadow-sm text-[10px] uppercase tracking-wider">
+                                시그니처
+                              </span>
+                              <span className="bg-slate-800/80 px-1.5 py-0.5 rounded text-slate-300 font-mono text-[11px] break-all">
+                                {log.result.ibse_signature}
+                              </span>
+                            </div>
+                          )}
                           {(isManual || note) && (
                             <div className="flex items-center gap-2 mt-1.5 text-blue-400/80">
                               <User className="w-3 h-3" />
