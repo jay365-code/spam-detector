@@ -93,7 +93,10 @@ class CandidateGenerator:
                 else:
                     original_substring = substring # Fallback
 
-                b_len = get_cp949_byte_len(original_substring)
+                # [USER REQUEST FIX] 문자열 길이는 공백을 제거한 상태(match_text 기반의 substring)에서 20/40자(바이트)를 제한해야 함.
+                # orig_len: 나중에 원본 텍스트를 복원할 때 DB 저장용이나 참고용으로만 사용.
+                # b_len (제한 기준): 공백이 없는 촘촘한 substring의 CP949 바이트 길이를 기준으로 함.
+                b_len = get_cp949_byte_len(substring)
                 
                 if b_len == -1: 
                     # Contains invalid char, discard this substring and potentially stop extending 
@@ -108,12 +111,7 @@ class CandidateGenerator:
                 
                 # It's a valid candidate within limit
                 # We want to favor longer signatures usually, or at least keep them as candidates.
-                # PRD FR-2.3 (A): "Expand end to max close to limit". 
-                # Meaning we might only want the 'longest valid' for this start_idx?
-                # Or keep all valid ones? Pruning too many is bad, but too many is slow.
-                # PRD says "Sliding Window Candidate Pool".
-                # Let's keep candidates that are at least > 4 bytes to avoid noise.
-                # Use Original Byte Length for threshold check as per user requirement (implied)
+                # Use Normalized Byte Length for threshold check
                 if b_len >= 4:
                     tags = self._identify_tags(substring) # Tags checked on DENSE text (easier for regex)
                     score = self._calculate_score(substring, b_len, tags)
@@ -194,11 +192,11 @@ def generate_candidates_node(state: IBSEState) -> dict:
     # PRD FR-2.4 Candidates Count (Revised to prevent LLM timeouts)
     # 200개의 문자열 후보를 전부 LLM에 넘기면 프롬프트 크기와 연산 과부하로 45초 이상의
     # 응답 타임아웃이 빈번히 발생함. 휴리스틱 점수 상위 10~15개씩만 넘겨도 충분함.
-    # Candidates 20: Top 10
-    # Candidates 40: Top 10
+    # Candidates 20: Top 5 (Reduced from 10 to save prompt length)
+    # Candidates 40: Top 5 (Reduced from 10 to save prompt length)
     
-    c20 = generator.generate(match_text, original_text, max_byte_len=20, top_k=10)
-    c40 = generator.generate(match_text, original_text, max_byte_len=40, top_k=10)
+    c20 = generator.generate(match_text, original_text, max_byte_len=20, top_k=5)
+    c40 = generator.generate(match_text, original_text, max_byte_len=40, top_k=5)
     
     return {
         "candidates_20": c20,
