@@ -237,7 +237,7 @@ candidates_40: {candidates_40_json}
                     }
                     if _supports_temp:
                         _kwargs["temperature"] = 0.0
-                    response = await asyncio.wait_for(client_instance.chat.completions.create(**_kwargs), timeout=120.0)
+                    response = await asyncio.wait_for(client_instance.chat.completions.create(**_kwargs), timeout=45.0)
                     content = response.choices[0].message.content
                     
                 elif provider == "GEMINI":
@@ -246,7 +246,7 @@ candidates_40: {candidates_40_json}
                         SystemMessage(content=system_prompt),
                         HumanMessage(content=user_prompt)
                     ]
-                    response = await asyncio.wait_for(client_instance.ainvoke(messages), timeout=120.0)
+                    response = await asyncio.wait_for(client_instance.ainvoke(messages), timeout=45.0)
                     
                     # [Gemini Safety Filter Block Check]
                     content = _normalize_llm_content(response.content)
@@ -268,7 +268,7 @@ candidates_40: {candidates_40_json}
                         messages=[
                             {"role": "user", "content": user_prompt}
                         ]
-                    ), timeout=120.0)
+                    ), timeout=45.0)
                     content = response.content[0].text
                 else:
                     raise Exception(f"Unsupported Provider: {provider}. No retry.")

@@ -1345,7 +1345,14 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                         # Terminology: 'Queued' means created and waiting for worker slot
                         logger.debug(f"Queued in {queue_type} Queue (Waiting for semaphore...)")
                         
-                        # [Phase 2] 세마포어 대기(제한 없음) 후 실행 타임아웃(300초) 적용
+                        # [Phase 2] 세마포어 대기 전 초기 스태거링 딜레이 (Throttling)
+                        # API 커넥션 풀을 보호하기 위해, 동시에 들어오는 태스크들을 순차적으로 분산시킵니다.
+                        # 최대 대기 시간은 15초(30 * 0.5)를 넘지 않도록 캡핑합니다.
+                        stagger_delay = min(index * 0.5, 15.0)
+                        if stagger_delay > 0:
+                            await asyncio.sleep(stagger_delay)
+
+                        # 실행 타임아웃(300초) 적용
                         task_timeout = int(os.getenv("BATCH_TASK_TIMEOUT_SEC", "300"))
                         await selected_sem.acquire()
                         
