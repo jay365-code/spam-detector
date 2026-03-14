@@ -302,7 +302,7 @@ candidates_40: {candidates_40_json}
                     raise e
 
                 if is_timeout:
-                    logger.warning(f"[LLMSelector] Timeout Detected (120s+). Network or prompt size issue. Tenacity will backoff and retry.")
+                    logger.warning(f"[LLMSelector] Timeout Detected (45s+). Network or prompt size issue. Tenacity will backoff and retry.")
                     raise Exception("Async LLM Timeout") from e
                     
                 logger.error(f"LLM Call Error: {e}")
