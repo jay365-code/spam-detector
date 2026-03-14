@@ -108,6 +108,12 @@ class CandidateGenerator:
                 if b_len > max_byte_len:
                     # Exceeded limit, stop extending for this start_idx
                     break
+                    
+                # [USER APPROVED FIX] 토큰 폭발 방지 (Prompt Token Shield)
+                # 순수 바이트(b_len)는 40바이트 이하를 통과했더라도, 
+                # 중간에 스팸 발송자가 집어넣은 공백/엔터 때문에 원본 텍스트 길이가 100자를 넘어가면 LLM 과부하 방지를 위해 탈락시킴.
+                if len(original_substring) > 100:
+                    continue
                 
                 # It's a valid candidate within limit
                 # We want to favor longer signatures usually, or at least keep them as candidates.

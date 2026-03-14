@@ -59,11 +59,13 @@ class LLMSelector:
 
 2. **차선 (High Priority) : 난독화 및 필터 회피 패턴 (Obfuscation Patterns)**
     - 일반적인 단어 사이에 특수기호나 자모음 분리, 기이한 영어/숫자 조합이 끼어있는 형태 ('대.출', 'ㅋr톡', 'vt⑨8g'). 이 자체로 세상에 유일한(Unique) 문자열이 되므로 좋은 시그니처다.
+    - **[우선순위 절대 규칙]** 만약 후보군 중에 이런 강력한 난독화(`■최'대`, `인Eㅓ냇`) 기법이 포함되어 있다면, 그 주변이나 끝부분에 '무료거부', '상담' 같은 추출 금지(평범한 문구) 조건이 섞여 있더라도 **무조건 난독화 앵커를 우선순위로 두고 타협 없이 시그니처로 추출하라. 딜레마에 빠지지 마라.**
 
-3. **절대 금지 및 보류 (Consider Unextractable) : 파편화된 정보 및 범용 문구**
-    - **독립된 파편화 정보 금지:** "010-1234", "김팀장" 처럼 우연히 겹칠 수 있는 짧고 흔한 정보의 조각만 단독으로 떼어내지 마라. 반드시 주변의 어색한 괄호, 기호, 다른 특이 단어와 결합된 덩어리를 통째로 골라 내 유일성을 확보해야 한다.
-    - **[핵심] 일상 대화형 결합 금지:** 전화번호 주변에 덧붙여진 문맥이 `"여기로"`, `"연락주세요"`, `"입니다"`, `"담당자"`, `"번호"` 같은 **평범한 한국어 서술어나 명사라면 유일무이한 결합으로 인정하지 않는다.** 이는 무고한 일반인의 대화 패턴(오탐 확률 매우 큼)이므로 무조건 **`unextractable`** 처리한다.
-    - **완전한 템플릿 문구:** "행복한 하루 되세요", "무료 수신 거부 080", "최고 수익 보장" 처럼 띄어쓰기와 문법이 완벽한 상용구 형태의 템플릿은 아무리 길어도 버린다(`unextractable`).
+3. **절대 금지 및 조기 포기(Fail-fast) : 파편화된 정보 및 범용/상용구 문구**
+    - **파편화된 정보 금지:** "010-1234", "김팀장" 처럼 우연히 겹칠 수 있는 짧고 흔한 정보의 조각만 단독으로 떼어내지 마라.
+    - **[핵심] 일상 대화형 결합 금지:** 전화번호 주변이 오직 "여기로 연락주세요", "담당자", "무료거부 080" 같은 평범한 템플릿으로만 이루어져 있다면 오탐 확률이 크므로 절대 추출하지 않는다.
+    - **예외 허용 (식별자 결합):** 단, "독 ZT03 무료거부 080" 처럼 **일반 상용구 옆에 고유한 식별자/난독화 코드(ZT03 등)가 강하게 결합되어 있다면 훌륭한 시그니처**이므로 적극 추출하라.
+    - **[조기 포기 규칙 (Fail-fast)]:** 만약 제공된 후보 5개가 전부 고유 식별자 없이 흔한 상용구(무료거부, 상담 등)나 평범한 문장으로만 이루어져 있어 안전한 추출이 불가능하다고 판단되면, **억지로 다른 부분을 떼어내려 고민하지 마라. 단 1초도 고민하지 말고 즉시 `{"decision": "unextractable"}`을 뱉고 출력을 종료해라. 억지로 추출하는 것은 시스템 장애(Timeout)의 원인이 된다.**
 
 
 **[특수 규칙: URL이 포함된 경우 (Special Rule for URLs)]**
@@ -245,7 +247,17 @@ candidates_40: {candidates_40_json}
                         HumanMessage(content=user_prompt)
                     ]
                     response = await asyncio.wait_for(client_instance.ainvoke(messages), timeout=120.0)
+                    
+                    # [Gemini Safety Filter Block Check]
                     content = _normalize_llm_content(response.content)
+                    if not content:
+                        finish_reason = response.response_metadata.get("finish_reason", "")
+                        meta_str = str(response.response_metadata)
+                        if finish_reason == "SAFETY" or "PROHIBITED_CONTENT" in meta_str or "block_reason" in meta_str:
+                            logger.warning(f"[LLMSelector] Gemini response blocked by safety filters: {meta_str}")
+                            # IBSE relies on extracting signatures. If it's too sexually explicit or dangerous to process,
+                            # we can gracefully degrade to "unextractable" instead of hanging or crashing.
+                            return '{"decision": "unextractable"}'
                     
                 elif provider == "CLAUDE":
                     model = self.model_name if "claude" in self.model_name else "claude-3-haiku-20240307"
@@ -279,10 +291,8 @@ candidates_40: {candidates_40_json}
                     except ImportError:
                         pass
 
-                if is_timeout:
-                    logger.warning(f"[LLMSelector] Timeout Detected (120s+). Network or prompt size issue. Tenacity will backoff and retry.")
-                    raise Exception("Async LLM Timeout") from e
-
+                # [USER REQUEST FIX] Quota에러 감지 및 키 로테이션을 Timeout 감지보다 먼저 실행해야 함.
+                # 이유: Gemini API는 할당량 초과 시 'DeadlineExceeded' 타입의 타임아웃 에러를 자주 발생시키기 때문.
                 if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
                     logger.warning(f"[LLMSelector] 429/Quota Detected. Rotating key...")
                     is_rotated = key_manager.rotate_key(provider, failed_key=api_key)
@@ -290,6 +300,10 @@ candidates_40: {candidates_40_json}
                         logger.error(f"[LLMSelector] Global exhaustion reached for {provider}.")
                         raise Exception(f"{provider} quota globally exhausted. No retry.") from e
                     raise e
+
+                if is_timeout:
+                    logger.warning(f"[LLMSelector] Timeout Detected (120s+). Network or prompt size issue. Tenacity will backoff and retry.")
+                    raise Exception("Async LLM Timeout") from e
                     
                 logger.error(f"LLM Call Error: {e}")
                 raise e
@@ -302,12 +316,12 @@ candidates_40: {candidates_40_json}
             return {"error": str(e), "decision": "unextractable"}
 
     def _parse_json(self, content: str) -> dict:
+        import re
         try:
-            if content.startswith("```json"):
-                content = content[7:]
-            if content.endswith("```"):
-                content = content[:-3]
-            return json.loads(content.strip())
+            clean_content = content.strip()
+            clean_content = re.sub(r'^```(?:json)?\s*', '', clean_content)
+            clean_content = re.sub(r'\s*```$', '', clean_content)
+            return json.loads(clean_content)
         except json.JSONDecodeError as e:
             logger.error(f"JSON Parse Error: {e} | Content: {content}")
             return {"error": "JSON Parse Error", "raw_content": content}
