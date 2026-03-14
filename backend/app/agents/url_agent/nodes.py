@@ -281,11 +281,46 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
                             {"type": "image_url", "image_url": f"data:image/jpeg;base64,{screenshot_b64}"}
                         ]
                     )
-                    # [Timeout] Vision API can be slow (images), wait up to 45s (Standardized Fail-Fast)
-                    response = await asyncio.wait_for(llm.ainvoke([message]), timeout=45.0)
-                    key_manager.report_success(provider)
-                    return response
-                except (Exception, asyncio.TimeoutError) as e:
+                    try:
+                        response = await asyncio.wait_for(llm.ainvoke([message]), timeout=45.0)
+                        key_manager.report_success(provider)
+                        return response
+                    except asyncio.TimeoutError as timeout_e:
+                        logger.warning(f"[URL Agent] Vision API Timeout Detected. Attempting Fallback to Sub Model.")
+                        raw_sub_model = os.getenv("LLM_SUB_MODEL", "gemini-3.1-flash-lite-preview")
+                        sub_model = raw_sub_model.strip().strip("'").strip('"') if raw_sub_model else "gemini-3.1-flash-lite-preview"
+                        if not sub_model:
+                            sub_model = "gemini-3.1-flash-lite-preview"
+                            
+                        fallback_key = key_manager.get_key("GEMINI")
+                        if fallback_key:
+                            from langchain_google_genai import ChatGoogleGenerativeAI, HarmCategory, HarmBlockThreshold
+                            safety_settings = {
+                                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+                            }
+                            fallback_llm = ChatGoogleGenerativeAI(
+                                model=sub_model,
+                                google_api_key=fallback_key,
+                                temperature=0,
+                                convert_system_message_to_human=True,
+                                max_retries=0,
+                                safety_settings=safety_settings
+                            )
+                            try:
+                                response = await asyncio.wait_for(fallback_llm.ainvoke([message]), timeout=45.0)
+                                if hasattr(response, 'content') and isinstance(response.content, str):
+                                    response.content = f"__FALLBACK_{sub_model}__\n" + response.content
+                                key_manager.report_success("GEMINI")
+                                return response
+                            except Exception as fallback_e:
+                                logger.error(f"[URL Agent Vision Fallback] Sub model failed: {fallback_e}")
+                                raise Exception("Vision API Timeout (Fallback failed)") from timeout_e
+                        else:
+                            raise Exception("Vision API Timeout (No fallback key)") from timeout_e
+                except Exception as e:
                     error_msg = str(e).lower()
                     
                     # [Fix] Explicit type check for Google API errors (Gemini)
@@ -297,11 +332,10 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
                     except ImportError:
                         pass
 
-                    is_timeout = isinstance(e, asyncio.TimeoutError) or "timeout" in error_msg
+                    is_timeout = False
 
                     if is_timeout:
-                        logger.warning(f"[URL Agent] Vision API Timeout Detected. Tenacity will backoff and retry.")
-                        raise Exception("Vision API Timeout") from e
+                        pass
 
                     if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
                         logger.warning(f"[URL Agent] Vision API Quota Detected. Error: {error_msg}")
@@ -812,6 +846,8 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                             max_retries=0
                         )
                         response = await asyncio.wait_for(fallback_llm.ainvoke(prompt), timeout=45.0)
+                        if hasattr(response, 'content') and isinstance(response.content, str):
+                            response.content = f"__FALLBACK_{sub_model}__\n" + response.content
                         return response
                     except Exception as fallback_e:
                         logger.error(f"[URL Agent Fallback] Sub model failed: {fallback_e}")
@@ -848,6 +884,14 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         response = await call_llm()
         content = response.content
         
+        fallback_model = None
+        if isinstance(content, str) and content.startswith("__FALLBACK_"):
+            parts = content.split("__\n", 1)
+            if len(parts) == 2:
+                fallback_info = parts[0].replace("__FALLBACK_", "")
+                fallback_model = fallback_info
+                content = parts[1]
+        
         # Handle structured content (List of dicts) if LLM returns it
         if isinstance(content, list):
             text_parts = []
@@ -869,6 +913,9 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         is_spam = result_json.get("is_spam")
         prob = result_json.get("spam_probability", 0.0)
         reason = result_json.get("reason", "")
+        if fallback_model and reason:
+            result_json["reason"] = f"[URL_Fallback: {fallback_model}] " + reason
+            reason = result_json["reason"]
         classification_code = result_json.get("classification_code")
         
         # URL Agent 1차 분석 결과 로깅

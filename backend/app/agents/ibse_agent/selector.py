@@ -221,7 +221,16 @@ candidates_40: {candidates_40_json}
                 raise Exception(f"{provider} quota globally exhausted. No retry.")
             
             api_key = key_manager.get_key(provider)
-            client_instance = self._get_cached_client(provider, api_key, self.model_name)
+            current_model = self.model_name
+            
+            # [Fix] Generation Dilemma Fallback: If prior attempt timed out, swap the model.
+            is_fallback = getattr(self, "_use_fallback", False)
+            if is_fallback:
+                fallback_sub = os.getenv("LLM_SUB_MODEL", "gemini-3.1-flash-lite-preview").strip().strip("'")
+                current_model = fallback_sub
+                logger.warning(f"[IBSE] Fallback mode active: Switching model to {current_model} to break Dilemma.")
+
+            client_instance = self._get_cached_client(provider, api_key, current_model)
             
             try:
                 if provider == "OPENAI":
@@ -274,6 +283,10 @@ candidates_40: {candidates_40_json}
                     raise Exception(f"Unsupported Provider: {provider}. No retry.")
                 
                 key_manager.report_success(provider)
+                
+                # Attach a secret flag to the content so _parse_json knows it was a fallback
+                if is_fallback:
+                    content = f"__FALLBACK_{current_model}__\n" + content
                 return content
                 
             except (Exception, asyncio.TimeoutError) as e:
@@ -302,7 +315,8 @@ candidates_40: {candidates_40_json}
                     raise e
 
                 if is_timeout:
-                    logger.warning(f"[LLMSelector] Timeout Detected (45s+). Network or prompt size issue. Tenacity will backoff and retry.")
+                    self._use_fallback = True  # Activate fallback for the next retry attempt
+                    logger.warning(f"[LLMSelector] Timeout Detected (45s+). Suspected Generation Dilemma. Switching to Sub-Model for retry.")
                     raise Exception("Async LLM Timeout") from e
                     
                 logger.error(f"LLM Call Error: {e}")
@@ -317,11 +331,25 @@ candidates_40: {candidates_40_json}
 
     def _parse_json(self, content: str) -> dict:
         import re
+        fallback_model = None
+        if content.startswith("__FALLBACK_"):
+            parts = content.split("__\n", 1)
+            if len(parts) == 2:
+                fallback_info = parts[0].replace("__FALLBACK_", "")
+                fallback_model = fallback_info
+                content = parts[1]
+                
         try:
             clean_content = content.strip()
             clean_content = re.sub(r'^```(?:json)?\s*', '', clean_content)
             clean_content = re.sub(r'\s*```$', '', clean_content)
-            return json.loads(clean_content)
+            parsed = json.loads(clean_content)
+            
+            # [User Request] Append fallback notice to the reason field
+            if fallback_model and isinstance(parsed, dict) and "reason" in parsed:
+                parsed["reason"] = f"[IBSE_Fallback: {fallback_model}] " + parsed["reason"]
+                
+            return parsed
         except json.JSONDecodeError as e:
             logger.error(f"JSON Parse Error: {e} | Content: {content}")
             return {"error": "JSON Parse Error", "raw_content": content}

@@ -268,7 +268,8 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                     llm = self._get_cached_client(provider, current_api_key, model_name)
                     
                     try:
-                        from langchain_core.messages import HumanMessage
+                        is_fallback_used = False
+                        fallback_model_used = None
                         # [Fix] Add explicit 45s timeout to prevent 300s hang
                         try:
                             response = await asyncio.wait_for(llm.ainvoke([HumanMessage(content=prompt)]), timeout=45.0)
@@ -284,6 +285,8 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                                 fallback_llm = self._get_cached_client("GEMINI", fallback_key, sub_model)
                                 try:
                                     response = await asyncio.wait_for(fallback_llm.ainvoke([HumanMessage(content=prompt)]), timeout=45.0)
+                                    is_fallback_used = True
+                                    fallback_model_used = sub_model
                                 except Exception as fallback_e:
                                     logger.error(f"[Fallback] Sub model also failed: {fallback_e}")
                                     raise Exception("Async LLM Timeout (Fallback failed)") from e
@@ -330,6 +333,8 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                     content = _normalize_llm_content(response.content)
                 # All providers
                 key_manager.report_success(provider)
+                if locals().get("is_fallback_used", False) and locals().get("fallback_model_used"):
+                    content = f"__FALLBACK_{fallback_model_used}__\n" + content
                 return content
                 
             except Exception as e:
@@ -448,6 +453,14 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
     def _parse_response(self, content, provider: str) -> dict:
         import re
 
+        fallback_model = None
+        if content.startswith("__FALLBACK_"):
+            parts = content.split("__\n", 1)
+            if len(parts) == 2:
+                fallback_info = parts[0].replace("__FALLBACK_", "")
+                fallback_model = fallback_info
+                content = parts[1]
+                
         content = _normalize_llm_content(content)
         result_json = None
 
@@ -498,6 +511,12 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         if not classification_code:
             spam_code = result_json.get("spam_code")
             ham_code = result_json.get("ham_code")
+            
+        reason_str = str(result_json.get("reason", ""))
+        if fallback_model and reason_str:
+            result_json["reason"] = f"[Content_Fallback: {fallback_model}] " + reason_str
+            
+        # Ensure return type
             
             if spam_code and str(spam_code).lower() != "null":
                 classification_code = str(spam_code)
@@ -1191,6 +1210,8 @@ Step 6. SPAM 확정 조건:
                                 fallback_llm = self._get_cached_client("GEMINI", fallback_key, sub_model)
                                 try:
                                     response = await asyncio.wait_for(fallback_llm.ainvoke([HumanMessage(content=prompt)]), timeout=45.0)
+                                    if hasattr(response, 'content') and isinstance(response.content, str):
+                                        response.content = f"[Content_Fallback: {sub_model}] " + response.content
                                 except Exception:
                                     raise Exception("Async Summary LLM Timeout after rotation (Fallback failed)") from e
                             else:
