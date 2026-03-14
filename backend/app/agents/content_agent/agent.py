@@ -10,6 +10,7 @@ import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception, before_sleep_log
 from app.core.logging_config import get_logger
 from app.core.llm_manager import key_manager
+from langchain_core.messages import HumanMessage
 
 # New imports added as per instruction (Moved to local scope to fix 23s startup delay)
 # from langchain_google_genai import ChatGoogleGenerativeAI
@@ -319,7 +320,6 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                     model_name = self.model_name if "claude" in self.model_name else "claude-3-haiku-20240307"
                     
                     llm = self._get_cached_client(provider, current_api_key, model_name)
-                    from langchain_core.messages import HumanMessage
                     response = await llm.ainvoke([HumanMessage(content=prompt)])
                     content = _normalize_llm_content(response.content)
                     
@@ -328,7 +328,6 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                     model_name = self.model_name
                     
                     llm = self._get_cached_client(provider, current_api_key, model_name)
-                    from langchain_core.messages import HumanMessage
                     response = await llm.ainvoke([HumanMessage(content=prompt)])
                     content = _normalize_llm_content(response.content)
                 # All providers
@@ -1133,7 +1132,6 @@ Step 6. SPAM 확정 조건:
         try:
             llm = self._get_chat_model()
             # Since this is a single call (not stream), we use .invoke or generic call
-            from langchain_core.messages import HumanMessage
             # Add retry for summary generation
             @retry(
                 stop=stop_after_attempt(3),

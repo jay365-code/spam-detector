@@ -153,10 +153,15 @@ class CandidateGenerator:
             
         # Penalties
         if byte_len <= 8:
-            score += self.WEIGHTS["TOO_SHORT"]
+            score += self.WEIGHTS.get("TOO_SHORT", -3.0)
             
         if text.isdigit():
-            score += self.WEIGHTS["ALL_DIGITS"]
+            score += self.WEIGHTS.get("ALL_DIGITS", -2.0)
+            
+        # [User Request FIX] Penalize generic pure AD_MARK strings to save Top-K slots for actual signatures
+        if "AD_MARK" in tags and "PHONE" not in tags and "CODE" not in tags and "SYMBOLS" not in tags:
+            # If it's just an AD_MARK and OBFUSCATION but no concrete signature anchors, penalize it heavily.
+            score -= 15.0
             
         return score
 
