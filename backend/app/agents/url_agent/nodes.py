@@ -281,8 +281,8 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
                             {"type": "image_url", "image_url": f"data:image/jpeg;base64,{screenshot_b64}"}
                         ]
                     )
-                    # [Timeout] Vision API can be slow (images), wait up to 60s
-                    response = await asyncio.wait_for(llm.ainvoke([message]), timeout=60.0)
+                    # [Timeout] Vision API can be slow (images), wait up to 45s (Standardized Fail-Fast)
+                    response = await asyncio.wait_for(llm.ainvoke([message]), timeout=45.0)
                     key_manager.report_success(provider)
                     return response
                 except (Exception, asyncio.TimeoutError) as e:

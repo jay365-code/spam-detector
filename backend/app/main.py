@@ -1345,18 +1345,20 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                         # Terminology: 'Queued' means created and waiting for worker slot
                         logger.debug(f"Queued in {queue_type} Queue (Waiting for semaphore...)")
                         
-                        # [Phase 2] 세마포어 대기 전 초기 스태거링 딜레이 (Throttling)
-                        # API 커넥션 풀을 보호하기 위해, 동시에 들어오는 태스크들을 순차적으로 분산시킵니다.
-                        # 최대 대기 시간은 15초(30 * 0.5)를 넘지 않도록 캡핑합니다.
-                        stagger_delay = min(index * 0.5, 15.0)
-                        if stagger_delay > 0:
-                            await asyncio.sleep(stagger_delay)
-
-                        # 실행 타임아웃(300초) 적용
+                        # [Phase 2] 세마포어(동시 대기열) 줄서기 시작
+                        # 실행 타임아웃(300초) 적용 (태스크 단위 제한)
                         task_timeout = int(os.getenv("BATCH_TASK_TIMEOUT_SEC", "300"))
+                        
                         await selected_sem.acquire()
                         
                         try:
+                            # [NEW Phase 3] 세마포어 통과 직후 Jitter 부여 (Throttling)
+                            # 대량의 태스크가 동시에 자리를 배정받았을 때, 정확히 같은 시간(ms)에 
+                            # 수십 개의 HTTP 요청이 집중(Burst)되어 구글 API에서 커넥션이 블랙홀/Drop 
+                            # 되는 현상을 막기 위해 0.1초 ~ 1.5초 사이의 무작위 난수를 쉬게 합니다.
+                            import random
+                            jitter = random.uniform(0.1, 1.5)
+                            await asyncio.sleep(jitter)
                             if manager.is_cancelled(client_id):
                                 logger.info(f"Cancelled after semaphore acquisition.")
                                 return index, {"is_spam": None, "reason": "Cancelled"}
