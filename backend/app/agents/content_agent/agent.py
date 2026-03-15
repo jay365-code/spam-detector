@@ -621,27 +621,25 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         
         # RAG 예시 섹션 구성
         # ChromaDB L2 distance: 0에 가까울수록 유사
-        # [Intent-based RAG] 문장 유사도가 아닌 '의도 유사도'를 보기 위해 임계값을 0.35로 완화
-        # 0.15 (문장 일치) -> 0.50 (의도 일치: 단어 달라도 맥락 유사하면 허용, 3-small 기준치 높임)
-        distance_threshold = float(os.getenv("RAG_DISTANCE_THRESHOLD", "0.50"))
+        # [Intent-based RAG] OpenAI text-embedding-3-small은 벡터 분산이 큼. 0.85 ~ 0.95 권장.
+        # (문장 일치 0.2 ~ 0.4 / 의도(맥락) 유사 0.7 ~ 0.9 / 무관 1.1 이상)
+        distance_threshold = float(os.getenv("RAG_DISTANCE_THRESHOLD", "0.95"))
         
         rag_section = ""
         valid_examples = []
         
         if rag_examples:
-            logger.info(f"    [RAG Examples] Top-2 forced + threshold ({distance_threshold}) from 3rd onwards")
+            logger.info(f"    [RAG Examples] Strictly filtering by threshold ({distance_threshold})")
             for idx, ex in enumerate(rag_examples):
                 # [Fix] Map 'distance' from RAG service to 'score'
                 score = ex.get('score', ex.get('distance', 999))
                 
-                # Top-2는 무조건 포함, 3번째부터는 distance <= threshold만 포함
-                if idx < 2:
+                # 모든 예시에 대해 임계값 기준 적용 (Top-1, Top-2 강제 주입 제거)
+                if score <= distance_threshold:
                     valid_examples.append({**ex, 'score': score})
-                    logger.debug(f"    [RAG Examples]   - score: {score:.3f}, included (Top-{idx+1}, forced)")
-                elif score <= distance_threshold:
-                    valid_examples.append({**ex, 'score': score})
+                    logger.debug(f"    [RAG Examples]   - score: {score:.3f}, included (Threshold <= {distance_threshold})")
                 else:
-                    logger.debug(f"    [RAG Examples]   - score: {score:.3f}, excluded (threshold: {distance_threshold})")
+                    logger.debug(f"    [RAG Examples]   - score: {score:.3f}, excluded (Threshold > {distance_threshold})")
             
             if valid_examples:
                 rag_section = "\n[Reference Context - Similar Intent Examples]\n"
@@ -742,9 +740,7 @@ Step 6. SPAM 확정 조건:
         
         try:
             # 1. Intent Summary Generation (Use loop to run the async version or simplified sync)
-            # For check (sync), we wrap the async call
             # 1. Intent Summary Generation (Directly use agenerate_intent_summary if possible, else sync fallback)
-            import asyncio
             try:
                 # check is sync, but we want the high-quality intent summary from agenerate
                 intent_summary = self.generate_intent_summary(message)
@@ -1284,16 +1280,40 @@ Step 6. SPAM 확정 조건:
         """
         Public method to generate 'Judgement Semantic Unit' (Intent Summary).
         Used by main.py for saving RAG examples and internally for analysis.
-        (Synchronous version for compatibility)
+        (Synchronous version using Thread fallback to bridge Async loop safely)
         """
         import asyncio
+        import threading
+        
+        result_box = []
+        def run_in_thread():
+            try:
+                # new thread -> no running loop -> can safely asyncio.run
+                res = asyncio.run(self.agenerate_intent_summary(message))
+                result_box.append(res)
+            except Exception as e:
+                result_box.append(e)
+
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # If we are in a thread with a loop running, we use run_coroutine_threadsafe
-                return asyncio.run_coroutine_threadsafe(self.agenerate_intent_summary(message), loop).result()
-            else:
+            try:
+                asyncio.get_running_loop()
+                in_loop = True
+            except RuntimeError:
+                in_loop = False
+
+            if not in_loop:
                 return asyncio.run(self.agenerate_intent_summary(message))
-        except Exception:
-            # Fallback for sync environments without a running loop
+            else:
+                # We are already inside a running loop (e.g., LangGraph Batch ThreadPoolExecutor fallback)
+                # Spawning a thread isolates the async context completely.
+                t = threading.Thread(target=run_in_thread)
+                t.start()
+                t.join()
+                
+                res = result_box[0]
+                if isinstance(res, Exception):
+                    raise res
+                return res
+        except Exception as e:
+            logger.warning(f"Sync Intent Summary Thread Bridge Failed: {e}")
             return f"Intent analysis of: {message[:50]}..."

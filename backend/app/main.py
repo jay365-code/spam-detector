@@ -441,7 +441,7 @@ async def search_spam_rag_examples(query: str, k: int = 3):
         
         # 3. Filter by RAG_DISTANCE_THRESHOLD (align with LLM prompt injection logic)
         # 3-small models tend to have higher cosine distances than ada-002.
-        distance_threshold = float(os.getenv("RAG_DISTANCE_THRESHOLD", "0.50"))
+        distance_threshold = float(os.getenv("RAG_DISTANCE_THRESHOLD", "0.95"))
         hits = results.get("hits", [])
         filtered_hits = [
             hit for hit in hits 
