@@ -67,8 +67,12 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
 
     async def ibse_node(state: BatchState):
         msg = state["message"]
+        c_res = state.get("content_result", {})
+        signals = c_res.get("signals", {})
+        is_garbage = signals.get("is_garbage_obfuscation", False)
+        
         # IBSE Agent is now Async
-        res = await ibse_service.process_message(msg)
+        res = await ibse_service.process_message(msg, is_garbage_obfuscation=is_garbage)
         return {"ibse_result": res}
 
     def aggregator_node(state: BatchState):

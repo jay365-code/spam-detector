@@ -31,3 +31,5 @@ class IBSEState(TypedDict):
     
     retry_count: int            # For repair/retry logic
     error: Optional[str]        # Error message if any
+    
+    is_garbage_obfuscation: bool # Signal from content_agent for intentional obfuscation

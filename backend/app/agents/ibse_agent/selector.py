@@ -60,6 +60,7 @@ class LLMSelector:
 2. **차선 (High Priority) : 난독화 및 필터 회피 패턴 (Obfuscation Patterns)**
     - 일반적인 단어 사이에 특수기호나 자모음 분리, 기이한 영어/숫자 조합이 끼어있는 형태 ('대.출', 'ㅋr톡', 'vt⑨8g'). 이 자체로 세상에 유일한(Unique) 문자열이 되므로 좋은 시그니처다.
     - **[우선순위 절대 규칙]** 만약 후보군 중에 이런 강력한 난독화(`■최'대`, `인Eㅓ냇`) 기법이 포함되어 있다면, 그 주변이나 끝부분에 '무료거부', '상담' 같은 추출 금지(평범한 문구) 조건이 섞여 있더라도 **무조건 난독화 앵커를 우선순위로 두고 타협 없이 시그니처로 추출하라. 딜레마에 빠지지 마라.**
+    - **[강력 예외 규칙: 난독화 확정 신호]** 만약 입력 컨텍스트에 `is_garbage_obfuscation: true` 라고 명시되어 있다면, 앞단의 AI가 해당 메시지를 '고의적인 난독화/분절(예: 토 매 주 월 요 일)'로 이미 확정 지은 것이다. 이 경우에는 텍스트의 글자들 자체는 평범한 단어이고 특수기호/번호가 전혀 없더라도, 그 분절된 덩어리 자체를 이질적인 구조(시그니처)로 인정해야 한다. 절대 '흔한 상용구'나 '평범한 문구'로 잘못 판단하여 `unextractable`로 조기 포기하지 말고 반드시 `use_20` 또는 `use_40`으로 시그니처를 최대한 길게 추출하라.
 
 3. **절대 금지 및 조기 포기(Fail-fast) : 파편화된 정보 및 범용/상용구 문구**
     - **파편화된 정보 금지:** "010-1234", "김팀장" 처럼 우연히 겹칠 수 있는 짧고 흔한 정보의 조각만 단독으로 떼어내지 마라.
@@ -84,6 +85,8 @@ match_text: {match_text}
 candidates_20: {candidates_20_json}
 
 candidates_40: {candidates_40_json}
+
+is_garbage_obfuscation: {is_garbage_obfuscation}
 
 출력(JSON):
 {{
@@ -111,6 +114,7 @@ message_id: {message_id}
 match_text: {match_text}
 candidates_20: {candidates_20_json}
 candidates_40: {candidates_40_json}
+is_garbage_obfuscation: {is_garbage_obfuscation}
 
 위 조건을 만족하는 JSON만 다시 출력해라."""
 
@@ -176,6 +180,7 @@ candidates_40: {candidates_40_json}
         match_text = state.get("match_text", "")
         c20 = state.get("candidates_20", [])
         c40 = state.get("candidates_40", [])
+        is_garbage = 'true' if state.get("is_garbage_obfuscation", False) else 'false'
         
         # Serialize Candidates
         c20_json = json.dumps([dataclasses.asdict(c) for c in c20], ensure_ascii=False)
@@ -192,7 +197,8 @@ candidates_40: {candidates_40_json}
                 message_id=message_id,
                 match_text=match_text,
                 candidates_20_json=c20_json,
-                candidates_40_json=c40_json
+                candidates_40_json=c40_json,
+                is_garbage_obfuscation=is_garbage
             )
         else:
             system_prompt = self.SYSTEM_PROMPT
@@ -200,7 +206,8 @@ candidates_40: {candidates_40_json}
                 message_id=message_id,
                 match_text=match_text,
                 candidates_20_json=c20_json,
-                candidates_40_json=c40_json
+                candidates_40_json=c40_json,
+                is_garbage_obfuscation=is_garbage
             )
             
         return await self._call_llm(system_prompt, user_prompt)
