@@ -511,16 +511,14 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             spam_code = result_json.get("spam_code")
             ham_code = result_json.get("ham_code")
             
-        reason_str = str(result_json.get("reason", ""))
-        if fallback_model and reason_str:
-            result_json["reason"] = f"[Content_Fallback: {fallback_model}] " + reason_str
-            
-        # Ensure return type
-            
             if spam_code and str(spam_code).lower() != "null":
                 classification_code = str(spam_code)
             elif ham_code and str(ham_code).lower() != "null":
                 classification_code = str(ham_code)
+                
+        reason_str = str(result_json.get("reason", ""))
+        if fallback_model and reason_str:
+            result_json["reason"] = f"[Content_Fallback: {fallback_model}] " + reason_str
         
         # New Schema Logic: Prefer singular 'reason', fallback to joining 'reasons' if list exists
         reason = result_json.get("reason")

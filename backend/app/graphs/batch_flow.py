@@ -277,6 +277,11 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         final["semantic_class"] = semantic_class
         final["learning_label"] = learning_label
         
+        # [NEW] 안전망: 스팸(Type A/B)으로 분류되었는데 LLM 누락으로 분류 코드가 없을 경우 강제 할당
+        if semantic_class != "Ham" and not final.get("classification_code"):
+             # Ruleset 1.5처럼 URL에 의해 스팸으로 뒤집힌 경우 url_spam_code 우선 적용, 없으면 기본 "0"
+             final["classification_code"] = final.get("url_spam_code") or "0"
+        
         return {"final_result": final}
 
     # --- Conditional Logic ---
