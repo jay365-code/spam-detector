@@ -676,47 +676,32 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
 
 --------------------------------------------------
 
-[CRITICAL] 너는 텍스트만 분석한다. URL의 '존재 여부'나 '이동 경로'는 판단 근거가 아니다.
-단, 텍스트로서의 **URL 난독화 패턴**(특수문자 삽입, 기이한 도메인 형태, 띄어쓰기 등)은 **강력한 전면/회피 시그널(Textual Signal)**로 간주해야 한다.
-외국어 메시지는 언어 장벽에 상관없이 그 속에 숨겨진 **'의도(Intent)'와 '회피 목적의 난독화(Obfuscation)'**가 있는지 분석하라.
+[CRITICAL INSTRUCTIONS] 
+1. 텍스트 분석 집중: 오직 텍스트 문맥과 구조만 분석하라. URL의 실제 접속 가능성이나 목적지는 고려하지 않는다.
+2. 텍스트 난독화(Textual Obfuscation): 정상적인 단어 사이에 특수문자가 무분별하게 삽입되거나, 기이하게 띄어쓰기가 되어 있는 등 의도적으로 형태소를 파괴한 패턴은 가장 강력한 필터 회피 시그널(Textual Signal)로 간주한다.
+3. 외국어 처리: 외국어라도 정상적인 문법을 따른다면 단지 외국어일 뿐이다. 번역된 맥락 속에 숨겨진 '악의적 의도(Intent)'와 '회피 목적의 훼손유무'에 집중하라.
 
 [PROCEDURE]
-Step 1. HARD GATE 확인 → harm_anchor = false 이면 무조건 HAM (label="HAM")
+Step 1. HARD GATE: 분석 결과 위해성(harm_anchor)이 전혀 없으면 고민하지 말고 즉시 HAM (label="HAM")으로 종결한다. (이때 Step 4의 모든 signals는 false 여야 함)
 
-Step 2. harm_anchor 판정 → Guide 2.2 기준 (URL 무시, 텍스트만, 도박/성인/사기/어뷰즈 의도가 명확해야 true)
+Step 2. harm_anchor 판정: Guide 2.2 기준에 따라 도박/성인/사기/피싱 의도가 있는지 확인한다.
 
-Step 3. 의도 명확도 판정 → spam_probability로 표현 (0.85 이상이면 의도가 매우 명확)
+Step 3. 의도 명확도 산출: 해당 메시지의 스팸 의도를 spam_probability(0.0~1.0)로 산출하라 (0.85 이상이면 불순한 의도가 명백한 것).
 
-Step 4. [Type B 시그널 추출: CNN 모델 데이터 오염 방지 및 오탐(FP) 방어]
-   ⚠️ 중요: 이 절차는 메시지가 SPAM으로 의심될 때만 수행한다.
-   메시지의 구조나 본문이 정교하게 '정상 메시지를 위장'했거나 반대로 심하게 '난독화/훼손'되어 있어, 이 텍스트를 정형 데이터로 전통적인 CNN 모델에 통째로 학습시킬 경우 미래에 일반적인 정상 메시지들까지 스팸으로 오탐(False Positive)하게 만드는 부작용(Data Poisoning)을 초래하는지 까다롭게 평가하라.
-   아래 조항(4-1 ~ 4-3) 중 하나라도 해당하면 해당 시그널을 true로 반환한다.
+Step 4. [Type B 시그널 추출: CNN 모델 데이터 오염 및 오탐(False Positive) 방어]
+   ⚠️ 중요: 메시지가 SPAM으로 의심될 때만 작동한다. 이 메시지를 '단어의 국소적 등장 빈도(Local Features)와 형태'만을 패턴으로 학습하는 전통적인 CNN 모델에 '정형 데이터'로 제공해도, 향후 치명적인 오탐(False Positive) 부작용을 낳지 않을 안전한 데이터인지 평가하라. 아래 4가지 조항 중 단 하나라도 해당하면, 해당 시그널을 true로 반환하여 시스템이 데이터 풀에서 격리(Type B 전환)하도록 만들어야 한다.
 
-   Step 4-1. 정상 알림/일상 대화 구조의 도용 여부 (사칭 및 위장) → is_impersonation, is_personal_lure
-      - [is_impersonation]: '공공기관의 통보', '구직 제안', '기업의 공식 서비스 알림' 등 정상적인 공적 문장 구조와 레이아웃을 그대로 모방하여 학습 시 정상 알림의 오탐 위험이 있는가? 
-      - [is_personal_lure]: 안부, 부고, 청첩장 등 지인 간의 일상적인 사적 대화 흐름을 위장하여 텍스트만 보면 평범한 문장인 경우 true.
+   - 4-1. [is_impersonation]: 공공기관, 구직 제안, 대기업 알림 등 정상적인 공적 안내 구조와 레이아웃을 그대로 도용하여, 향후 정상 알림까지 스팸으로 학습시킬 위험이 있는가?
+   - 4-2. [is_personal_lure]: 부고, 청첩장, 안부 인사 등 지인 간의 일상적이고 사적인 대화 흐름을 완벽하게 위장하여, 사적 대화까지 스팸으로 오탐하게 만들 위험이 있는가?
+   - 4-3. [is_vague_cta]: 특정 악성 키워드 없이 "확인 바람", "아래 링크 참고" 등 범용적 문구만으로 교묘하게 클릭을 유도하여, 향후 평범한 권유 문구까지 오탐을 유발할 수 있는가?
+   - 4-4. [is_garbage_obfuscation]: 스팸 필터를 우회하기 위해 단어를 비정상적으로 찢거나 무의미한 특수문자를 혼합하여 형태소를 고의로 돌연변이화/난독화 시켰는가? (이러한 텍스트는 토크나이저를 교란하므로 적극 걸러내야 한다)
 
-   Step 4-2. 모호성 악용 여부 (Vague CTA) → is_vague_cta
-      - 악성 키워드 없이 범용적인 표현만 나열되어 있고 특정 문맥 없이 클릭이나 회신만을 유도하여, 향후 일반적인 권유/안내 문구를 오탐하게 만들 위험이 있는가?
-
-   Step 4-3. 고의적 난독화 및 은닉 의도 (Intentional Obfuscation & Evasion) 판단 → is_garbage_obfuscation
-      - 목적: 메시지의 텍스트가 스팸 필터를 우회할 목적(Evasion)으로 고의적으로 훼손, 암호화, 또는 과도하게 찢겨진 난독화 덩어리인가?
-      - 판단 기준: 텍스트에 쓰인 단어들이 정상 범용어("매주", "정산" 등)일지라도 그 조합의 형태가 문법/형태소를 비정상적으로 파괴하고 있다면 true이다. 이러한 텍스트를 CNN 토크나이저가 처리하게 되면 일반 단어들까지 스팸 특징으로 잘못 학습하게 되므로 적극 걸러내야 한다.
-
-Step 5. 최종 판정 및 CNN 학습 적합성 평가 (label 확정):
-   아래의 엄격한 과정을 거쳐 최종 라벨(label="SPAM" 또는 "HAM")을 결정한다.
-
-   - 5-1. HAM 확정: harm_anchor = false 이면 무조건 label="HAM" 이다. (Type B 시그널 무시)
-   
-   - 5-2. SPAM (Type A / Type B 후보) 확정 기본 조건: 
-      * 의도가 매우 명확 (spam_probability >= 0.85): harm_anchor=true 이면 1차 SPAM 합격
-      * 의도가 애매 (spam_probability < 0.85): harm_anchor=true AND route_or_cta=true 일 때만 1차 SPAM 합격
-      
-   - 5-3. CNN 학습 적합성 교차 검증 (The Final CNN Safety Check):
-      위 5-2를 통과하여 SPAM 확률이 높은 메시지라 하더라도, 해당 메시지가 **"전통적인 정형 데이터(키워드 기반 CNN) 모델이 오탐의 부작용 없이 안전하게 학습하기에 충분히 직관적이고 전형적인 스팸 키워드 패러다임(불법 도박, 성인 등)을 온전히 보존하고 있는가?"** 를 스스로 판단하라.
-      
-      만약 Step 4의 Type B 시그널(위장, 사칭, 심한 난독화 등) 중 하나라도 true 라면, 이 텍스트는 **CNN 통째 학습용으로는 100% 부적합(Poisonous)하므로 Type B**로 취급될 것이다. (결과 자체는 시스템 정책에 따라 처리되므로 너는 지침대로 신호만 true로 주고 label은 "SPAM"으로 출력하면 된다.)
-      반대로 Step 4의 모든 Type B 시그널이 false 라면, 이 텍스트는 **순도 높은 전형적인 스팸(Pure Type A)으로서 CNN에 정형 데이터로 학습시켜도 무결하다는 것**을 네가 보증하는 셈이다.
+Step 5. 최종 판정 (label 확정):
+   - 5-1. HAM 확정: harm_anchor = false 이면 무조건 label="HAM"
+   - 5-2. SPAM 조건: 의도가 매우 명확 (spam_probability >= 0.85) 하거나, 의도가 애매하지만(spam_probability < 0.85) route_or_cta=true 라면 SPAM 궤도에 진입한다.
+   - 5-3. Type A (순수 스팸) 검증 도장: 
+      * 위 Step 4의 Type B 시그널(4-1 ~ 4-4) 중 하나라도 true로 켜진다면, 시스템이 알아서 학습에서 격리할 것이므로 너는 걱정 없이 label="SPAM"을 주고 해당 시그널만 true로 출력하면 된다.
+      * 반대로 네가 모든 Step 4 시그널에 false를 줬다면, 너는 이 텍스트가 "전통적 CNN이 통째로 템플릿 학습을 해도, 정상 문자를 오탐할 부작용이 0%에 수렴하는 완벽한 정형 스팸 표본(Pure Type A)"임을 스스로 보증하는 증명이 된다.
 
 [OUTPUT — JSON ONLY]
 {{
@@ -724,7 +709,7 @@ Step 5. 최종 판정 및 CNN 학습 적합성 평가 (label 확정):
 "ham_code": "HAM-1|HAM-2|HAM-3|null",
 "spam_code": "0|1|2|3|null",
 "spam_probability": 0.0,
-"reason": "한국어로 판단 근거 작성. 특히 CNN 모델이 오해할 수 있는 '문장 구조적 특징'을 언급할 것",
+"reason": "CNN 모델이 이 텍스트를 통째로 정형 학습했을 때 발생할 수 있는 '오탐 위험성(Type B 사유)' 혹은 반대로 안전한 '학습 가치(Type A 자격)'를 반드시 논리적으로 포함하여 한국어로 작성할 것.",
 "signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false, "is_personal_lure": false, "is_garbage_obfuscation": false }}
 }}
 """
