@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import axios from 'axios';
 import { Upload, FileSpreadsheet, RefreshCw, AlertCircle, ChevronRight, BarChart3, Search, Download, Check, Database, Copy, GitCompare, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -10,6 +10,23 @@ import { twMerge } from 'tailwind-merge';
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
+
+const HighlightText = ({ text, highlight }: { text: string; highlight: string }) => {
+    if (!highlight.trim() || !text) return <>{text}</>;
+    const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const parts = String(text).split(new RegExp(`(${escapeRegExp(highlight)})`, 'gi'));
+    return (
+        <React.Fragment>
+            {parts.map((part, i) => 
+                part.toLowerCase() === highlight.toLowerCase() ? (
+                    <mark key={i} className="bg-yellow-200/80 text-slate-900 rounded-sm font-semibold">{part}</mark>
+                ) : (
+                    <span key={i}>{part}</span>
+                )
+            )}
+        </React.Fragment>
+    );    
+};
 
 // --- Types ---
 interface SummaryMetrics {
@@ -87,10 +104,33 @@ interface TypeBItem {
     extracted_signature?: string;
 }
 
+interface TypeAItem {
+    message_preview: string;
+    message_full: string;
+    semantic_class: string;
+    llm_reason: string;
+    llm_code: string;
+    is_spam: boolean;
+}
+
+interface HumanBasedDiffItem {
+    index: number;
+    message_full: string;
+    human_is_spam: boolean;
+    human_code: string;
+    human_reason: string;
+    llm_is_spam: boolean | null;
+    llm_code: string;
+    llm_reason: string;
+    match_status: "MATCH" | "FN" | "FP" | "MISSING_IN_LLM";
+}
+
 interface CompareResponse {
     summary: SummaryMetrics;
     diffs: DiffItem[];
+    human_based_diffs: HumanBasedDiffItem[];
     type_b_items: TypeBItem[];
+    type_a_items: TypeAItem[];
     missing_in_human: MissingRecord[];
     missing_in_llm: MissingRecord[];
     auto_summary: string;
@@ -183,7 +223,55 @@ export default function ValidatorPage() {
     const [filter, setFilter] = useState<'ALL' | 'FN' | 'FP'>('ALL');
     const [searchTerm, setSearchTerm] = useState('');
     const [copied, setCopied] = useState(false);
+    
+    // Diff Modal State (Integrated 1:1 Viewer)
     const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
+    const [diffFilter, setDiffFilter] = useState<'ALL' | 'MATCH' | 'MISMATCH' | 'MISSING'>('ALL');
+    const [diffSearchText, setDiffSearchText] = useState('');
+    
+    // Diff Table Expand/Collapse State
+    const [expandedDiffs, setExpandedDiffs] = useState<Set<number>>(new Set());
+    const toggleDiffExpand = (index: number) => {
+        setExpandedDiffs(prev => {
+            const next = new Set(prev);
+            if (next.has(index)) next.delete(index);
+            else next.add(index);
+            return next;
+        });
+    };
+
+    // Diff Table Resizable Columns State
+    const [colWidths, setColWidths] = useState<{ [key: string]: number }>({
+        row: 80,
+        message: 400,
+        human: 300,
+        llm: 300,
+        status: 120
+    });
+    const resizingCol = useRef<string | null>(null);
+    const startX = useRef<number>(0);
+    const startWidth = useRef<number>(0);
+
+    const handleMouseDown = (e: React.MouseEvent, colKey: string) => {
+        resizingCol.current = colKey;
+        startX.current = e.clientX;
+        startWidth.current = colWidths[colKey];
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+        if (!resizingCol.current) return;
+        const diffX = e.clientX - startX.current;
+        const newWidth = Math.max(100, startWidth.current + diffX); // 최소 100px 보장
+        setColWidths(prev => ({ ...prev, [resizingCol.current as string]: newWidth }));
+    };
+
+    const handleMouseUp = () => {
+        resizingCol.current = null;
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+    };
 
     // RAG Save State
     const [ragSaveStatus, setRagSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
@@ -196,6 +284,10 @@ export default function ValidatorPage() {
         diffType: 'FN' | 'FP';
         reason: string;
     } | null>(null);
+
+    // Type A Viewer State
+    const [isTypeAModalOpen, setIsTypeAModalOpen] = useState(false);
+    const [typeASearchText, setTypeASearchText] = useState('');
 
     // Type B Viewer State
     const [isTypeBModalOpen, setIsTypeBModalOpen] = useState(false);
@@ -640,13 +732,19 @@ export default function ValidatorPage() {
                                         </div>
                                     </div>
                                     <div className="flex flex-col gap-1.5 w-full">
-                                         <div className="flex items-center justify-between bg-violet-50/50 rounded-lg px-3 py-2 border border-violet-100">
+                                         <button 
+                                            onClick={() => setIsTypeAModalOpen(true)}
+                                            className="flex items-center justify-between bg-violet-50/50 rounded-lg px-3 py-2 border border-violet-100 hover:bg-violet-100 transition-colors cursor-pointer group"
+                                         >
                                             <div className="flex items-center gap-2">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-violet-500"></div>
+                                                <div className="w-1.5 h-1.5 rounded-full bg-violet-500 group-hover:animate-ping"></div>
                                                 <span className="text-xs font-bold text-violet-800">일반 스팸 (Type A)</span>
                                             </div>
-                                            <span className="text-sm font-bold text-violet-900">{data.summary.llm_spam_count.toLocaleString()}건</span>
-                                         </div>
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-sm font-bold text-violet-900">{data.summary.llm_spam_count.toLocaleString()}건</span>
+                                                <ChevronRight size={14} className="text-violet-400 group-hover:text-violet-600 group-hover:translate-x-0.5 transition-all" />
+                                            </div>
+                                         </button>
                                          <button 
                                             onClick={() => setIsTypeBModalOpen(true)}
                                             className="flex items-center justify-between bg-rose-50/50 rounded-lg px-3 py-2 border border-rose-100 hover:bg-rose-100 transition-colors cursor-pointer group"
@@ -1176,102 +1274,265 @@ export default function ValidatorPage() {
                 </div>
             )}
 
-            {/* Record Diff Modal */}
+            {/* Record Diff Modal (Integrated 1:1 Viewer) */}
             {isDiffModalOpen && data && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white w-full max-w-5xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in" onClick={() => setIsDiffModalOpen(false)}></div>
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-7xl max-h-[90vh] overflow-hidden flex flex-col relative animate-in zoom-in-95 duration-200">
                         {/* Header */}
-                        <div className="px-8 py-6 border-b flex items-center justify-between bg-gray-50/50">
+                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-indigo-50/50">
                             <div>
-                                <div className="flex items-center gap-2">
-                                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                                        <GitCompare className="text-indigo-600" size={24} />
-                                        Record Comparison Diff
-                                    </h3>
-                                </div>
-                                <p className="text-sm text-gray-500 mt-1">
-                                    두 엑셀 파일 간의 레코드 일치 여부를 확인합니다. (메시지 원문 및 순번 기준)
+                                <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                    <GitCompare size={20} className="text-indigo-600" />
+                                    전체 데이터 상세 비교 (Human vs LLM)
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-1">
+                                    정답(Human) 엑셀의 <strong>모든 메시지</strong>를 기준으로 AI 분석 결과를 1:1 매칭하여 보여줍니다.
                                 </p>
                             </div>
-                            <button
-                                onClick={() => setIsDiffModalOpen(false)}
-                                className="p-2 hover:bg-gray-200 rounded-full transition-colors"
-                            >
-                                <X size={24} className="text-gray-500" />
+                            <button onClick={() => setIsDiffModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-lg transition-colors">
+                                <X size={20} className="text-slate-500" />
                             </button>
                         </div>
-
-                        {/* Content */}
-                        <div className="flex-1 overflow-auto p-8 grid grid-cols-2 gap-8 bg-slate-50/30">
-                            {/* Missing in LLM (Only in Human) */}
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <h4 className="font-bold text-amber-700 flex items-center gap-2 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-100">
-                                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                                        In Human Only ({(data.missing_in_llm || []).length})
-                                    </h4>
-                                </div>
-                                <div className="space-y-3">
-                                    {(!data.missing_in_llm || data.missing_in_llm.length === 0) ? (
-                                        <div className="py-20 text-center text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200">
-                                            누락된 레코드가 없습니다.
-                                        </div>
-                                    ) : (
-                                        <div className="grid gap-3">
-                                            {(data.missing_in_llm || []).map((rec, idx) => (
-                                                <div key={idx} className="p-4 rounded-xl border border-gray-200 bg-white hover:border-amber-200 transition-all shadow-sm group">
-                                                    <div className="flex items-start justify-between gap-2 mb-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase tracking-tighter">Human Excel</span>
-                                                            <span className="text-[10px] font-bold text-indigo-400">Row {rec.index + 1}</span>
-                                                        </div>
-                                                        <span className={cn(
-                                                            "text-[9px] font-bold px-1.5 py-0.5 rounded-full border uppercase",
-                                                            rec.label === 'o' ? "bg-rose-50 text-rose-600 border-rose-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"
-                                                        )}>
-                                                            {rec.label === 'o' ? 'SPAM' : 'HAM'}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-sm text-gray-700 font-medium line-clamp-4 leading-relaxed group-hover:text-gray-900">{rec.message}</p>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
+                        
+                        {/* Filters & Search */}
+                        <div className="px-6 py-4 border-b border-slate-100 bg-white flex items-center gap-4 overflow-x-auto">
+                            <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+                                {[
+                                    { id: 'ALL', label: '전체 보기', icon: Database },
+                                    { id: 'MATCH', label: '일치 (Match)', icon: Check },
+                                    { id: 'MISMATCH', label: '불일치 (Mismatch)', icon: AlertCircle },
+                                    { id: 'MISSING', label: 'AI 누락', icon: X }
+                                ].map(f => (
+                                    <button
+                                        key={f.id}
+                                        onClick={() => setDiffFilter(f.id as any)}
+                                        className={cn(
+                                            "px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all whitespace-nowrap",
+                                            diffFilter === f.id
+                                                ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200/50"
+                                                : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+                                        )}
+                                    >
+                                        <f.icon size={16} className={diffFilter === f.id ? "text-indigo-600" : "opacity-50"} />
+                                        {f.label}
+                                        <span className={cn(
+                                            "text-xs px-2 py-0.5 rounded-full",
+                                            diffFilter === f.id ? "bg-indigo-50 text-indigo-600" : "bg-slate-200 text-slate-500"
+                                        )}>
+                                            {f.id === 'ALL' ? (data.human_based_diffs?.length || 0) :
+                                             f.id === 'MATCH' ? (data.human_based_diffs?.filter(d => d.match_status === 'MATCH').length || 0) :
+                                             f.id === 'MISMATCH' ? (data.human_based_diffs?.filter(d => d.match_status === 'FN' || d.match_status === 'FP').length || 0) :
+                                             (data.human_based_diffs?.filter(d => d.match_status === 'MISSING_IN_LLM').length || 0)}
+                                        </span>
+                                    </button>
+                                ))}
                             </div>
+                            
+                            {/* Search Box */}
+                            <div className="flex-1 flex items-center justify-end px-4 gap-2 border-l border-slate-100 min-w-[250px]">
+                                <Search size={16} className="text-slate-400 shrink-0" />
+                                <input
+                                    type="text"
+                                    placeholder="메시지 내용으로 검색..."
+                                    value={diffSearchText}
+                                    onChange={(e) => setDiffSearchText(e.target.value)}
+                                    className="w-full bg-transparent border-none text-sm focus:ring-0 text-slate-700 placeholder:text-slate-400"
+                                />
+                                {diffSearchText && (
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md whitespace-nowrap">
+                                            매칭: {(data.human_based_diffs || []).filter(item => {
+                                                if (diffFilter === 'MATCH' && item.match_status !== 'MATCH') return false;
+                                                if (diffFilter === 'MISMATCH' && (item.match_status !== 'FN' && item.match_status !== 'FP')) return false;
+                                                if (diffFilter === 'MISSING' && item.match_status !== 'MISSING_IN_LLM') return false;
+                                                return item.message_full.toLowerCase().includes(diffSearchText.toLowerCase());
+                                            }).length}건
+                                        </span>
+                                        <button onClick={() => setDiffSearchText('')} className="p-1 hover:bg-slate-100 rounded-full transition-colors shrink-0">
+                                            <X size={14} className="text-slate-400" />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
 
-                            {/* Missing in Human (Only in LLM) */}
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <h4 className="font-bold text-violet-700 flex items-center gap-2 bg-violet-50 px-3 py-1.5 rounded-lg border border-violet-100">
-                                        <span className="w-2 h-2 rounded-full bg-violet-500 animate-pulse" />
-                                        In LLM Only ({(data.missing_in_human || []).length})
-                                    </h4>
+                        {/* Integrated List Content */}
+                        <div className="flex-1 overflow-auto p-0 bg-slate-50/50">
+                            <div className="min-w-[1000px]">
+                                {/* Table Header */}
+                                <div 
+                                    className="grid gap-4 px-6 py-3 bg-slate-100/50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider sticky top-0 z-10 backdrop-blur-md select-none"
+                                    style={{ gridTemplateColumns: `${colWidths.row}px ${colWidths.message}px ${colWidths.human}px ${colWidths.llm}px ${colWidths.status}px` }}
+                                >
+                                    <div className="text-center relative group">
+                                        Row
+                                        <div onMouseDown={(e) => handleMouseDown(e, 'row')} className="absolute right-[-10px] top-1 bottom-1 w-[3px] bg-slate-200 cursor-col-resize group-hover:bg-indigo-300 hover:w-[4px] hover:bg-indigo-500 z-20 transition-all rounded" />
+                                    </div>
+                                    <div className="relative group">
+                                        Original Message
+                                        <div onMouseDown={(e) => handleMouseDown(e, 'message')} className="absolute right-[-10px] top-1 bottom-1 w-[3px] bg-slate-200 cursor-col-resize group-hover:bg-indigo-300 hover:w-[4px] hover:bg-indigo-500 z-20 transition-all rounded" />
+                                    </div>
+                                    <div className="relative group">
+                                        Human
+                                        <div onMouseDown={(e) => handleMouseDown(e, 'human')} className="absolute right-[-10px] top-1 bottom-1 w-[3px] bg-slate-200 cursor-col-resize group-hover:bg-indigo-300 hover:w-[4px] hover:bg-indigo-500 z-20 transition-all rounded" />
+                                    </div>
+                                    <div className="relative group">
+                                        LLM (AI 분석결과)
+                                        <div onMouseDown={(e) => handleMouseDown(e, 'llm')} className="absolute right-[-10px] top-1 bottom-1 w-[3px] bg-slate-200 cursor-col-resize group-hover:bg-indigo-300 hover:w-[4px] hover:bg-indigo-500 z-20 transition-all rounded" />
+                                    </div>
+                                    <div className="text-center">
+                                        Status
+                                    </div>
                                 </div>
-                                <div className="space-y-3">
-                                    {(!data.missing_in_human || data.missing_in_human.length === 0) ? (
-                                        <div className="py-20 text-center text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200">
-                                            누락된 레코드가 없습니다.
+                                
+                                {/* Table Body */}
+                                <div>
+                                    {(data.human_based_diffs || []).filter(item => {
+                                        // 1. Status Filter
+                                        if (diffFilter === 'MATCH' && item.match_status !== 'MATCH') return false;
+                                        if (diffFilter === 'MISMATCH' && (item.match_status !== 'FN' && item.match_status !== 'FP')) return false;
+                                        if (diffFilter === 'MISSING' && item.match_status !== 'MISSING_IN_LLM') return false;
+                                        
+                                        // 2. Text Search Filter
+                                        if (diffSearchText.trim() !== '') {
+                                            const query = diffSearchText.toLowerCase();
+                                            return item.message_full.toLowerCase().includes(query);
+                                        }
+                                        return true;
+                                    }).length === 0 ? (
+                                        <div className="p-12 text-center text-slate-500">
+                                            조건에 맞는 데이터가 없습니다.
                                         </div>
                                     ) : (
-                                        <div className="grid gap-3">
-                                            {(data.missing_in_human || []).map((rec, idx) => (
-                                                <div key={idx} className="p-4 rounded-xl border border-gray-200 bg-white hover:border-violet-200 transition-all shadow-sm group">
-                                                    <div className="flex items-start justify-between gap-2 mb-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase tracking-tighter">LLM Excel</span>
-                                                            <span className="text-[10px] font-bold text-indigo-400">Row {rec.index + 1}</span>
-                                                        </div>
-                                                        <span className={cn(
-                                                            "text-[9px] font-bold px-1.5 py-0.5 rounded-full border uppercase",
-                                                            rec.label === 'o' ? "bg-rose-50 text-rose-600 border-rose-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"
-                                                        )}>
-                                                            {rec.label === 'o' ? 'SPAM' : 'HAM'}
+                                        <div className="divide-y divide-slate-100">
+                                            {(data.human_based_diffs || []).filter(item => {
+                                                if (diffFilter === 'MATCH' && item.match_status !== 'MATCH') return false;
+                                                if (diffFilter === 'MISMATCH' && (item.match_status !== 'FN' && item.match_status !== 'FP')) return false;
+                                                if (diffFilter === 'MISSING' && item.match_status !== 'MISSING_IN_LLM') return false;
+                                                if (diffSearchText.trim() !== '') {
+                                                    const query = diffSearchText.toLowerCase();
+                                                    return item.message_full.toLowerCase().includes(query);
+                                                }
+                                                return true;
+                                            }).map((item, idx) => {
+                                                const isExpanded = expandedDiffs.has(idx);
+                                                return (
+                                                <div 
+                                                    key={idx} 
+                                                    onClick={() => toggleDiffExpand(idx)}
+                                                    className="grid gap-4 px-6 py-4 hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                                                    style={{ gridTemplateColumns: `${colWidths.row}px ${colWidths.message}px ${colWidths.human}px ${colWidths.llm}px ${colWidths.status}px` }}
+                                                >
+                                                    
+                                                    {/* 1. Row Index */}
+                                                    <div className="flex items-start justify-center pt-1">
+                                                        <span className="text-xs font-mono text-slate-400 bg-white border border-slate-200 rounded px-2 py-0.5 transition-colors group-hover:border-indigo-200 group-hover:text-indigo-600">
+                                                            #{item.index + 1}
                                                         </span>
                                                     </div>
-                                                    <p className="text-sm text-gray-700 font-medium line-clamp-4 leading-relaxed group-hover:text-gray-900">{rec.message}</p>
+
+                                                    {/* 2. Message */}
+                                                    <div className="pr-4 border-r border-slate-100 relative">
+                                                        <p className={cn("text-sm text-slate-700 leading-relaxed font-medium break-all whitespace-pre-wrap transition-all", !isExpanded && "line-clamp-4")}>
+                                                            <HighlightText text={item.message_full} highlight={diffSearchText} />
+                                                        </p>
+                                                        {item.message_full.length > 150 && (
+                                                            <div className="mt-2 text-[10px] font-bold text-indigo-400 opacity-60 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                                                                {isExpanded ? '접기 ▲' : '더보기 ▼'}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* 3. Human */}
+                                                    <div className="pr-4 border-r border-slate-100 space-y-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={cn(
+                                                                "text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider",
+                                                                item.human_is_spam ? "bg-rose-50 text-rose-600 border-rose-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                                                            )}>
+                                                                {item.human_is_spam ? 'SPAM' : 'HAM'}
+                                                            </span>
+                                                            {item.human_code && (
+                                                                <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
+                                                                    {item.human_code}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {item.human_reason && (
+                                                            <div className={cn("text-xs text-slate-600 bg-white border border-slate-200 p-2 rounded-lg break-words transition-all", !isExpanded && "line-clamp-3")}>
+                                                                {item.human_reason}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* 4. LLM */}
+                                                    <div className="pr-4 border-r border-slate-100 space-y-2">
+                                                        {item.match_status === 'MISSING_IN_LLM' ? (
+                                                            <div className="h-full flex items-center justify-center text-xs text-slate-400 italic bg-slate-50 border border-dashed border-slate-200 rounded-lg p-3">
+                                                                AI 분석 내역 찾을 수 없음
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className={cn(
+                                                                        "text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider",
+                                                                        item.llm_is_spam ? "bg-rose-50 text-rose-600 border-rose-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                                                                    )}>
+                                                                        {item.llm_is_spam ? 'SPAM' : 'HAM'}
+                                                                    </span>
+                                                                    {item.llm_code && (
+                                                                        <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
+                                                                            {item.llm_code}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {item.llm_reason && (
+                                                                    <div className={cn("text-xs text-slate-600 bg-violet-50/50 border border-violet-100 p-2 rounded-lg break-words transition-all overflow-hidden", isExpanded ? "" : "max-h-[72px] relative")}>
+                                                                        <div className="prose prose-sm prose-slate max-w-none text-[11px] leading-relaxed">
+                                                                            <ReactMarkdown>{item.llm_reason}</ReactMarkdown>
+                                                                        </div>
+                                                                        {!isExpanded && (
+                                                                            <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-violet-50/90 to-transparent pointer-events-none" />
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </>
+                                                        )}
+                                                    </div>
+
+                                                    {/* 5. Status Badge */}
+                                                    <div className="flex flex-col items-center pt-2">
+                                                        {item.match_status === 'MATCH' && (
+                                                            <div className="flex flex-col items-center text-emerald-600">
+                                                                <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center mb-1">
+                                                                    <Check size={18} strokeWidth={3} />
+                                                                </div>
+                                                                <span className="text-[10px] font-bold">MATCH</span>
+                                                            </div>
+                                                        )}
+                                                        {item.match_status === 'MISSING_IN_LLM' && (
+                                                            <div className="flex flex-col items-center text-slate-400">
+                                                                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center mb-1">
+                                                                    <AlertCircle size={18} />
+                                                                </div>
+                                                                <span className="text-[10px] font-bold whitespace-nowrap">AI MISSING</span>
+                                                            </div>
+                                                        )}
+                                                        {(item.match_status === 'FP' || item.match_status === 'FN') && (
+                                                            <div className="flex flex-col items-center text-amber-600">
+                                                                <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center mb-1">
+                                                                    <X size={18} strokeWidth={3} />
+                                                                </div>
+                                                                <span className="text-[10px] font-extrabold px-1.5 py-0.5 bg-amber-50 rounded border border-amber-200 shadow-sm mt-1">
+                                                                    {item.match_status}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
                                                 </div>
-                                            ))}
+                                            );})}
                                         </div>
                                     )}
                                 </div>
@@ -1279,14 +1540,8 @@ export default function ValidatorPage() {
                         </div>
 
                         {/* Footer */}
-                        <div className="p-6 bg-gray-50 border-t flex justify-between items-center px-8 text-xs text-gray-400 italic">
-                            <p>* '메시지 내용'과 '동일 메시지의 출현 순서'가 일치하지 않는 경우 차이로 인식됩니다.</p>
-                            <button
-                                onClick={() => setIsDiffModalOpen(false)}
-                                className="px-8 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-lg active:scale-95"
-                            >
-                                Close
-                            </button>
+                        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-xs text-slate-500">
+                            <div>Row 순번은 업로드 된 Human(정답) 엑셀의 순서 기준입니다.</div>
                         </div>
                     </div>
                 </div>
@@ -1355,9 +1610,25 @@ export default function ValidatorPage() {
                                     className="w-full bg-transparent border-none text-sm focus:ring-0 text-slate-700 placeholder:text-slate-400"
                                 />
                                 {typeBSearchText && (
-                                    <button onClick={() => setTypeBSearchText('')} className="p-1 hover:bg-slate-100 rounded-full transition-colors shrink-0">
-                                        <X size={14} className="text-slate-400" />
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md whitespace-nowrap">
+                                            매칭: {(data.type_b_items || []).filter(item => {
+                                                    let catMatch = true;
+                                                    if (typeBFilter === 'URL') catMatch = item.semantic_class === 'Type_B (URL)';
+                                                    else if (typeBFilter === 'SIGNATURE') catMatch = item.semantic_class === 'Type_B (SIGNATURE)';
+                                                    else if (typeBFilter === 'BOTH') catMatch = item.semantic_class === 'Type_B (URL, SIGNATURE)';
+                                                    else if (typeBFilter === 'NONE') catMatch = item.semantic_class === 'Type_B (NONE)';
+                                                    const query = typeBSearchText.toLowerCase();
+                                                    return catMatch && (item.message_full.toLowerCase().includes(query) || 
+                                                                (item.llm_reason || '').toLowerCase().includes(query) ||
+                                                                (item.extracted_url || '').toLowerCase().includes(query) ||
+                                                                (item.extracted_signature || '').toLowerCase().includes(query));
+                                            }).length}건
+                                        </span>
+                                        <button onClick={() => setTypeBSearchText('')} className="p-1 hover:bg-slate-100 rounded-full transition-colors shrink-0">
+                                            <X size={14} className="text-slate-400" />
+                                        </button>
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -1428,21 +1699,23 @@ export default function ValidatorPage() {
                                                     )}
                                                 </div>
                                                 <div className="text-sm font-medium text-slate-800 leading-relaxed break-all bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                                    {item.message_full}
+                                                    <HighlightText text={item.message_full} highlight={typeBSearchText} />
                                                 </div>
                                                 
                                                 {(item.extracted_url || item.extracted_signature) && (
                                                     <div className="flex flex-col gap-2 mt-2 bg-indigo-50/50 p-3 rounded-lg border border-indigo-100/50">
                                                         {item.extracted_url && item.extracted_url.trim() !== '' && item.extracted_url !== 'nan' && (
                                                             <div className="text-xs flex items-start gap-2">
-                                                                <span className="font-bold text-indigo-700 whitespace-nowrap bg-indigo-100 px-1.5 py-0.5 rounded text-[10px]">EXTRACTED URL</span>
-                                                                <span className="text-indigo-900 break-all bg-white px-2 py-0.5 rounded border border-indigo-100/50">{item.extracted_url}</span>
+                                                                <span className="text-indigo-900 break-all bg-white px-2 py-0.5 rounded border border-indigo-100/50">
+                                                                    <HighlightText text={item.extracted_url} highlight={typeBSearchText} />
+                                                                </span>
                                                             </div>
                                                         )}
                                                         {item.extracted_signature && item.extracted_signature.trim() !== '' && item.extracted_signature !== 'nan' && (
                                                             <div className="text-xs flex items-start gap-2">
-                                                                <span className="font-bold text-emerald-700 whitespace-nowrap bg-emerald-100 px-1.5 py-0.5 rounded text-[10px]">SIGNATURE</span>
-                                                                <span className="text-emerald-900 break-all bg-white px-2 py-0.5 rounded border border-emerald-100/50">{item.extracted_signature}</span>
+                                                                <span className="text-emerald-900 break-all bg-white px-2 py-0.5 rounded border border-emerald-100/50">
+                                                                    <HighlightText text={item.extracted_signature} highlight={typeBSearchText} />
+                                                                </span>
                                                             </div>
                                                         )}
                                                     </div>
@@ -1451,7 +1724,116 @@ export default function ValidatorPage() {
                                             <div className="lg:w-80 space-y-3">
                                                 <div className="text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-100 pb-2">AI Reasoning</div>
                                                 <div className="text-sm text-slate-600 leading-relaxed font-mono whitespace-pre-wrap">
-                                                    {item.llm_reason || "사유 없음"}
+                                                    <HighlightText text={item.llm_reason || "사유 없음"} highlight={typeBSearchText} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Type A Viewer Modal */}
+            {isTypeAModalOpen && data && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in" onClick={() => setIsTypeAModalOpen(false)}></div>
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col relative animate-in zoom-in-95 duration-200">
+                        {/* Header */}
+                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-violet-50/50">
+                            <div>
+                                <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-violet-600"></div>
+                                    일반 스팸 데이터 (Type A)
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-1">AI 모델이 <strong>명확한 스팸</strong>으로 판정한 순수 일반 스팸 건들입니다.</p>
+                            </div>
+                            <button onClick={() => setIsTypeAModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-lg transition-colors">
+                                <X size={20} className="text-slate-500" />
+                            </button>
+                        </div>
+                        
+                        {/* Filters */}
+                        <div className="px-6 py-4 border-b border-slate-100 bg-white flex items-center gap-4 overflow-x-auto">
+                            <div className="px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap bg-violet-600 text-white shadow-md shadow-violet-200">
+                                전체 ({data.type_a_items?.length || 0})
+                            </div>
+                            
+                            {/* Search Box */}
+                            <div className="flex-1 flex items-center justify-end px-4 gap-2 border-l border-slate-100 min-w-[250px]">
+                                <Search size={16} className="text-slate-400 shrink-0" />
+                                <input
+                                    type="text"
+                                    placeholder="분석 결과 및 메시지 내용 검색..."
+                                    value={typeASearchText}
+                                    onChange={(e) => setTypeASearchText(e.target.value)}
+                                    className="w-full bg-transparent border-none text-sm focus:ring-0 text-slate-700 placeholder:text-slate-400"
+                                />
+                                {typeASearchText && (
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md whitespace-nowrap">
+                                            매칭: {(data.type_a_items || []).filter(item => {
+                                                const query = typeASearchText.toLowerCase();
+                                                return item.message_full.toLowerCase().includes(query) || 
+                                                       (item.llm_reason || '').toLowerCase().includes(query);
+                                            }).length}건
+                                        </span>
+                                        <button onClick={() => setTypeASearchText('')} className="p-1 hover:bg-slate-100 rounded-full transition-colors shrink-0">
+                                            <X size={14} className="text-slate-400" />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 overflow-auto p-0 bg-slate-50/50">
+                            {(data.type_a_items || []).filter(item => {
+                                // Text Search Filter
+                                let textMatch = true;
+                                if (typeASearchText.trim() !== '') {
+                                    const query = typeASearchText.toLowerCase();
+                                    textMatch = item.message_full.toLowerCase().includes(query) || 
+                                                (item.llm_reason || '').toLowerCase().includes(query);
+                                }
+                                return textMatch;
+                            }).length === 0 ? (
+                                <div className="p-12 text-center text-slate-500">
+                                    {typeASearchText ? `"${typeASearchText}" 에 해당하는 검색 결과가 없습니다.` : "해당하는 조건의 데이터가 없습니다."}
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-slate-100">
+                                    {(data.type_a_items || []).filter(item => {
+                                        // Text Search Filter
+                                        let textMatch = true;
+                                        if (typeASearchText.trim() !== '') {
+                                            const query = typeASearchText.toLowerCase();
+                                            textMatch = item.message_full.toLowerCase().includes(query) || 
+                                                        (item.llm_reason || '').toLowerCase().includes(query);
+                                        }
+                                        return textMatch;
+                                    }).map((item, idx) => (
+                                        <div key={idx} className="p-6 hover:bg-white transition-colors flex flex-col lg:flex-row gap-6">
+                                            <div className="flex-1 space-y-3">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-violet-100 text-violet-700 border border-violet-200">
+                                                        TYPE A
+                                                    </span>
+                                                    {item.llm_code && (
+                                                        <span className="px-2 py-1 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-bold border border-slate-200">
+                                                            Code: {item.llm_code}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-sm font-medium text-slate-800 leading-relaxed break-all bg-slate-50 p-4 rounded-xl border border-slate-100 whitespace-pre-wrap">
+                                                    <HighlightText text={item.message_full} highlight={typeASearchText} />
+                                                </div>
+                                            </div>
+                                            <div className="lg:w-80 space-y-3">
+                                                <div className="text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-100 pb-2">AI Reasoning</div>
+                                                <div className="text-sm text-slate-600 leading-relaxed font-mono whitespace-pre-wrap">
+                                                    <HighlightText text={item.llm_reason || "사유 없음"} highlight={typeASearchText} />
                                                 </div>
                                             </div>
                                         </div>

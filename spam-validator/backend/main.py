@@ -301,6 +301,35 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
             "policy_interpretation": policy_tag
         })
 
+    # Generate Human-based Integrated Diffs
+    human_based_diffs = []
+    
+    # We want ALL rows from human (both matched and missing in LLM)
+    human_all = pd.concat([merged, missing_in_llm_df])
+    
+    # Sort by original index to keep the sequence of the human file
+    human_all = human_all.sort_values(by='original_index_human')
+
+    for _, row in human_all.iterrows():
+        is_missing_in_llm = pd.isna(row.get('메시지_llm'))
+        
+        # Determine Match Status
+        match_status = "MISSING_IN_LLM"
+        if not is_missing_in_llm:
+            match_status = "MATCH" if row['is_spam_human'] == row['is_spam_llm'] else ("FN" if row['is_spam_human'] else "FP")
+            
+        human_based_diffs.append({
+            "index": int(row['original_index_human']),
+            "message_full": str(row['메시지_human']),
+            "human_is_spam": bool(row['is_spam_human']),
+            "human_code": str(row.get('code_human', '')),
+            "human_reason": str(row.get('reason_human', '')),
+            "llm_is_spam": bool(row.get('is_spam_llm', False)) if not is_missing_in_llm else None,
+            "llm_code": str(row.get('code_llm', '')) if not is_missing_in_llm else "",
+            "llm_reason": str(row.get('reason_llm', '')) if not is_missing_in_llm else "",
+            "match_status": match_status
+        })
+
     # Generate Type B List
     type_b_items = []
     
@@ -348,6 +377,19 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
     type_b_none_count = len(df_l[df_l['semantic_class'] == "Type_B (NONE)"])
     type_b_total_count = len(df_l[df_l['semantic_class'].str.startswith("Type_B")])
 
+    # Generate Type A List
+    type_a_items = []
+    type_a_df = df_l[(df_l['is_spam'] == True) & (~df_l['semantic_class'].str.startswith("Type_B", na=False))]
+    for _, row in type_a_df.iterrows():
+        type_a_items.append({
+            "message_preview": str(row['메시지'])[:80] + "...",
+            "message_full": str(row['메시지']),
+            "semantic_class": str(row.get('semantic_class', '')),
+            "llm_reason": str(row.get('reason', '')),
+            "llm_code": str(row.get('code', '')),
+            "is_spam": bool(row['is_spam'])
+        })
+
     summary_dict = {
         "sheet_used": sheet_name,
         "total_human": len(df_h),
@@ -391,7 +433,9 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
     return {
         "summary": summary_dict,
         "diffs": diffs,
+        "human_based_diffs": human_based_diffs,
         "type_b_items": type_b_items,
+        "type_a_items": type_a_items,
         "missing_in_human": missing_in_human,
         "missing_in_llm": missing_in_llm,
         "auto_summary": auto_summary
