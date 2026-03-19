@@ -551,8 +551,18 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
         if spaceless_message != message:
             sp_protocol_pattern = r'(?:http|https)://[^\[\]<>◆▶★♥→※○●◎◇□■△▲▽▼▷◁◀♤♠♡♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬]+'
             sp_domain_pattern = r'(?:[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.)+[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]{2,}(?:/[^\[\]<>◆▶★♥→※○●◎◇□■△▲▽▼▷◁◀♤♠♡♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬]*)?'
-            protocol_urls.extend(re.findall(sp_protocol_pattern, spaceless_message))
-            raw_candidates.extend(re.findall(sp_domain_pattern, spaceless_message))
+            
+            sp_protocol_urls = re.findall(sp_protocol_pattern, spaceless_message)
+            sp_raw_cands = re.findall(sp_domain_pattern, spaceless_message)
+            
+            # 필터링: 정상적으로 띄어쓰기가 반영되어 추출된 URL에, 앞뒤로 엉뚱한 단어가 스페이스가 없어져서 들러붙은 가짜(Superset) URL 방어
+            for sp_u in sp_protocol_urls:
+                if not any(u in sp_u for u in protocol_urls):
+                    protocol_urls.append(sp_u)
+                    
+            for sp_c in sp_raw_cands:
+                if not any(c in sp_c for c in raw_candidates):
+                    raw_candidates.append(sp_c)
     except Exception as e:
         logger.warning(f"[URL Agent] Spaceless extraction failed: {e}")
     
@@ -579,6 +589,23 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
             # 도메인과 경로를 분리 (TLD 검사 목적)
             domain_part = cand.split('/')[0]
             parts = domain_part.split('.')
+            
+            # [Sentence Gluing Filter]
+            # 문자열에서 띄어쓰기가 누락되어 한글 문장이 도메인 서브도메인으로 강제 병합된 경우 방어
+            # 예: "전해드립니다.preed.com" -> SLD(preed)가 영문이면 앞의 한글 파트를 잘라냄
+            if len(parts) >= 3:
+                if re.match(r'^[a-zA-Z0-9-]+$', parts[-2]):
+                    cut_idx = -1
+                    for i in range(len(parts) - 2):
+                        if re.search(r'[\uac00-\ud7a3\u3131-\u3163]', parts[i]):
+                            cut_idx = i
+                    if cut_idx >= 0:
+                        new_domain_part = ".".join(parts[cut_idx+1:])
+                        # 경로 등 뒤쪽 문자는 살려둔 채 앞부분만 교체
+                        cand = new_domain_part + cand[len(domain_part):]
+                        domain_part = new_domain_part
+                        parts = domain_part.split('.')
+            
             if len(parts) < 2: continue
             
             tld = parts[-1].lower()
@@ -689,7 +716,8 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
             
             # 404 에러나 Not Found인 경우, 뒤에 붙은 쓰레기 문자열이 원인일 수 있음
             if status == "failed" or "404" in title or "not found" in title.lower():
-                import re
+                
+                # 1단계: 쓰레기값 잘라내기 (Trailing Garbage Stripping)
                 # 대괄호, 괄호, 꺾쇠, 한글이 처음 등장하는 지점부터 그 뒤 문자열을 싹둑 자름
                 cleaned_url = re.sub(r'[\[\]\(\)<>가-힣◆▶★♥]+.*$', '', url)
                 
@@ -706,6 +734,38 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
                                 logger.info(f"✅ [URL Agent] Retry successful with cleaned URL!")
                                 result = retry_result
                                 url = cleaned_url # Update tracking URL
+                                
+                # 2단계: 띄어쓰기로 인해 끊긴 URL 복원 (Space-obfuscation Expansion)
+                current_status = result.get("status")
+                current_title = str(result.get("title", ""))
+                # 아직도 404라면, 스페이스로 인해 끊겼을 가능성을 고려해 최대 3단어 확장 (사용자 요청)
+                if current_status == "failed" or "404" in current_title or "not found" in current_title.lower():
+                    sms_content = state.get("sms_content", "")
+                    if url in sms_content:
+                        parts = sms_content.split(url, 1)
+                        if len(parts) == 2:
+                            following_text = parts[1].strip()
+                            if following_text:
+                                tokens = following_text.split()
+                                expanded_url = url
+                                
+                                for i in range(min(3, len(tokens))):
+                                    expanded_url += tokens[i]
+                                    
+                                    # 확장된 문자열 뒤쪽의 스팸 기호나 정리
+                                    check_url = re.sub(r'[\[\]\(\)<>◆▶★♥→※○●◎◇□■△▲▽▼▷◁◀♤♠♡♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬]+.*$', '', expanded_url)
+                                    
+                                    if check_url != url and len(check_url) > 10:
+                                        logger.warning(f"⚠️ [URL Agent] 404 detected. Expanding cut-off URL (+{i+1} word): {url} -> {check_url}")
+                                        exp_result = await manager.scrape_url(check_url)
+                                        exp_status = exp_result.get("status", "")
+                                        exp_title = str(exp_result.get("title", ""))
+                                        
+                                        if exp_status == "success" and "404" not in exp_title and "not found" not in exp_title.lower():
+                                            logger.info(f"✅ [URL Agent] Expansion successful!")
+                                            result = exp_result
+                                            url = check_url
+                                            break
         except Exception as retry_e:
             logger.error(f"[URL Agent] Retry fallback error: {retry_e}")
         

@@ -154,6 +154,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         c_vague_cta = signals.get("is_vague_cta", False)
         c_personal_lure = signals.get("is_personal_lure", False)
         c_garbage_obfuscate = signals.get("is_garbage_obfuscation", False)
+        c_normal_layout = signals.get("is_normal_layout", False)
         
         u_blocked = False
         u_spam = False
@@ -251,6 +252,17 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
             existing_reason = final.get("reason", "")
             if "[FP Sentinel Override]" not in existing_reason:
                 final["reason"] = f"{existing_reason} | [FP Sentinel Override] 안전 필터 차단 감지로 인한 Type_B 전환"
+
+        # Ruleset 1.7: Type_B (Normal Layout Ad with Compliance Issues)
+        # 정상적인 홍보/모집 문자 레이아웃이지만 정통망법 미준수나 강한 유도로 스팸 판정된 경우
+        # → 레이아웃 자체가 너무 평범하므로 CNN이 학습하면 정상 광고를 오탐할 위험 큼
+        elif c_normal_layout and final.get("is_spam") is True:
+             semantic_class = "Type_B"
+             learning_label = "HAM"
+             
+             existing_reason = final.get("reason", "")
+             if "[FP Sentinel Override]" not in existing_reason:
+                  final["reason"] = f"{existing_reason} | [FP Sentinel Override] 템플릿 오탐 방지: 일반 광고 레이아웃(Type_B) 보호"
 
         # Rulset 2: Type_A (Pure Spam)
         elif final.get("is_spam") is True:

@@ -541,12 +541,14 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         is_vague_cta = signals.get("is_vague_cta", False)
         is_personal_lure = signals.get("is_personal_lure", False)
         is_garbage_obfuscation = signals.get("is_garbage_obfuscation", False)
+        is_normal_layout = signals.get("is_normal_layout", False)
         
         # Ensure signals dict is up to date
         signals["is_impersonation"] = is_impersonation
         signals["is_vague_cta"] = is_vague_cta
         signals["is_personal_lure"] = is_personal_lure
         signals["is_garbage_obfuscation"] = is_garbage_obfuscation
+        signals["is_normal_layout"] = is_normal_layout
 
         # ========== TRUST SPAM GUIDE & LLM ==========
         # Spam Guide 기반 프롬프트와 Type B 방어 시스템을 전적으로 신뢰합니다.
@@ -576,12 +578,14 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         # SPAM 확정 메시지에만 의미가 있음. HAM으로 판정된 경우 강제로 false로 초기화.
         if not is_spam:
             if any([signals.get("is_impersonation"), signals.get("is_vague_cta"), 
-                    signals.get("is_personal_lure"), signals.get("is_garbage_obfuscation")]):
+                    signals.get("is_personal_lure"), signals.get("is_garbage_obfuscation"), 
+                    signals.get("is_normal_layout")]):
                 logger.debug("[HAM Signal Defense] HAM 판정 메시지의 학습 보호 시그널을 false로 초기화")
             signals["is_impersonation"] = False
             signals["is_vague_cta"] = False
             signals["is_personal_lure"] = False
             signals["is_garbage_obfuscation"] = False
+            signals["is_normal_layout"] = False
 
         return {
             "is_spam": is_spam,
@@ -643,8 +647,12 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 # [User Request] Log the exact context injected into prompt
                 logger.debug(f"    [RAG Examples Injected Content]:\n{rag_section}")
         
+        import datetime
+        current_date_str = datetime.datetime.now().strftime("%Y년 %m월 %d일")
+        
         prompt_text = f"""
 너는 스팸 분류 전문가다. 판단 기준은 아래 Spam Guide에만 존재한다.
+(System Info: 오늘 날짜는 {current_date_str} 이다. 메시지의 날짜가 과거/미래인지 판단할 때 반드시 이 기준일을 사용하라.)
 
 --------------------------------------------------
 [Message]
@@ -676,6 +684,7 @@ Step 4. [Type B 시그널 추출: CNN 모델 데이터 오염 방어]
    - 4-2. [is_personal_lure]: 부고, 청첩장, 안부 인사 등 지인 간의 사적인 대화를 완벽히 위장하여 사적 대화 오탐을 유발할 위험이 있는가?
    - 4-3. [is_vague_cta]: 특정 악성 단어조차 없이 "확인 바람", "아래 링크 참고" 등 너무 범용적인 문구만으로 교묘하게 클릭을 유도하여 평범한 안내문자까지 오탐을 유발할 수 있는가?
    - 4-4. [is_garbage_obfuscation]: 단어를 비정상적으로 찢거나 무의미한 특수문자/기호를 마구 혼합해 형태소를 고의로 파괴(난독화)하여 시스템을 교란시키는가?
+   - 4-5. [is_normal_layout]: 메시지 레이아웃 자체는 매우 정상적인 일반 광고/알림/모집 텍스트처럼 보이지만, 수신거부(080) 누락 같은 정통망법 위반이나 식별 불가능한 발신자, 미묘한 사행성 유도 등의 사유로 SPAM 판정되었는가? (이런 평범한 형태의 메시지가 Type A로 들어가면 정상 광고들을 스팸으로 오탐하게 함)
 
 Step 5. 최종 판정 (label 확정):
    - Guide 기준에 따라 완벽한 정상문자면 HAM. 
@@ -687,7 +696,7 @@ Step 5. 최종 판정 (label 확정):
 "spam_code": "0|1|2|3|null",
 "spam_probability": 0.0,
 "reason": "Spam Guide의 어떤 기준에 의해 판정했는지 명시하고, SPAM인 경우 CNN 오탐 위험성(Type B 사유) 혹은 안전한 표본(Type A) 여부에 대한 너의 논리를 포함하여 한국어로 짧게 작성할 것.",
-"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false, "is_personal_lure": false, "is_garbage_obfuscation": false }}
+"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false, "is_personal_lure": false, "is_garbage_obfuscation": false, "is_normal_layout": false }}
 }}
 """
         return prompt_text, valid_examples
