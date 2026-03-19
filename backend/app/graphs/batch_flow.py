@@ -120,7 +120,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                  if final.get("is_spam"):
                      final["is_spam"] = False
                      final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE (Override)]"
-                     final["classification_code"] = None
+                     # Do NOT wipe final["classification_code"] to preserve Content Agent's original intent
 
         # Ensure malicious_url_extracted is explicitly in the final dict if set
         if "malicious_url_extracted" in final and final["malicious_url_extracted"] is True:
@@ -172,19 +172,15 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # is_spam은 aggregator가 이미 False로 설정했으므로 그대로 유지
 
         # Rulset 1: Type_B (FP-Sensitive Spam) - 사칭/기만 감지
-        # c_impersonation=True이면 URL 결과(존재여부, timeout 등) 무관하게 Type_B 확정
+        # c_impersonation=True이고 최종 스팸으로 판정된 경우
         # 대기업/공공기관 사칭은 정상 업무 단어를 사용하므로 학습 보호 필수
-        elif c_impersonation:
+        elif c_impersonation and final.get("is_spam") is True:
              semantic_class = "Type_B"
              learning_label = "HAM" # 학습에서 제외하여 학습 보호
              
-             # Enforcement: SPAM으로 강제 (HITL/HAM 오버라이드)
-             if final.get("is_spam") is not True:
-                 final["is_spam"] = True
-                 final["classification_code"] = "10" # 강제 Phishing/사칭 코드
              existing_reason = final.get("reason", "")
              if "[FP Sentinel Override]" not in existing_reason:
-                 final["reason"] = f"{existing_reason} | [FP Sentinel Override] 사칭/기만(Type_B) 확정 차단"
+                 final["reason"] = f"{existing_reason} | [FP Sentinel Override] 사칭/기만(Type_B) 보호"
                  
         # Ruleset 1.2: Type_B (Vague CTA 스팸 확정)
         # 텍스트가 의도적으로 모호/범용어이고 최종 스팸으로 판정된 경우 (URL 추출 여부 무관)
@@ -198,33 +194,25 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                  final["reason"] = f"{existing_reason} | [FP Sentinel Override] 모호한 CTA 스팸(Type_B) 처리 (학습 보호)"
 
         # Ruleset 1.3: Type_B (Personal Lure)
-        # 지인 사칭, 경조사 위장 등 100% 일상어로 구성된 메시지 (URL 유무 무관하게 학습 데이터에서 격리)
-        elif c_personal_lure:
+        # 지인 사칭, 경조사 위장 등 100% 일상어로 구성되었으나 스팸으로 판정된 경우
+        elif c_personal_lure and final.get("is_spam") is True:
              semantic_class = "Type_B"
              learning_label = "HAM"
              
-             # Enforcement: SPAM으로 강제
-             if final.get("is_spam") is not True:
-                 final["is_spam"] = True
-                 
              existing_reason = final.get("reason", "")
              if "[FP Sentinel Override]" not in existing_reason:
                  has_sig = bool(final.get("ibse_signature"))
                  if has_sig:
-                     final["reason"] = f"{existing_reason} | [FP Sentinel Override] 사적/경조사 위장(Type_B) + 시그니처: {final.get('ibse_signature')}"
+                     final["reason"] = f"{existing_reason} | [FP Sentinel Override] 사적/경조사 위장(Type_B) 보호 + 시그니처: {final.get('ibse_signature')}"
                  else:
-                     final["reason"] = f"{existing_reason} | [FP Sentinel Override] 사적/경조사 위장(Type_B) 확정 차단 (시그니처 없음)"
+                     final["reason"] = f"{existing_reason} | [FP Sentinel Override] 사적/경조사 위장(Type_B) 보호"
 
         # Ruleset 1.4: Type_B (Garbage Obfuscation)
-        # 내용 없이 필터 우회용 문자 조각들로만 구성된 메시지 (학습 데이터 오염 방지)
-        elif c_garbage_obfuscate:
+        # 내용 없이 필터 우회용 문자 조각들로만 구성되었고 스팸으로 판정된 경우
+        elif c_garbage_obfuscate and final.get("is_spam") is True:
              semantic_class = "Type_B"
              learning_label = "HAM"
              
-             # Enforcement: SPAM으로 강제
-             if final.get("is_spam") is not True:
-                 final["is_spam"] = True
-                 
              existing_reason = final.get("reason", "")
              if "[FP Sentinel Override]" not in existing_reason:
                  final["reason"] = f"{existing_reason} | [FP Sentinel Override] 난독화/쓰레기 토큰(Type_B) 보호"
@@ -274,6 +262,11 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              semantic_class = "Ham"
              learning_label = "HAM"
              
+        # 최종 HAM 판정 시, 앞서 병렬 실행된 IBSE 노드가 추출했던 문자열(시그니처) 초기화
+        if semantic_class == "Ham":
+             final["ibse_signature"] = None
+             final["ibse_category"] = None
+             
         # Type_B Sub-classification
         if semantic_class == "Type_B":
              # 본문에 있는 url은 분석은 하되, type 결정에는 input text의 url만 사용
@@ -294,10 +287,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              else:
                  semantic_class = "Type_B (NONE)"
              
-        # Fallback for missing classification_code
-        if final.get("is_spam") is True and not final.get("classification_code"):
-            # Set default missing code to "0" (기타) to avoid "None" in Excel/DB
-            final["classification_code"] = "0"
+        # (Removed fallback logic as requested by user)
 
         final["semantic_class"] = semantic_class
         final["learning_label"] = learning_label
