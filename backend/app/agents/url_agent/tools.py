@@ -210,11 +210,21 @@ class PlaywrightManager:
 
     async def stop(self):
         if self.browser:
-            await self.browser.close()
-            self.browser = None
+            try:
+                await asyncio.wait_for(self.browser.close(), timeout=3.0)
+            except Exception as e:
+                logger.warning(f"[PlaywrightManager] browser.close() timeout or error: {e}")
+            finally:
+                self.browser = None
+                
         if self.playwright:
-            await self.playwright.stop()
-            self.playwright = None
+            try:
+                await asyncio.wait_for(self.playwright.stop(), timeout=3.0)
+            except Exception as e:
+                logger.warning(f"[PlaywrightManager] playwright.stop() timeout or error: {e}")
+            finally:
+                self.playwright = None
+                
         # Clean up semaphore/lock refs so they get recreated on next start if loop changes
         self._semaphore = None
         self._lock = None

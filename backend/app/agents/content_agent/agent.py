@@ -161,19 +161,19 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             return self._full_guide_cache
             
         try:
-            guide_path = os.path.join(os.path.dirname(__file__), "../../../data/spam_guide.md")
+            guide_path = os.path.join(os.path.dirname(__file__), "../../../data/spam_guide_20230724.md")
             with open(guide_path, "r", encoding="utf-8") as f:
                 self._full_guide_cache = f.read()
                 return self._full_guide_cache
         except Exception as e:
             try: 
                 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
-                guide_path = os.path.join(base_dir, "data/spam_guide.md")
+                guide_path = os.path.join(base_dir, "data/spam_guide_20230724.md")
                 with open(guide_path, "r", encoding="utf-8") as f:
                     self._full_guide_cache = f.read()
                     return self._full_guide_cache
             except Exception as e2:
-                logger.error(f"    [Error] Failed to load spam_guide.md: {e2}")
+                logger.error(f"    [Error] Failed to load spam_guide_20230724.md: {e2}")
                 return "스팸 판단 기준: 도박, 성인, 사기, 불법 대출 의도가 명확하면 SPAM, 그렇지 않으면 HAM."
 
     def _get_cached_client(self, provider: str, api_key: str, model_name: str):
@@ -548,48 +548,28 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         signals["is_personal_lure"] = is_personal_lure
         signals["is_garbage_obfuscation"] = is_garbage_obfuscation
 
-        # ========== HARD GATE ENFORCEMENT ==========
-        # Rule 1: harm_anchor = false → 무조건 HAM
-        # Rule 2: 의도 명확(prob >= 0.85) + harm_anchor=true → SPAM (route_or_cta 무시)
-        # Rule 3: 의도 애매(prob < 0.85) + harm_anchor=true → route_or_cta 확인 필요
+        # ========== TRUST SPAM GUIDE & LLM ==========
+        # Spam Guide 기반 프롬프트와 Type B 방어 시스템을 전적으로 신뢰합니다.
+        # Python 측의 harm_anchor=false 강제 오버라이드를 제거하고 LLM의 label을 존중합니다.
         
-        if not harm_anchor:
-            # HARD GATE: harm_anchor가 false면 무조건 HAM
-            is_spam = False
-            if classification_code in ["0", "1", "2", "3", "10"]:
-                classification_code = None
-            label = result_json.get("label", "HAM").upper()
-            if label == "SPAM":
-                reason = f"[HARD GATE Override] harm_anchor=false → HAM 강제. 원래 reason: {reason}"
-        elif harm_anchor and spam_prob >= 0.85:
-            # 의도가 매우 명확 (prob >= 0.85): route_or_cta 확인 불필요 → SPAM 확정
-            is_spam = True
-            # route_or_cta가 false여도 SPAM 처리
-        elif harm_anchor and not route_or_cta:
-            # 의도가 애매 (prob < 0.85) + route_or_cta=false → HAM
+        label = result_json.get("label", "HAM").upper()
+        if label == "SPAM":
             if spam_prob >= 0.6:
-                # 의도는 있지만 확신은 부족, route_or_cta 없음 → HAM 처리하되 경고
-                is_spam = False
-                if classification_code in ["0", "1", "2", "3", "10"]:
-                    classification_code = None
-                reason = f"[HARD GATE] harm_anchor=true, prob={spam_prob:.2f} but route_or_cta=false → HAM. 원래 reason: {reason}"
+                is_spam = True
+            elif 0.4 <= spam_prob < 0.6:
+                is_spam = None # Undecided, will be handled by HITL
+                classification_code = "30" # HITL Required
+                if not reason.startswith("[HITL]"):
+                    reason = f"[HITL] Probability ({spam_prob:.2f}) is ambiguous. Requesting user feedback. | {reason}"
             else:
                 is_spam = False
                 if classification_code in ["0", "1", "2", "3", "10"]:
                     classification_code = None
-                reason = f"[HARD GATE] harm_anchor=true but route_or_cta=false → HAM. 원래 reason: {reason}"
+                reason = f"[Override] LLM output SPAM but probability is too low ({spam_prob:.2f}). Forced HAM. | {reason}"
         else:
-            # harm_anchor=true AND route_or_cta=true → 확률 기반 판단
-            if spam_prob < 0.4:
-                is_spam = False
-                if classification_code in ["0", "1", "2", "3", "10"]:
-                    classification_code = None
-            elif 0.4 <= spam_prob < 0.6:
-                is_spam = None # Undecided, will be handled by HITL
-                classification_code = "30" # HITL Required
-                reason = f"[HITL] Probability ({spam_prob:.2f}) is ambiguous. Requesting user feedback."
-            else: # >= 0.6
-                is_spam = True
+            is_spam = False
+            if classification_code in ["0", "1", "2", "3", "10"]:
+                classification_code = None
 
         # ========== HAM SIGNAL DEFENSE ==========
         # 학습 보호 시그널(is_impersonation, is_vague_cta, is_personal_lure, is_garbage_obfuscation)은
@@ -679,37 +659,34 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
 [CRITICAL INSTRUCTIONS] 
 1. 텍스트 분석 집중: 오직 텍스트 문맥과 구조만 분석하라. URL의 실제 접속 가능성이나 목적지는 고려하지 않는다.
 2. 텍스트 난독화(Textual Obfuscation): 정상적인 단어 사이에 특수문자가 무분별하게 삽입되거나, 기이하게 띄어쓰기가 되어 있는 등 의도적으로 형태소를 파괴한 패턴은 가장 강력한 필터 회피 시그널(Textual Signal)로 간주한다.
-3. 외국어 처리: 외국어라도 정상적인 문법을 따른다면 단지 외국어일 뿐이다. 번역된 맥락 속에 숨겨진 '악의적 의도(Intent)'와 '회피 목적의 훼손유무'에 집중하라.
+3. 외국어 처리: 러시아어(키릴 문자), 중국어 등 외국어로 쓰여진 텍스트 자체를 난독화나 쓰레기 토큰으로 오해하지 마라. 번역했을 때 악의적 URL이나 명백한 사기/협박 맥락이 없는 일상/업무 대화(예: 여권/비자 사진 파일 요청 등)라면 안전한 HAM이다. 외국어라는 이유만으로 SPAM이나 is_garbage_obfuscation으로 간주하는 것을 절대 금지한다.
 
 [PROCEDURE]
-Step 1. HARD GATE: 분석 결과 위해성(harm_anchor)이 전혀 없으면 고민하지 말고 즉시 HAM (label="HAM")으로 종결한다. (이때 Step 4의 모든 signals는 false 여야 함)
+Step 1. Spam Guide 최우선: 판단 기준은 전적으로 Spam Guide를 신뢰한다. Guide 기준 "즉시 SPAM" 사유(정통망법 미준수, 도박, 불법 등)에 1개라도 속한다면 오탐 걱정 없이 과감하게 SPAM (label="SPAM")으로 판정하라. 오탐 방어는 아래 Step 4의 Type B 시스템이 완벽하게 알아서 보호할 것이다. 정상적인 통신/안내이고 위반 사항이 없다면 HAM이다.
 
-Step 2. harm_anchor 판정: Guide 2.2 기준에 따라 도박/성인/사기/피싱 의도가 있는지 확인한다.
+Step 2. 시그널 1차 판정:
+   - harm_anchor: 도박/성인/사기/피싱/불법 등 치명적 위해성이 있는지 (`true` / `false`)
+   - route_or_cta: 수신자의 행동(클릭, 전화, 개인정보 회신 등)을 강하게 유도하는지 (`true` / `false`)
 
-Step 3. 의도 명확도 산출: 해당 메시지의 스팸 의도를 spam_probability(0.0~1.0)로 산출하라 (0.85 이상이면 불순한 의도가 명백한 것).
+Step 3. 의도 명확도 산출: 최종 스팸 확률을 spam_probability(0.0~1.0)로 산출하라.
 
-Step 4. [Type B 시그널 추출: CNN 모델 데이터 오염 및 오탐(False Positive) 방어]
-   ⚠️ 중요: 메시지가 SPAM으로 의심될 때만 작동한다. 이 메시지를 '단어의 국소적 등장 빈도(Local Features)와 형태'만을 패턴으로 학습하는 전통적인 CNN 모델에 '정형 데이터'로 제공해도, 향후 치명적인 오탐(False Positive) 부작용을 낳지 않을 안전한 데이터인지 평가하라. 아래 4가지 조항 중 단 하나라도 해당하면, 해당 시그널을 true로 반환하여 시스템이 데이터 풀에서 격리(Type B 전환)하도록 만들어야 한다.
-
-   - 4-1. [is_impersonation]: 공공기관, 구직 제안, 대기업 알림 등 정상적인 공적 안내 구조와 레이아웃을 그대로 도용하여, 향후 정상 알림까지 스팸으로 학습시킬 위험이 있는가?
-   - 4-2. [is_personal_lure]: 부고, 청첩장, 안부 인사 등 지인 간의 일상적이고 사적인 대화 흐름을 완벽하게 위장하여, 사적 대화까지 스팸으로 오탐하게 만들 위험이 있는가?
-   - 4-3. [is_vague_cta]: 특정 악성 키워드 없이 "확인 바람", "아래 링크 참고" 등 범용적 문구만으로 교묘하게 클릭을 유도하여, 향후 평범한 권유 문구까지 오탐을 유발할 수 있는가?
-   - 4-4. [is_garbage_obfuscation]: 스팸 필터를 우회하기 위해 단어를 비정상적으로 찢거나 무의미한 특수문자를 혼합하여 형태소를 고의로 돌연변이화/난독화 시켰는가? (이러한 텍스트는 토크나이저를 교란하므로 적극 걸러내야 한다)
+Step 4. [Type B 시그널 추출: CNN 모델 데이터 오염 방어]
+   ⚠️ 중요: 메시지가 SPAM으로 판별될 때만 시그널이 켜진다. 아무리 명백한 스팸이더라도, 이 메시지의 레이아웃이나 문구가 일반 정상 안내문자와 너무 흡사하여 CNN 모델에 원형 그대로 들어갈 경우 향후 무고한 정상 문자까지 모조리 스팸으로 오탐(False Positive)하게 만들 위험이 있다면, 반드시 해당 시그널을 `true`로 켜서 시스템이 이 데이터를 안전하게 격리(Type B)하게 만들어라.
+   - 4-1. [is_impersonation]: 공공기관, 구직 제안, 대기업 알림, 혹은 평범한 식당/학원 마케팅 전단지 레이아웃을 완벽하게 모방하여 정상 알림까지 스팸으로 오탐하게 할 템플릿 위험성이 있는가?
+   - 4-2. [is_personal_lure]: 부고, 청첩장, 안부 인사 등 지인 간의 사적인 대화를 완벽히 위장하여 사적 대화 오탐을 유발할 위험이 있는가?
+   - 4-3. [is_vague_cta]: 특정 악성 단어조차 없이 "확인 바람", "아래 링크 참고" 등 너무 범용적인 문구만으로 교묘하게 클릭을 유도하여 평범한 안내문자까지 오탐을 유발할 수 있는가?
+   - 4-4. [is_garbage_obfuscation]: 단어를 비정상적으로 찢거나 무의미한 특수문자/기호를 마구 혼합해 형태소를 고의로 파괴(난독화)하여 시스템을 교란시키는가?
 
 Step 5. 최종 판정 (label 확정):
-   - 5-1. HAM 확정: harm_anchor = false 이면 무조건 label="HAM"
-   - 5-2. SPAM 조건: 의도가 매우 명확 (spam_probability >= 0.85) 하거나, 의도가 애매하지만(spam_probability < 0.85) route_or_cta=true 라면 SPAM 궤도에 진입한다.
-   - 5-3. Type A (순수 스팸) 검증 도장: 
-      * 위 Step 4의 Type B 시그널(4-1 ~ 4-4) 중 하나라도 true로 켜진다면, 시스템이 알아서 학습에서 격리할 것이므로 너는 걱정 없이 label="SPAM"을 주고 해당 시그널만 true로 출력하면 된다.
-      * 반대로 네가 모든 Step 4 시그널에 false를 줬다면, 너는 이 텍스트가 "전통적 CNN이 통째로 템플릿 학습을 해도, 정상 문자를 오탐할 부작용이 0%에 수렴하는 완벽한 정형 스팸 표본(Pure Type A)"임을 스스로 보증하는 증명이 된다.
+   - Guide 기준에 따라 완벽한 정상문자면 HAM. 
+   - Guide 기준 SPAM 사유에 해당하면 무조건 SPAM. SPAM일 경우 spam_code (0, 1, 2, 3 중 택1)를 반드시 Guide의 3항목에 맞게 지정하라.
 
 [OUTPUT — JSON ONLY]
 {{
 "label": "HAM|SPAM",
-"ham_code": "HAM-1|HAM-2|HAM-3|null",
 "spam_code": "0|1|2|3|null",
 "spam_probability": 0.0,
-"reason": "CNN 모델이 이 텍스트를 통째로 정형 학습했을 때 발생할 수 있는 '오탐 위험성(Type B 사유)' 혹은 반대로 안전한 '학습 가치(Type A 자격)'를 반드시 논리적으로 포함하여 한국어로 작성할 것.",
+"reason": "Spam Guide의 어떤 기준에 의해 판정했는지 명시하고, SPAM인 경우 CNN 오탐 위험성(Type B 사유) 혹은 안전한 표본(Type A) 여부에 대한 너의 논리를 포함하여 한국어로 짧게 작성할 것.",
 "signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false, "is_personal_lure": false, "is_garbage_obfuscation": false }}
 }}
 """

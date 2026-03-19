@@ -21,11 +21,11 @@ class IBSEState(TypedDict):
     original_text: str          # Raw SMS text
     match_text: str             # Preprocessed text (NFKC + No Space)
     
-    candidates_20: List[Candidate] # Candidates <= 20 bytes
-    candidates_40: List[Candidate] # Candidates <= 40 bytes
+    # Direct Extraction Fields
+    extracted_signature: Optional[str]
+    extraction_type: Optional[str] # "string" or "sentence"
     
-    selected_decision: Optional[str] # use_20, use_40, unextractable
-    selected_candidate: Optional[Candidate]
+    final_result: Optional[dict] # Final JSON output format for API
     
     final_result: Optional[dict] # Final JSON output format for API
     

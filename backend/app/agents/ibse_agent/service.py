@@ -27,39 +27,7 @@ class IBSEAgentService:
         if status_callback: status_callback("텍스트 전처리 중...")
         match_text = preprocess_text(text)
         
-        # --- Pre-LLM Optimization: URL Filter ---
-        import re
-        # 1. Short URL Regex (Exceptions - MUST process)
-        short_url_pattern = re.compile(r'(bit\.ly|me2\.do|vo\.la|han\.gl|url\.kr|sbz\.kr)', re.IGNORECASE)
-        
-        # 2. General URL Regex (Normal URLs - Skip LLM)
-        general_url_pattern = re.compile(
-            r'(?:https?://[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+|www\.[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+|(?:^|\s)[a-zA-Z0-9-]+\.(?:com|co\.kr|net|org|kr|xyz|me)(?:\s|$))', 
-            re.IGNORECASE | re.ASCII
-        )
-        
-        has_short = bool(short_url_pattern.search(text))
-        match_general = general_url_pattern.search(text)
-        has_general = bool(match_general)
-        
-        if match_general:
-            logger.info(f"DEBUG URL Match: '{match_general.group()}'")
-        
-        # User Request: Treat ALL URLs (including Short URLs) as unextractable
-        if has_general or has_short:
-            logger.info(f"Skipping LLM for {message_id}: URL detected (Short or Normal).")
-            if status_callback: status_callback("URL 감지됨 -> LLM 분석 생략 (Unextractable)")
-            
-            match_str = match_general.group() if match_general else "Short URL"
-            return {
-                "message_id": message_id,
-                "decision": "unextractable",
-                "signature": None,
-                "reason": f"URL detected: '{match_str}'",
-                "byte_len": 0,
-                "candidates_count": 0
-            }
-        # ----------------------------------------
+        # (URL 감지 시 IBSE 추출을 생략하던 Pre-LLM Optimization 제거됨)
         
         state: IBSEState = {
             "message_id": message_id,

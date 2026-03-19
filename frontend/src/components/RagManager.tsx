@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Edit2, Trash2, Search, Database, RefreshCw, Save, AlertCircle, Copy, Check, PenSquare } from 'lucide-react';
 
 interface FnExample {
@@ -519,10 +519,10 @@ export const RagManager: React.FC<RagManagerProps> = ({ isOpen, onClose, initial
                                             onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                                             className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all appearance-none"
                                         >
-                                            <option value="0">0 - 기타 스팸</option>
-                                            <option value="1">1 - 유해성 스팸</option>
-                                            <option value="2">2 - 사기/투자 스팸</option>
-                                            <option value="3">3 - 불법 도박/대출</option>
+                                            <option value="0">0 - 기타</option>
+                                            <option value="1">1 - 성인</option>
+                                            <option value="2">2 - 도박</option>
+                                            <option value="3">3 - 금융</option>
                                         </select>
                                     </div>
                                 )}

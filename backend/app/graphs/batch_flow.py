@@ -129,11 +129,15 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
 
 
         # 2. Add IBSE Info
-        if i_res and i_res.get("signature"):
-             final["ibse_signature"] = i_res.get("signature")
-             final["ibse_len"] = i_res.get("byte_len")
-             # final["reason"] += f" | Sig: {i_res.get('signature')}" # Optional
-        
+        if i_res:
+             if i_res.get("signature"):
+                 final["ibse_signature"] = i_res.get("signature")
+                 final["ibse_len"] = i_res.get("byte_len_cp949", i_res.get("byte_len"))
+             # 3. User Requested: If unextractable AND no URL was found, drop completely from Excel
+             has_extracted_url = bool(u_res and (u_res.get("target_urls") or u_res.get("current_url") or u_res.get("visited_history")))
+             if i_res.get("decision") == "unextractable" and not has_extracted_url:
+                 final["exclude_from_excel"] = True
+                 
         return {"final_result": final}
 
     def fp_sentinel_node(state: BatchState):

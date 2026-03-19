@@ -1,0 +1,293 @@
+﻿commit 2d068d91074389c391ab5fe43e4fcbfb091507f6
+Author: jay365 <jhlee@gubed.co.kr>
+Date:   Thu Mar 12 19:23:59 2026 +0900
+
+    revert: Revert unapproved LLM prompt changes in content_agent and ibse_agent
+
+diff --git a/backend/app/agents/ibse_agent/selector.py b/backend/app/agents/ibse_agent/selector.py
+index f9acb95..62fdb08 100644
+--- a/backend/app/agents/ibse_agent/selector.py
++++ b/backend/app/agents/ibse_agent/selector.py
+@@ -48,23 +48,21 @@ class LLMSelector:
+ - 40諛붿씠?몄뿉?쒕룄 ?쇰컲 臾멸뎄 以묒떖?닿굅???ㅽ깘 ?꾪뿕???щ㈃ unextractable???좏깮?쒕떎.
+ 
+ **[?먮떒 ?곗꽑?쒖쐞 (Decision Hierarchy)]**
+-1. **理쒖슦??(Must Extract)**: ML???고쉶?섎젮???쒕룄
++1. **理쒖슦??(Must Extract)**: ML???고쉶?섎젮???쒕룄 諛?援ъ“???좊룄
+     - **蹂?????*: '?.異?, '?땢??, 'S.E.X', '?諛????? ???뱀닔臾몄옄 ?쎌엯, ?먮え 遺꾨━.
+-    - **?쒕룆?붾맂 ?됰룞 ?좊룄**: "[OOO] 寃?됲븯?몄슂" ?깆쓣 蹂?뺥븯????寃쎌슦.
+-2. **李⑥꽑 (High Priority)**: 諛쒖떊???뱀젙 (?ъ궗?⑹꽦 ?믪쓬)
+-    - **怨좎쑀 ?앸퀎 ?뺣낫**: 媛쒖씤 ?대???踰덊샇(010), 移댄넚/?붾젅洹몃옩 ID, ?뱀젙 ?곷떞???대쫫(?? '源誘몄쁺 ???).
++    - **?곕씫泥?硫붿떊? ?좊룄 臾멸뎄 寃고빀 (留ㅼ슦 以묒슂)**: ?꾪솕踰덊샇(010)??移댄넚 ID ?좊룄媛 ?덉쓣 寃쎌슦, **?덈?濡??⑥닚 踰덊샇留??ы븿??吏㏃? ?꾨낫瑜?怨좊Ⅴ吏 留덈씪 (????ㅽ깘 ?꾪뿕).** 諛섎뱶??**"?좊룄 臾몄옣(?? 移댄넚 ?곕씫泥?異붽?) + ?꾪솕踰덊샇 ?쇰?/?꾩껜"媛 寃고빀??40諛붿씠???꾨낫(`use_40`)**瑜??좏깮?섎씪. (?? `移댄넚 ?곷떒 ?щ엺?뚮윭?ㅻえ???대┃`, `移댄넚 ?곕씫泥?異붽? 踰덊샇 : 010-8053`).
++    - ?꾪솕踰덊샇??ID ?⑤룆?쇰줈留??대（?댁쭊 ?꾨낫???ㅽ깘 ?꾪뿕???믪쑝誘濡??덈? ?좏깮?섏? 留덈씪.
++2. **李⑥꽑 (High Priority)**: ?뺤떎?섍퀬 ?낇듅??諛쒖떊???뱀젙
++    - **怨좎쑀 ?앸퀎 ?뺣낫**: ?뱀젙 ?곷떞???대쫫(?? '源誘몄쁺 ???, '?좎쥌???섏꽍').
+ 3. **蹂대쪟/?쒖쇅 (Consider Unextractable)**: ?쇰컲?곸씤 ?ㅽ뙵
+     - **?⑥닚 ?띾낫 臾멸뎄**: "理쒓퀬 ?섏씡 蹂댁옣", "吏湲?媛?????쒗깮", "臾대즺 嫄곕?" ?? ?꾧뎄???????덈뒗 留먯? 李⑤떒 由ъ뒪?몄뿉 ?ｌ뼱???④낵媛 ??떎. -> **`unextractable` 沅뚯옣**.
+-    - **080 ?섏떊嫄곕? 踰덊샇**: 怨듭슜 踰덊샇?대?濡??쒖쇅.
+-    - **踰붿슜 臾멸뎄**: 硫붿떆吏???듭떖??URL肉먯씠怨??섎㉧吏媛 "100% 利앹젙", "媛???대깽?? ???꾧뎄???????덈뒗 硫섑듃?쇰㈃ `unextractable`???좏깮.
+-
+-**[?뱀닔 洹쒖튃: URL???ы븿??寃쎌슦 (Special Rule for URLs)]**
+-- **?뺤긽?곸씤 URL**(`http`, `www`, `naver.com` ??**源⑤걮???뺥깭**)???ы븿??寃쎌슦:
+-    - 由ъ냼????퉬瑜?留됯린 ?꾪빐 **`unextractable`???좏깮**?쒕떎. (URL Agent ?꾩엫)
+-- **?쒕룆?붾맂/蹂?뺣맂 URL**(`vt??g.COm`, `k-bank. xyz` ?????ы븿??寃쎌슦:
+-    - ?대뒗 ?뺤긽 URL???꾨땲誘濡? **?쒓렇?덉쿂濡?異붿텧?댁빞 ?쒕떎**. (理쒖슦???쒖쐞 ?곸슜)
+-    - ?? `vt??g.COm` -> 異붿텧 ?덉슜.
+-    - ?? `www.google.com` -> 異붿텧 湲덉? (`unextractable`).
++    - **080 ?섏떊嫄곕? 踰덊샇 / ?⑥닚 ?쇰컲 ?곕씫泥?*: 臾몃㎘ ?놁씠 踰덊샇留?議댁옱?섍굅??怨듭슜 踰덊샇??寃쎌슦.
++
++**[?뱀닔 洹쒖튃: URL/?곕씫泥섍? ?ы븿??寃쎌슦 (Special Rule)]**
++- **?뺤긽?곸씤 ?뺥깭??URL**(`http`, `www`, `naver.com` ??**源⑤걮???뺥깭**):
++    - URL 李⑤떒 ?쒖뒪?쒖씠 蹂꾨룄濡?泥섎━?섎?濡?IBSE 由ъ냼????퉬瑜?留됯린 ?꾪빐 **`unextractable`???좏깮**?쒕떎.
++- **?쒕룆?붾맂/蹂?뺣맂 URL**(`vt??g.COm`, `k-bank. xyz`, `me 2 . do` ??:
++    - ?뺤긽 URL ?꾪꽣瑜??고쉶?섎젮???낆쓽??蹂?뺤씠誘濡? ?대떦 蹂??臾몄옄???먯껜瑜?**?쒓렇?덉쿂濡?異붿텧(use_20 ?먮뒗 use_40)?댁빞 ?쒕떎**.
+ 
+ 諛섎뱶??JSON ?⑥씪 媛앹껜留?異쒕젰?쒕떎. 異붽? ?띿뒪??湲덉?."""
+ 
+
+commit c93828ad24125b90a35d15687e3f34e913f708c4
+Author: jay365 <jhlee@gubed.co.kr>
+Date:   Wed Mar 11 12:10:26 2026 +0900
+
+    fix(batch): Resolve URL extraction bypass & IBSE timeout issues
+    
+    - batch_flow.py: Fixed URL extraction to use pre_parsed_url from KISA TXT
+    - batch_flow.py: Refined Type_B sub-classification to only apply '(URL)' when URL exists in input source
+    - ibse_agent: Applied connection pooling (_loop_bound_clients) and tenacity jitter to resolve TCP socket exhaustion
+    - main.py: Exposed IBSE signature extraction output in chat stream
+    - excel_handler.py, spam-validator: Updated parsing logic & metrics report for Type_B sub-classes
+
+diff --git a/backend/app/agents/ibse_agent/selector.py b/backend/app/agents/ibse_agent/selector.py
+index b3e6a29..f9acb95 100644
+--- a/backend/app/agents/ibse_agent/selector.py
++++ b/backend/app/agents/ibse_agent/selector.py
+@@ -4,8 +4,7 @@ import dataclasses
+ import asyncio
+ from typing import List, Optional
+ from .state import IBSEState, Candidate
+-
+-# Logger Setup
++from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception, before_sleep_log
+ 
+ 
+ def _normalize_llm_content(content) -> str:
+@@ -108,6 +107,49 @@ candidates_40: {candidates_40_json}
+     def __init__(self):
+         from app.core.llm_manager import key_manager
+         self._key_manager = key_manager
++        self._loop_bound_clients = {}
++
++    def _get_cached_client(self, provider: str, api_key: str, model_name: str):
++        try:
++            current_loop = asyncio.get_running_loop()
++        except RuntimeError:
++            current_loop = None
++
++        cache_key = f"{provider}_{api_key}_{model_name}"
++        dict_key = (cache_key, current_loop)
++
++        if dict_key in self._loop_bound_clients:
++            return self._loop_bound_clients[dict_key]
++
++        logger.info(f"[LLMSelector] Instantiating new LLM client for {provider} ({model_name})")
++        
++        if provider == "OPENAI":
++            from openai import AsyncOpenAI
++            client = AsyncOpenAI(api_key=api_key, max_retries=0)
++        elif provider == "GEMINI":
++            from langchain_google_genai import ChatGoogleGenerativeAI
++            safety_settings = {
++                "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
++                "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
++                "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
++                "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
++            }
++            client = ChatGoogleGenerativeAI(
++                model=model_name if "gemini" in model_name else "gemini-1.5-flash",
++                google_api_key=api_key,
++                temperature=0.0,
++                safety_settings=safety_settings,
++                convert_system_message_to_human=True,
++                max_retries=0
++            )
++        elif provider == "CLAUDE":
++            import anthropic
++            client = anthropic.AsyncAnthropic(api_key=api_key, max_retries=0)
++        else:
++            raise ValueError(f"Unsupported provider: {provider}")
++            
++        self._loop_bound_clients[dict_key] = client
++        return client
+ 
+     @property
+     def model_name(self) -> str:
+@@ -152,24 +194,24 @@ candidates_40: {candidates_40_json}
+ 
+     async def _call_llm(self, system_prompt: str, user_prompt: str) -> dict:
+         from app.core.llm_manager import key_manager
+-        import time
+ 
+-        max_retries = 3 # Safety break, limit total attempts
+-        attempt = 0
+-        
+-        while attempt < max_retries:
+-            attempt += 1
+-            # [蹂묐젹 泥섎━] ?ㅻⅨ 而댄룷?뚰듃媛 ?대? 紐⑤뱺 ?ㅻ? ?뚯쭊?덉쑝硫?利됱떆 以묐떒
+-            if key_manager.is_quota_exhausted(self.provider):
+-                logger.warning(f"[LLMSelector] {self.provider} quota already exhausted. Skipping.")
+-                return {"error": "Quota exhausted", "decision": "unextractable"}
+-            # [KeyManager ?숆린?? ?몄텧 ?쒕쭏???꾩옱 ???ъ슜 (Content Agent ?깃낵 index 怨듭쑀)
+-            self.api_key = key_manager.get_key(self.provider)
++        @retry(
++            stop=stop_after_attempt(3),
++            wait=wait_exponential(multiplier=1, min=1, max=5),
++            retry=retry_if_exception(lambda e: "No retry." not in str(e)),
++            before_sleep=before_sleep_log(logger, logging.WARNING),
++            reraise=True
++        )
++        async def do_call():
++            provider = self.provider
++            if key_manager.is_quota_exhausted(provider):
++                raise Exception(f"{provider} quota globally exhausted. No retry.")
++            
++            api_key = key_manager.get_key(provider)
++            client_instance = self._get_cached_client(provider, api_key, self.model_name)
++            
+             try:
+-                if self.provider == "OPENAI":
+-                    from openai import AsyncOpenAI
+-                    client = AsyncOpenAI(api_key=self.api_key)
+-                    # o1/o3/o4/gpt-5 怨꾩뿴 reasoning 紐⑤뜽? temperature ?뚮씪誘명꽣 誘몄???+                if provider == "OPENAI":
+                     _no_temp_prefixes = ("o1", "o3", "o4", "gpt-5")
+                     _supports_temp = not any(self.model_name.startswith(p) for p in _no_temp_prefixes)
+                     _kwargs = {
+@@ -182,62 +224,37 @@ candidates_40: {candidates_40_json}
+                     }
+                     if _supports_temp:
+                         _kwargs["temperature"] = 0.0
+-                    response = await asyncio.wait_for(client.chat.completions.create(**_kwargs), timeout=90.0)
++                    response = await asyncio.wait_for(client_instance.chat.completions.create(**_kwargs), timeout=120.0)
+                     content = response.choices[0].message.content
+                     
+-                elif self.provider == "GEMINI":
+-                    from langchain_google_genai import ChatGoogleGenerativeAI
+-                    
+-                    # [Safety Settings]
+-                    safety_settings = {
+-                        "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
+-                        "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
+-                        "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
+-                        "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+-                    }
+-                    
+-                    llm = ChatGoogleGenerativeAI(
+-                        model=self.model_name if "gemini" in self.model_name else "gemini-1.5-flash",
+-                        google_api_key=self.api_key,
+-                        temperature=0.0,
+-                        safety_settings=safety_settings,
+-                        convert_system_message_to_human=True
+-                    )
+-                    
+-                    # System prompt handling
++                elif provider == "GEMINI":
+                     from langchain_core.messages import SystemMessage, HumanMessage
+                     messages = [
+                         SystemMessage(content=system_prompt),
+                         HumanMessage(content=user_prompt)
+                     ]
+-                    
+-                    response = await asyncio.wait_for(llm.ainvoke(messages), timeout=90.0)
++                    response = await asyncio.wait_for(client_instance.ainvoke(messages), timeout=120.0)
+                     content = _normalize_llm_content(response.content)
+                     
+-                elif self.provider == "CLAUDE":
+-                    import anthropic
+-                    client = anthropic.AsyncAnthropic(api_key=self.api_key)
++                elif provider == "CLAUDE":
+                     model = self.model_name if "claude" in self.model_name else "claude-3-haiku-20240307"
+-                    response = await asyncio.wait_for(client.messages.create(
++                    response = await asyncio.wait_for(client_instance.messages.create(
+                         model=model,
+                         max_tokens=1024,
+                         system=system_prompt,
+                         messages=[
+                             {"role": "user", "content": user_prompt}
+                         ]
+-                    ), timeout=90.0)
++                    ), timeout=120.0)
+                     content = response.content[0].text
+-                    
+                 else:
+-                    return {"error": f"Unsupported Provider: {self.provider}"}
++                    raise Exception(f"Unsupported Provider: {provider}. No retry.")
+                 
+-                return self._parse_json(content)
++                key_manager.report_success(provider)
++                return content
+                 
+             except (Exception, asyncio.TimeoutError) as e:
+                 error_msg = str(e).lower()
+-                provider = self.provider
+-
+-                # [Concurrency Fix] Explicit type check for Google API errors (Gemini)
+                 is_google_quota_error = False
+                 if provider == "GEMINI":
+                     try:
+@@ -247,41 +264,28 @@ candidates_40: {candidates_40_json}
+                     except ImportError:
+                         pass
+ 
+-                # Timeout logic separated
+                 is_timeout = isinstance(e, asyncio.TimeoutError) or "timeout" in error_msg
+                 if is_timeout:
+-                    logger.warning(f"[LLMSelector] Timeout Detected (Attempt {attempt}/{max_retries}). Sleeping 5s before retry...")
+-                    await asyncio.sleep(5)
+-                    continue
++                    logger.warning(f"[LLMSelector] Timeout Detected (120s). Tenacity will backoff and retry.")
++                    raise Exception("Async LLM Timeout") from e
+ 
+                 if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
+-                    logger.warning(f"[LLMSelector] 429/Quota Detected. Error: {error_msg}")
+-                    logger.warning(f"[LLMSelector] {provider} issue detected. Attempting key rotation...")
+-                    
+-                    current_key = self.api_key
++                    logger.warning(f"[LLMSelector] 429/Quota Detected. Rotating key...")
++                    is_rotated = key_manager.rotate_key(provider, failed_key=api_key)
++                    if not is_rotated:
++                        logger.error(f"[LLMSelector] Global exhaustion reached for {provider}.")
++                        raise Exception(f"{provider} quota globally exhausted. No retry.") from e
++                    raise e
+                     
+-                    if key_manager.rotate_key(provider, failed_key=current_key):
+-                        logger.info(f"[LLMSelector] Rotated to next {provider} key. Retrying...")
+-                        self.api_key = key_manager.get_key(provider)
+-                        
+-                        cooldown = key_manager.get_cooldown_remaining(provider)
+-                        if cooldown > 0:
+-                            logger.info(f"[LLMSelector] Global cooldown activated. Pausing {cooldown:.1f}s...")
+-                            await asyncio.sleep(cooldown) # Use async sleep
+-                        else:
+-                            await asyncio.sleep(1) # Short delay before retry
+-                            
+-                        continue
+-                    else:
+-                        logger.error(f"[LLMSelector] All {provider} keys exhausted or rotation failed.")
+-                        return {"error": str(e), "decision": "unextractable"}
+-                
+                 logger.error(f"LLM Call Error: {e}")
+-                return {"error": str(e), "decision": "unextractable"}
+-                
+-        # Loop finished without return -> max retries exceeded
+-        logger.error(f"[LLMSelector] Max retries ({max_retries}) exceeded.")
+-        return {"error": "Max retries exceeded", "decision": "unextractable"}
++                raise e
++
++        try:
++            content = await do_call()
++            return self._parse_json(content)
++        except Exception as e:
++            logger.error(f"[LLMSelector] Final Call failed after retries: {e}")
++            return {"error": str(e), "decision": "unextractable"}
+ 
+     def _parse_json(self, content: str) -> dict:
+         try:

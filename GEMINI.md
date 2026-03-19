@@ -42,3 +42,8 @@
   > 이제부터는 v2.0 작업을 시작할 거야. 목표는 **'텍스트(Content) 내용 분석을 통한 스팸 차단 기능 추가'**야.
   > 
   > 작업 전에 먼저 backend/app/agents/content_agent/ 쪽 코드 구조를 확인하고, 앞으로 어떻게 개발할지 계획(implementation_plan.md)을 세워줘."
+
+## 9. 터미널 및 환경 제약 (Terminal & Environment Constraints)
+- **명령어 체이닝 (Command Chaining):** 사용자의 기본 터미널은 **Windows PowerShell**입니다. 따라서 여러 터미널 명령어를 한 줄로 실행할 때 Mac/Linux 방식의 `&&` 연산자를 절대 사용하지 마십시오. 대신 **세미콜론(`;`)**을 사용하여 명령어를 연결하십시오.
+  > ❌ 잘못된 예: `git add . && git commit -m "확인"`
+  > ⭕ 올바른 예: `git add . ; git commit -m "확인"`

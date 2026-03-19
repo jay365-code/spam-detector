@@ -43,18 +43,16 @@ def update_retry_count(state: IBSEState):
 # --- Graph Definition ---
 workflow = StateGraph(IBSEState)
 
-# Add Nodes
-workflow.add_node("generate_candidates", generate_candidates_node)
-workflow.add_node("select_signature", select_signature_node)
+# Add Nodes (Bypass candidate generation)
+workflow.add_node("extract_signature", select_signature_node)
 workflow.add_node("validate", validate_node)
 workflow.add_node("increment_retry", update_retry_count)
 
 # Set Entry Point
-workflow.set_entry_point("generate_candidates")
+workflow.set_entry_point("extract_signature")
 
 # Add Edges
-workflow.add_edge("generate_candidates", "select_signature")
-workflow.add_edge("select_signature", "validate")
+workflow.add_edge("extract_signature", "validate")
 
 # Conditional Edge from Validate
 workflow.add_conditional_edges(
@@ -67,7 +65,7 @@ workflow.add_conditional_edges(
 )
 
 # Edge from Retry back to Select
-workflow.add_edge("increment_retry", "select_signature")
+workflow.add_edge("increment_retry", "extract_signature")
 
 # Compile
 ibse_graph = workflow.compile()

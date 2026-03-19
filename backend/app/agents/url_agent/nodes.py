@@ -526,14 +526,14 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
     
     # 1. 프로토콜이 있는 URL 추출 (가장 확실, 한글 포함 가능)
     # http://오징어.오뎅탕 -> 허용
-    protocol_pattern = r'(?:http|https)://[^\s]+'
+    protocol_pattern = r'(?:http|https)://[^\s\[\]<>]+'
     protocol_urls = re.findall(protocol_pattern, message)
     
     # 2. 프로토콜이 없는 도메인 패턴 추출 (엄격한 검증 필요)
     # 한글.한글 -> 오징어.오뎅탕 (제외되어야 함)
     # google.com -> 허용
-    # 정규식: (문자열.문자열) 형태
-    domain_pattern = r'(?:[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.)+[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]{2,}'
+    # 정규식: (문자열.문자열) 형태, 경로(/anicsn016a) 등 포함
+    domain_pattern = r'(?:[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.)+[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]{2,}(?:/[^\s\[\]<>]*)?'
     raw_candidates = re.findall(domain_pattern, message)
     
     # 정규화(NFKC)된 텍스트에서도 추출
@@ -544,6 +544,17 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
             raw_candidates.extend(re.findall(domain_pattern, normalized_message))
     except Exception as e:
         logger.warning(f"[URL Agent] Normalization failed: {e}")
+        
+    # 공백이 모두 제거된 텍스트에서도 추출 (고의적인 띄어쓰기 난독화 방어, 예: b i t . l y / 1 2 3)
+    try:
+        spaceless_message = re.sub(r'\s+', '', message)
+        if spaceless_message != message:
+            sp_protocol_pattern = r'(?:http|https)://[^\[\]<>]+'
+            sp_domain_pattern = r'(?:[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.)+[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]{2,}(?:/[^\[\]<>]*)?'
+            protocol_urls.extend(re.findall(sp_protocol_pattern, spaceless_message))
+            raw_candidates.extend(re.findall(sp_domain_pattern, spaceless_message))
+    except Exception as e:
+        logger.warning(f"[URL Agent] Spaceless extraction failed: {e}")
     
     urls = []
     
@@ -565,7 +576,9 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
 
         # TLD 확인
         try:
-            parts = cand.split('.')
+            # 도메인과 경로를 분리 (TLD 검사 목적)
+            domain_part = cand.split('/')[0]
+            parts = domain_part.split('.')
             if len(parts) < 2: continue
             
             tld = parts[-1].lower()
@@ -653,6 +666,28 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
         result = await manager.scrape_url(url)
         if not result:
             result = {"status": "failed", "error": "No result returned", "url": url}
+            
+        # [Fallback on 404/Error API - Trailing Garbage]
+        try:
+            status = result.get("status")
+            title = str(result.get("title", ""))
+            
+            # 404 에러나 Not Found인 경우, 뒤에 붙은 쓰레기 문자열이 원인일 수 있음
+            if status == "failed" or "404" in title or "not found" in title.lower():
+                import re
+                # 대괄호, 괄호, 꺾쇠, 한글이 처음 등장하는 지점부터 그 뒤 문자열을 싹둑 자름
+                cleaned_url = re.sub(r'[\[\]\(\)<>가-힣]+.*$', '', url)
+                if cleaned_url != url and len(cleaned_url) > 8:
+                    logger.warning(f"⚠️ [URL Agent] 404/Failed detected. Stripping trailing garbage and retrying: {url} -> {cleaned_url}")
+                    retry_result = await manager.scrape_url(cleaned_url)
+                    if retry_result and retry_result.get("status") == "success":
+                        retry_title = str(retry_result.get("title", ""))
+                        if "404" not in retry_title and "not found" not in retry_title.lower():
+                            logger.info(f"✅ [URL Agent] Retry successful with cleaned URL!")
+                            result = retry_result
+                            url = cleaned_url # Update tracking URL
+        except Exception as retry_e:
+            logger.error(f"[URL Agent] Retry fallback error: {retry_e}")
         
         # 스크래핑 결과 로깅
         logger.info(f"[URL Agent] Scrape Result: status={result.get('status')}, "

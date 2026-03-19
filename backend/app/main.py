@@ -1074,6 +1074,20 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 
                                 await send_text_chunk(msg_text)
                                 
+                                # Step B-1 (NEW): Append URL Data if extracted
+                                url_res = graph_output.get("url_result")
+                                if url_res:
+                                    url_is_spam = url_res.get("is_spam")
+                                    url_reason = url_res.get("reason", "")
+                                    url_details = url_res.get("details", {})
+                                    url_text = f"\n**[ISAA URL 분석 결과]**\n"
+                                    if url_is_spam:
+                                        url_text += f"🚫 **스팸 URL 탐지됨**\n- 사유: {url_reason}\n"
+                                    else:
+                                        url_text += f"✅ **정상 URL**\n- 사유: {url_reason}\n"
+                                    url_text += f"- 접속 최종 URL: {url_details.get('final_url', 'N/A')}\n"
+                                    await send_text_chunk(url_text)
+                                
                                 # Step B-2: Append IBSE Data if extracted
                                 ibse_sig = final_res.get("ibse_signature")
                                 ibse_len = final_res.get("ibse_len")

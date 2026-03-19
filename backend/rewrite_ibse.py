@@ -1,4 +1,8 @@
 import os
+
+# Rewrite selector.py
+with open(r'c:\Users\leejo\Project\AI Agent\Spam Detector\backend\app\agents\ibse_agent\selector.py', 'w', encoding='utf-8') as f:
+    f.write('''import os
 import json
 import asyncio
 from typing import List, Optional
@@ -23,7 +27,7 @@ class LLMSelector:
 목표는 **이미 스팸으로 판명된 메시지**에서, 향후 동일/유사 공격을 효율적으로 차단할 수 있는 '차단 시그니처(문자열/문장)'를 추출하는 것이다.
 
 **[명심할 원칙: 절대 창작(Hallucination) 금지]**
-- 너는 오직 주어진 `match_text`(공백이 완전히 제거된 압축 텍스트) 안에서 일치하는 부분 문자열(substring)만 가위로 오려내듯 발췌(Extraction)해야 한다.
+- 너는 오직 주어진 `original_text` 안에서 정확히 일치하는 부분 문자열(substring)만 가위로 오려내듯 발췌(Extraction)해야 한다.
 - 어조를 바꾸거나, 띄어쓰기를 새로 넣거나, 문맥을 요약하는 등의 **임의 변형은 절대 금지**된다. 원본 텍스트에 있는 글자 그대로 추출해라!
 
 **[수작업 추출 노하우 규칙 (Extraction Rules)]**
@@ -32,25 +36,23 @@ class LLMSelector:
     - 자음이나 모음이 기형적으로 분리/합성된 텍스트 (예: `초ㄷH합니다`, `티브이ㄴㅅ`)
     - 일반적인 정상 문자(HAM)에서는 절대 등장할 수 없는 고유 기호와 단어 혼종(High Entropy)
 
-2. **길이 제한 (매우 엄격함 - 중간 길이는 절대 허용 안 됨)**
-    - 추출할 시그니처 길이는 무조건 아래 두 가지 범위 중 하나에 정확히 맞아떨어져야 한다. (한글=2바이트, 그 외=1바이트)
-    - **타입 1 (`decision: "use_string"`)**: **9 ~ 20 bytes**
-    - **타입 2 (`decision: "use_sentence"`)**: **39 ~ 40 bytes**
-    - **[중요]** 21 ~ 38 bytes 길이의 시그니처는 시스템에서 에러 처리되므로 절대 출력하지 마라!
-    - 만약 추출하려는 최우선 타겟(예: URL 경로가 포함된 22바이트 덩어리)이 20바이트를 초과한다면, 해당 식별자의 앞뒤로 원본 텍스트의 문맥을 더 이어 붙여서(패딩) 길이를 강제로 **39 ~ 40 바이트**로 맞춘 후 `"use_sentence"`로 추출하라. 절대 타겟 덩어리를 중간에 임의로 자르지 마라.
+2. **길이 제한 (문자열 우선, 문장 차선)**
+    - 추출할 시그니처는 가능하면 **9 ~ 20 bytes** 사이의 강렬한 **'문자열(String)'**에 집중하라. (한글은 2바이트, 공백/기호/영문 1바이트 기준)
+    - 20 bytes 이내로 뚜렷한 특징을 잡기 애매하다면, 최대 **39 ~ 40 bytes** 수준의 긴 **'문장(Sentence)'** 조각으로 범위를 넓혀라.
+    - 너무 짧으면 정상 문자를 차단하는 오탐(False Positive) 위험이 매우 큼.
 
 3. **절대 제외 항목 (블랙리스트 - 오탐 차단)**
     - `(광고)`, `[광고]` 등과 같은 광고 표기 의무 문구는 절대 포함하지 마라.
     - `무료거부 080-xxx-xxxx` 형태의 단순 수신거부 안내 문구는 단독 시그니처로 잡지 마라. (그 주변의 악성 식별자가 결합된 경우는 예외)
 
 **[판단 로직]**
-위 규칙에 부합하는 치명적인 시그니처를 찾았다면 길이에 따라 `decision: "use_string"` (9~20 bytes) 또는 `decision: "use_sentence"` (39~40 bytes)로 결정하고 추출해라. 중간 길이(21~38)는 없다.
+위 규칙에 부합하는 치명적인 시그니처를 찾았다면 `decision: "use_string"` (9~20 bytes) 또는 `decision: "use_sentence"` (39~40 bytes)로 결정하고 추출해라.
 만약 도저히 추출할 만한 고유 시그니처가 없거나, 평범한 상용구뿐이라 정상 문자를 오탐할 위험이 크다면 단 1초도 고민하지 말고 `{"decision": "unextractable"}`을 뱉고 포기하라. 억지로 만들 필요는 절대 없다.
 
 반드시 지시된 JSON 규격 단일 객체만 리턴하라."""
 
     USER_TEMPLATE = """message_id: {message_id}
-match_text: {match_text}
+original_text: {original_text}
 
 is_garbage_obfuscation: {is_garbage_obfuscation}
 
@@ -64,14 +66,14 @@ is_garbage_obfuscation: {is_garbage_obfuscation}
 }}"""
 
     REPAIR_SYSTEM_PROMPT = """이전 출력이 검증에 실패했다.
-가장 중요한 원칙은 **signature가 match_text 내에 정확히 존재해야(오타/변형 불가) 하며, 길이는 반드시 9~20 bytes 또는 39~40 bytes 중 하나여야 한다 (21~38 bytes는 절대 불가).**
+가장 중요한 원칙은 **signature가 original_text 내에 정확히 존재해야(오타/변형 불가) 하며, 길이 제한(9~40 bytes) 및 블랙리스트를 준수해야 한다.**
 반드시 JSON 단일 객체로만 다시 출력해라."""
 
     REPAIR_USER_TEMPLATE = """검증 실패 사유: {error_reason}
 
 이전 출력: {previous_output_json}
 
-동일 입력 원본(match_text): {match_text}
+동일 입력 원본(original_text): {original_text}
 is_garbage_obfuscation: {is_garbage_obfuscation}
 
 규칙에 맞춰 JSON을 다시 출력해라."""
@@ -132,7 +134,7 @@ is_garbage_obfuscation: {is_garbage_obfuscation}
 
     async def select(self, state: IBSEState, is_repair: bool = False) -> dict:
         message_id = state.get("message_id", "unknown")
-        match_text = state.get("match_text", "")
+        original_text = state.get("original_text", "")
         is_garbage = 'true' if state.get("is_garbage_obfuscation", False) else 'false'
         
         if is_repair:
@@ -140,14 +142,14 @@ is_garbage_obfuscation: {is_garbage_obfuscation}
             user_prompt = self.REPAIR_USER_TEMPLATE.format(
                 error_reason=state.get("error", "Unknown Error"),
                 previous_output_json=json.dumps(state.get("final_result", {}), ensure_ascii=False),
-                match_text=match_text,
+                original_text=original_text,
                 is_garbage_obfuscation=is_garbage
             )
         else:
             system_prompt = self.SYSTEM_PROMPT
             user_prompt = self.USER_TEMPLATE.format(
                 message_id=message_id,
-                match_text=match_text,
+                original_text=original_text,
                 is_garbage_obfuscation=is_garbage
             )
             
@@ -203,7 +205,7 @@ is_garbage_obfuscation: {is_garbage_obfuscation}
                 else:
                     raise Exception("Unsupported Provider")
                 key_manager.report_success(provider)
-                if is_fallback: content = f"__FALLBACK_{current_model}__\n" + content
+                if is_fallback: content = f"__FALLBACK_{current_model}__\\n" + content
                 return content
             except Exception as e:
                 is_quota = "quota" in str(e).lower() or "429" in str(e).lower()
@@ -226,11 +228,11 @@ is_garbage_obfuscation: {is_garbage_obfuscation}
         import re
         fallback_model = None
         if content.startswith("__FALLBACK_"):
-            parts = content.split("__\n", 1)
+            parts = content.split("__\\n", 1)
             if len(parts) == 2:
                 fallback_model, content = parts[0].replace("__FALLBACK_", ""), parts[1]
         try:
-            parsed = json.loads(re.sub(r'\s*```$', '', re.sub(r'^```(?:json)?\s*', '', content.strip())))
+            parsed = json.loads(re.sub(r'\\s*```$', '', re.sub(r'^```(?:json)?\\s*', '', content.strip())))
             if fallback_model and "reason" in parsed:
                 parsed["reason"] = f"[IBSE_Fallback: {fallback_model}] " + parsed["reason"]
             return parsed
@@ -242,23 +244,8 @@ async def select_signature_node(state: IBSEState) -> dict:
     is_repair = bool(state.get("error"))
     result = await selector.select(state, is_repair=is_repair)
     
-# Update byte_len natively and Truncate safely for CP949
-    if "signature" in result and result["signature"] and result.get("decision") in ["use_string", "use_sentence"]:
-        max_bytes = 20 if result["decision"] == "use_string" else 40
-        sig_text = result["signature"]
-        
-        # Safely truncate CP949
-        encoded = sig_text.encode("cp949", errors="replace")
-        if len(encoded) > max_bytes:
-            truncated = encoded[:max_bytes]
-            while len(truncated) > 0:
-                try:
-                    sig_text = truncated.decode("cp949", errors="strict")
-                    break
-                except UnicodeDecodeError:
-                    truncated = truncated[:-1]
-            result["signature"] = sig_text
-            
+    # Update byte_len natively
+    if "signature" in result and result["signature"]:
         try:
             result["byte_len_cp949"] = len(result["signature"].encode("cp949"))
         except:
@@ -270,3 +257,66 @@ async def select_signature_node(state: IBSEState) -> dict:
         "extraction_type": result.get("decision"),
         "error": result.get("error")
     }
+''')
+
+# Rewrite validator.py
+with open(r'c:\Users\leejo\Project\AI Agent\Spam Detector\backend\app\agents\ibse_agent\validator.py', 'w', encoding='utf-8') as f:
+    f.write('''from .state import IBSEState
+from .utils import get_cp949_byte_len
+
+class Validator:
+    def validate(self, text_context: str, result: dict) -> dict:
+        decision = result.get("decision")
+        signature = result.get("signature")
+        
+        if decision == "unextractable":
+            return result
+        
+        if not signature:
+            return {**result, "error": "Signature is empty but decision is not unextractable"}
+        
+        # 1. Exact Match Check (No Hallucination!)
+        if signature not in text_context:
+            return {**result, "error": "Strict extraction failed. The extracted signature does NOT exist exactly within the original message text."}
+            
+        # 2. Blacklist Check
+        blacklist = ["광고", "(광고)", "[광고]", "080-", "무료거부", "수신거부", "무료수신거부"]
+        for b in blacklist:
+            if b in signature:
+                return {**result, "error": f"Signature contains blacklisted word: {b}"}
+                
+        # 3. Byte Length constraints
+        byte_len = get_cp949_byte_len(signature)
+        if byte_len == -1: # Fallback calculation if encoding fails
+             byte_len = len(signature) * 2
+             
+        if byte_len < 9:
+             return {**result, "error": f"Signature is too short ({byte_len} bytes). Must be at least 9 bytes."}
+             
+        if decision == "use_string" and byte_len > 25:
+             # Allowed up to 25 to give tiny flexibility, but flag error if too long
+             return {**result, "error": f"Decision is use_string but length is {byte_len} bytes. Should be <= 20."}
+             
+        if decision == "use_sentence" and byte_len > 45:
+             return {**result, "error": f"Decision is use_sentence but length is {byte_len} bytes. Should be <= 40."}
+             
+        return result
+
+def validate_node(state: IBSEState) -> dict:
+    original_text = state.get("original_text", "")
+    final_result = state.get("final_result")
+    
+    if not final_result:
+        return {"error": "No final_result to validate"}
+    
+    validator = Validator()
+    validated_result = validator.validate(original_text, final_result)
+    
+    state_update = {"final_result": validated_result}
+    if "error" in validated_result:
+         state_update["error"] = validated_result["error"]
+    else:
+         state_update["error"] = None
+         
+    return state_update
+''')
