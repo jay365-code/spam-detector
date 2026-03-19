@@ -611,6 +611,21 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
         except Exception:
             continue
             
+    # 2-4. Short URL 특수 처리 (Garbage 튜닝)
+    # bit.ly/abcd미납금액결제 -> bit.ly/abcd 만 뽑히도록 쓰레기값 정리
+    shorteners = ['bit.ly', 'me2.do', 'vo.la', 'han.gl', 'url.kr', 'sbz.kr', 'cutt.ly', 'tinyurl.com']
+    cleaned_urls = []
+    for url in urls:
+        if any(s in url.lower() for s in shorteners):
+            # 숏주소 뒤에 특수기호가 붙으면 거기서부터 잘라냄 (단, 한글 가-힣은 정상 커스텀 URL일 수 있으므로 추출에선 자르지 않음!)
+            url = re.sub(r'[\[\]\(\)<>◆▶★♥+\-:\.].*$', '', url)
+            # 쓰레기값을 잘라냈는데 파라미터가 비어버린다면 가짜 URL (예: bit.ly/)이므로 통과
+            if url.endswith('/') and url.split('/')[-2] in shorteners:
+                logger.info(f"[URL Agent] Dropping empty short URL: {url}")
+                continue
+        cleaned_urls.append(url)
+    urls = cleaned_urls
+        
     # 중복 제거 및 Punycode 변환
     unique_urls = []
     seen = set()
@@ -676,16 +691,21 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
             if status == "failed" or "404" in title or "not found" in title.lower():
                 import re
                 # 대괄호, 괄호, 꺾쇠, 한글이 처음 등장하는 지점부터 그 뒤 문자열을 싹둑 자름
-                cleaned_url = re.sub(r'[\[\]\(\)<>가-힣]+.*$', '', url)
-                if cleaned_url != url and len(cleaned_url) > 8:
-                    logger.warning(f"⚠️ [URL Agent] 404/Failed detected. Stripping trailing garbage and retrying: {url} -> {cleaned_url}")
-                    retry_result = await manager.scrape_url(cleaned_url)
-                    if retry_result and retry_result.get("status") == "success":
-                        retry_title = str(retry_result.get("title", ""))
-                        if "404" not in retry_title and "not found" not in retry_title.lower():
-                            logger.info(f"✅ [URL Agent] Retry successful with cleaned URL!")
-                            result = retry_result
-                            url = cleaned_url # Update tracking URL
+                cleaned_url = re.sub(r'[\[\]\(\)<>가-힣◆▶★♥]+.*$', '', url)
+                
+                # 방어 코드: 만약 다 잘라냈는데 남은 게 파라미터 없는 메인 도메인(http://bit.ly/) 뿐이라면 
+                # 메인 페이지를 스크래핑해봤자 의미가 없으므로 재시도 중단!
+                parsed_parts = cleaned_url.rstrip('/').split('/')
+                if len(parsed_parts) > 3:
+                    if cleaned_url != url and len(cleaned_url) > 8:
+                        logger.warning(f"⚠️ [URL Agent] 404/Failed detected. Stripping trailing garbage and retrying: {url} -> {cleaned_url}")
+                        retry_result = await manager.scrape_url(cleaned_url)
+                        if retry_result and retry_result.get("status") == "success":
+                            retry_title = str(retry_result.get("title", ""))
+                            if "404" not in retry_title and "not found" not in retry_title.lower():
+                                logger.info(f"✅ [URL Agent] Retry successful with cleaned URL!")
+                                result = retry_result
+                                url = cleaned_url # Update tracking URL
         except Exception as retry_e:
             logger.error(f"[URL Agent] Retry fallback error: {retry_e}")
         
@@ -709,9 +729,10 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
         raise e
     
     # 방문 기록 추가
+    original_url = state.get("current_url")
     history = state.get("visited_history", [])
-    if url not in history:
-        history.append(url)
+    if original_url and original_url not in history:
+        history.append(original_url)
         
     return {
         "scraped_data": result,
@@ -1014,6 +1035,15 @@ async def select_link_node(state: SpamState) -> Dict[str, Any]:
     """
     target_urls = state.get("target_urls", [])
     visited = state.get("visited_history", [])
+    depth = state.get("depth", 0)
+    
+    # 무한 루프 방지 장치 (안전망)
+    if depth >= 3:
+        logger.error("[URL Agent] Max depth (3) reached! Potential infinite loop aborted.")
+        return {
+            "is_final": True,
+            "reason": "Max depth reached (Loop aborted)"
+        }
     
     # 1. 아직 방문하지 않은 URL 찾기
     next_url = None
@@ -1026,6 +1056,7 @@ async def select_link_node(state: SpamState) -> Dict[str, Any]:
         logger.info(f"[URL Agent] Next URL selected: {next_url}")
         return {
             "current_url": next_url,
+            "depth": depth + 1,
             "is_final": False # 계속 진행
         }
     else:
