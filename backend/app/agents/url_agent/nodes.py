@@ -526,14 +526,14 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
     
     # 1. 프로토콜이 있는 URL 추출 (가장 확실, 한글 포함 가능)
     # http://오징어.오뎅탕 -> 허용
-    protocol_pattern = r'(?:http|https)://[^\s\[\]<>]+'
+    protocol_pattern = r'(?:http|https)://[^\s\[\]<>◆▶★♥→※○●◎◇□■△▲▽▼▷◁◀♤♠♡♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬]+'
     protocol_urls = re.findall(protocol_pattern, message)
     
     # 2. 프로토콜이 없는 도메인 패턴 추출 (엄격한 검증 필요)
     # 한글.한글 -> 오징어.오뎅탕 (제외되어야 함)
     # google.com -> 허용
     # 정규식: (문자열.문자열) 형태, 경로(/anicsn016a) 등 포함
-    domain_pattern = r'(?:[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.)+[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]{2,}(?:/[^\s\[\]<>]*)?'
+    domain_pattern = r'(?:[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.)+[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]{2,}(?:/[^\s\[\]<>◆▶★♥→※○●◎◇□■△▲▽▼▷◁◀♤♠♡♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬]*)?'
     raw_candidates = re.findall(domain_pattern, message)
     
     # 정규화(NFKC)된 텍스트에서도 추출
@@ -549,8 +549,8 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
     try:
         spaceless_message = re.sub(r'\s+', '', message)
         if spaceless_message != message:
-            sp_protocol_pattern = r'(?:http|https)://[^\[\]<>]+'
-            sp_domain_pattern = r'(?:[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.)+[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]{2,}(?:/[^\[\]<>]*)?'
+            sp_protocol_pattern = r'(?:http|https)://[^\[\]<>◆▶★♥→※○●◎◇□■△▲▽▼▷◁◀♤♠♡♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬]+'
+            sp_domain_pattern = r'(?:[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.)+[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]{2,}(?:/[^\[\]<>◆▶★♥→※○●◎◇□■△▲▽▼▷◁◀♤♠♡♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬]*)?'
             protocol_urls.extend(re.findall(sp_protocol_pattern, spaceless_message))
             raw_candidates.extend(re.findall(sp_domain_pattern, spaceless_message))
     except Exception as e:
@@ -613,7 +613,7 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
             
     # 2-4. Short URL 특수 처리 (Garbage 튜닝)
     # bit.ly/abcd미납금액결제 -> bit.ly/abcd 만 뽑히도록 쓰레기값 정리
-    shorteners = ['bit.ly', 'me2.do', 'vo.la', 'han.gl', 'url.kr', 'sbz.kr', 'cutt.ly', 'tinyurl.com']
+    shorteners = ['bit.ly', 'me2.do', 'vo.la', 'han.gl', 'url.kr', 'sbz.kr', 'cutt.ly', 'tinyurl.com', 'naver.me', 'kko.to', 't.ly', 't.co', 'g.co']
     cleaned_urls = []
     for url in urls:
         if any(s in url.lower() for s in shorteners):
