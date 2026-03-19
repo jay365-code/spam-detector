@@ -294,6 +294,11 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              else:
                  semantic_class = "Type_B (NONE)"
              
+        # Fallback for missing classification_code
+        if final.get("is_spam") is True and not final.get("classification_code"):
+            # Set default missing code to "0" (기타) to avoid "None" in Excel/DB
+            final["classification_code"] = "0"
+
         final["semantic_class"] = semantic_class
         final["learning_label"] = learning_label
         

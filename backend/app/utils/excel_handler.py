@@ -481,14 +481,14 @@ class ExcelHandler:
                         code_val = ""
                     else:
                         gubun_val = "UNKNOWN"
-                        raw_val = str(result.get("classification_code", ""))
+                        raw_val = str(result.get("classification_code") or "")
                         import re
                         match = re.search(r'\d+', raw_val)
                         code_val = match.group(0) if match else raw_val
 
                     extracted_url_code = ""
                     if result.get("malicious_url_extracted"):
-                        raw_ext_code = str(result.get("url_spam_code", ""))
+                        raw_ext_code = str(result.get("url_spam_code") or "")
                         m_ext = re.search(r'\d+', raw_ext_code)
                         extracted_url_code = m_ext.group(0) if m_ext else raw_ext_code
                     prob_val = result.get("spam_probability", 0.0)
@@ -510,7 +510,7 @@ class ExcelHandler:
                     # --- URL Collection Logic ---
                     # Only collect URL from the input column if SPAM or extracted from HAM
                     if result.get("is_spam") is True or result.get("malicious_url_extracted"):
-                        raw_url_code = str(result.get("classification_code", ""))
+                        raw_url_code = str(result.get("classification_code") or "")
                         _m = re.search(r'\d+', raw_url_code)
                         url_dedup_code = _m.group(0) if _m else raw_url_code
                         if not result.get("is_spam"):
@@ -539,7 +539,7 @@ class ExcelHandler:
                         
                         clean_msg = re.sub(r'[ \t\r\n\f\v]+', '', str(batch_buffer[idx][1]))
                         
-                        raw_ibse_code = str(result.get("classification_code", ""))
+                        raw_ibse_code = str(result.get("classification_code") or "")
                         m_ibse = re.search(r'\d+', raw_ibse_code)
                         ibse_code = m_ibse.group(0) if m_ibse else raw_ibse_code
                         
