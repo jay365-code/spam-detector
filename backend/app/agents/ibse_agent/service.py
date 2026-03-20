@@ -14,7 +14,7 @@ class IBSEAgentService:
 
     from typing import Callable, Optional
 
-    async def process_message(self, text: str, message_id: str = None, status_callback: Optional[Callable[[str], None]] = None, is_garbage_obfuscation: bool = False) -> Dict[str, Any]:
+    async def process_message(self, text: str, message_id: str = None, status_callback: Optional[Callable[[str], None]] = None, is_garbage_obfuscation: bool = False, is_safe_url_injection: bool = False) -> Dict[str, Any]:
         """
         Processes a single message text through the IBSE pipeline using LangGraph.
         """
@@ -40,7 +40,8 @@ class IBSEAgentService:
             "final_result": None,
             "retry_count": 0,
             "error": None,
-            "is_garbage_obfuscation": is_garbage_obfuscation
+            "is_garbage_obfuscation": is_garbage_obfuscation,
+            "is_safe_url_injection": is_safe_url_injection
         }
         
         final_state = state # Fallback

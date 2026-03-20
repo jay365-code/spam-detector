@@ -27,26 +27,24 @@ class LLMSelector:
 - 너는 오직 주어진 `match_text`(공백이 완전히 제거된 압축 텍스트) 안에서 일치하는 부분 문자열(substring)만 가위로 오려내듯 발췌(Extraction)해야 한다.
 - 어조를 바꾸거나, 띄어쓰기를 새로 넣거나, 문맥을 요약하는 등의 **임의 변형은 절대 금지**된다. 원본 텍스트에 있는 글자 그대로 추출해라!
 
-**[수작업 추출 노하우 규칙 (Extraction Rules)]**
-1. **1순위 (최우선 타겟): 특이점과 난독화, 변형 URL (반드시 포함)**
-    - 원문 안에 **URL, 도메인(예: `nike26.`, `youtube.com` 등), 혹은 접속 오픈채팅 링크**가 존재한다면 형태가 불완전하더라도 시그니처에 **가장 1순위로 반드시 포함**시켜라! 스팸 텍스트 내용보다 접속 주소(URL) 자체가 훨씬 치명적이고 고유한 차단 식별자이기 때문이다.
-    - 도메인이나 링크 사이에 한글이나 특수기호가 섞여 정상적인 형태가 아닌 변형된 URL (예: `YⓞNⓖ20⑤.com`, `bit.ly/로얄7468`, `헤이접속쩜콤`)
-    - 자음이나 모음이 기형적으로 분리/합성된 텍스트 (예: `초ㄷH합니다`, `티브이ㄴㅅ`)
-    - 일반적인 정상 문자(HAM)에서는 절대 등장할 수 없는 고유 기호와 단어 혼종(High Entropy)
+**[스팸태깅 작업 절차 매뉴얼 준수 (Extraction Rules)]**
+1. **1순위 (최우선 타겟): 특수문자나 한글을 사용한 변형 URL 추출 (반드시 시그니처에 포함)**
+    - 예) `YⓞNⓖ20⑤.com`, `jk819ⓟⓓ.com`, `헤이접속쩜콤` 등
+    - 불완전한 도메인(예: `nike26.`, `youtube.com`)이라도 접속 주소 형태면 무조건 1순위 타겟이다. 스팸 텍스트 내용보다 접속 주소(URL) 자체가 훨씬 치명적이고 고유한 차단 식별자이므로, 아무리 다른 문구가 자극적이더라도 **반드시 URL을 시그니처의 중심으로 잡아라!**
+2. **2순위: 한글을 사용한 변형 URL 추출**
+    - 예) `bit.ly/로얄7468`, `신규이벤중.p-e.kr`, `왕초문의.가기.cc`
+3. **3순위: 위 URL이 없다면, 자음/모음을 분리한 고유 문자열 변형 추출**
+    - 예) `님BAND에초ㄷH합니다`, `이터내+티브이ㄴㅅ`
+4. **4순위: 위 형태조차 없다면, HAM 메시지에 절대 포함되지 않을 것 같은 일반 고유 문자열로 추출**
 
-2. **길이 제한 (매우 엄격함 - 중간 길이는 절대 허용 안 됨)**
-    - 추출할 시그니처 길이는 무조건 아래 두 가지 범위 중 하나에 정확히 맞아떨어져야 한다. (한글=2바이트, 그 외=1바이트)
-    - **타입 1 (`decision: "use_string"`)**: **9 ~ 20 bytes**
-    - **타입 2 (`decision: "use_sentence"`)**: **39 ~ 40 bytes**
-    - **[중요]** 21 ~ 38 bytes 길이의 시그니처는 시스템에서 에러 처리되므로 절대 출력하지 마라!
-    - **[절삭(Truncation) 엄격 금지]** 최우선 타겟(URL, 고유 난독화 문자 등) 고유한 식별자를 추출할 때 그 본연의 길이가 20바이트를 초과한다면, **절대로 20바이트에 맞추기 위해 뒷부분을 임의로 자르지 마라!** (예: URL의 끝을 자르면 `.com`이 `.c`가 되어 치명적인 오탐이 발생한다). 타겟 식별자를 온전히 담기 위해 20바이트 규정이 맞지 않는다면 무조건 주변 문맥을 포함시켜 **39~40바이트짜리 문장(`use_sentence`)으로 처리해라.**
-    - 반대로, 추출하려는 덩어리 전체의 길이가 이미 20바이트 이하(길이 제한 내)라면, 그대로 `"use_string"`으로 단일 추출하라.
+- 추출 길이 제한: 순수 한글/영문/특수기호 혼합하여 39~40글자 (대략 80바이트 내외)
+- 만약 짧은 단문이어서 애초에 39글자가 안 된다면, 메시지 **처음부터 끝까지 원문 전체**를 1글자도 변경 없이 그대로 추출해 `use_sentence`를 선택한다.
 
-3. **블로킹 우회용 잘린 URL (Contextual Fingerprinting) 및 URL 절삭 주의사항**
-    - 추출된 단축 URL의 상세 경로(Path)가 1~3글자 정도로 비정상적으로 짧거나 문장 끝에서 잘린 형태(예: `https://han.gl/AQ`)라면, 절대 해당 URL만 단독으로 추출하지 마라. 이는 오탐을 유발한다.
-    - 대신 **주요 스팸 키워드와 해당 잘린 URL을 묶어서** 컨텍스트가 포함된 시그니처를 만들어라.
-    - 전체 메시지가 길다면 `decision: "use_sentence"` (39~40 bytes)로 결합하여 추출하고 (예: `비법!우연한가난은없다!https://han.gl/AQ`), 메시지 자체가 짧아서 39바이트가 안 된다면 잘린 URL과 핵심 키워드 일부만 합친 뒤 **20 bytes 이하로 잘라내어** `decision: "use_string"` (9~20 bytes)으로 추출해라. (예: `가난은없다!han.gl/AQ`)
-    - **[핵심! URL 추출 시 주의사항 (풍선 효과 방지)]**: 타겟이 일반 URL인 경우, **글자 수를 낭비하는 `http://` 또는 `https://` 접두사는 반드시 제외하고 도메인 본체부터 추출**해라! (예: 원문에 `https://open-kakao.cam/use` 가 있다면 `https://`를 빼고 `open-kakao.cam/use` 만 추출해라. 그러면 18바이트이므로 20바이트(`use_string`) 제한 안에 완벽히 들어온다. 만약 `https://`를 포함해서 20바이트로 억지로 자르면 `https://open-kakao.c` 처럼 TLD가 잘린 엉뚱한 시그니처가 되어 다른 정상 도메인까지 차단하는 치명적인 오탐이 발생한다!)
+[최우선 순위 (KISA 가이드라인 강제 사항)]
+1. (최우선) 본문 내에 URL(http, bit.ly, p-e.kr 등 모든 형태의 인터넷 주소)이 단 1개라도 존재한다면, **반드시 그 URL을 포함하여** 시그니처를 추출하라. URL의 일부가 포함되는 것은 허용하나, 아예 URL을 배제하고 한글 텍스트만 추출하는 것은 중대한 가이드라인 위반이다!
+   - ⚠️ 단, 'is_safe_url_injection' 플래그가 'true'로 설정되어 있다면 이 규칙은 예외다! 이는 스패머가 필터를 우회하려고 정상 도메인(유튜브, 네이버 등)을 방패막이 조끼처럼 입혀놓은 '위장 시그니처'이므로, 이때는 **절대로 URL을 시그니처에 포함시키지 말고** 철저히 배제한 채 순수 악성 텍스트(예: "토지노 꽁머니") 부분만 추출하라!
+2. (차순위) 연락처 명시: 전화번호(예: 010-1234-5678), 텔레그램 ID(예: @SpamID) 등이 식별의 핵심이 되므로 가급적 포함하라.
+3. (극단적 난독화) URL이나 번호가 아예 없는데, 자음/모음이 분절되거나(`ㅋ ㅏ ㅈ ㅣ ㄴ ㅗ`) 특수문자가 비정상적으로 섞인(`ㅅ_ㅏ+ㄷ.ㅏ:ㄹl`) 극악의 난독화 구간이 있다면 उस 블록 전체를 추출하라.
 
 4. **절대 제외 항목 (블랙리스트 - 오탐 차단)**
     - `(광고)`, `[광고]` 등과 같은 광고 표기 의무 문구는 절대 포함하지 마라.
@@ -54,15 +52,28 @@ class LLMSelector:
 
 **[판단 로직]**
 위 규칙에 부합하는 치명적인 시그니처를 찾았다면 길이에 따라 `decision: "use_string"` (9~20 bytes) 또는 `decision: "use_sentence"` (39~40 bytes)로 결정하고 추출해라. 중간 길이(21~38)는 없다.
-만약 원문에 URL이나 도메인(`nike26.` 등 불완전한 형태 포함)이 있다면, 반드시 `identified_url_or_domain` 필드에 먼저 기입해라. 그리고 나서 `signature`는 그 도메인을 **반드시 포함하여** 생성해라. URL이 없으면 null로 둔다.
+만약 원문 어딘가에 URL이나 접속 유도 도메인(`nike26.` 등 불완전/변형 형태 포함)이 한 글자라도 존재한다면, 반드시 `identified_url_or_domain` 필드에 먼저 기입해라. 그리고 나서 `signature`는 그 도메인을 **누락 없이 반드시 포함하여** 생성해라. URL을 빼놓고 일반 문구만으로 시그니처를 만드는 것은 중대한 매뉴얼 위반이다! URL이 아예 없는 메시지일 때만 null로 둔다.
 만약 도저히 추출할 만한 고유 시그니처가 없거나, 평범한 상용구뿐이라 정상 문자를 오탐할 위험이 크다면 단 1초도 고민하지 말고 `{"decision": "unextractable"}`을 뱉고 포기하라. 억지로 만들 필요는 절대 없다.
 
 반드시 지시된 JSON 규격 단일 객체만 리턴하라."""
 
     USER_TEMPLATE = """message_id: {message_id}
-match_text: {match_text}
-
 is_garbage_obfuscation: {is_garbage_obfuscation}
+is_safe_url_injection: {is_safe_url_injection}
+
+[추출 타입]
+1) "use_sentence": 39~40글자 사이의 문장 추출
+- 추출 길이 제한: 순수 한글/영문/특수기호 혼합하여 39~40글자 (대략 80바이트 내외)
+- 만약 짧은 단문이어서 애초에 39글자가 안 된다면, 메시지 **처음부터 끝까지 원문 전체**를 1글자도 변경 없이 그대로 추출해 `use_sentence`를 선택한다.
+
+2) "use_string": 9~20글자 사이의 짧은 단어장/키워드 배열 추출
+- 추출 길이 제한: 순수 문자열 기준 9~20글자 (대략 18~40바이트 내외)
+
+---
+[INPUT DATA]
+- 분석 대상 메시지 (공백 제거 상태): {match_text}
+- 극단적 난독화(Garbage Obfuscation) 여부: {is_garbage_obfuscation}
+- 위장 URL 방패막이(Safe URL Injection) 여부: {is_safe_url_injection}
 
 출력(JSON):
 {{
@@ -84,6 +95,7 @@ is_garbage_obfuscation: {is_garbage_obfuscation}
 
 동일 입력 원본(match_text): {match_text}
 is_garbage_obfuscation: {is_garbage_obfuscation}
+is_safe_url_injection: {is_safe_url_injection}
 
 규칙에 맞춰 JSON을 다시 출력해라.
 {{
@@ -153,6 +165,7 @@ is_garbage_obfuscation: {is_garbage_obfuscation}
         message_id = state.get("message_id", "unknown")
         match_text = state.get("match_text", "")
         is_garbage = 'true' if state.get("is_garbage_obfuscation", False) else 'false'
+        is_safe_url_injection = 'true' if state.get("is_safe_url_injection", False) else 'false'
         
         if is_repair:
             system_prompt = self.REPAIR_SYSTEM_PROMPT
@@ -160,14 +173,17 @@ is_garbage_obfuscation: {is_garbage_obfuscation}
                 error_reason=state.get("error", "Unknown Error"),
                 previous_output_json=json.dumps(state.get("final_result", {}), ensure_ascii=False),
                 match_text=match_text,
-                is_garbage_obfuscation=is_garbage
+                is_garbage_obfuscation=is_garbage,
+                is_safe_url_injection=is_safe_url_injection,
+                message_id=message_id
             )
         else:
             system_prompt = self.SYSTEM_PROMPT
             user_prompt = self.USER_TEMPLATE.format(
                 message_id=message_id,
                 match_text=match_text,
-                is_garbage_obfuscation=is_garbage
+                is_garbage_obfuscation=is_garbage,
+                is_safe_url_injection=is_safe_url_injection
             )
             
         return await self._call_llm(system_prompt, user_prompt)
@@ -266,7 +282,7 @@ async def select_signature_node(state: IBSEState) -> dict:
     # 혹은 'unextractable'을 판정했거나 URL 자체를 못 찾은 경우 강제 치환
     identified_url = result.get("identified_url_or_domain")
     match_text = state.get("match_text", "")
-    sig_text = result.get("signature", "")
+    sig_text = result.get("signature") or ""
     
     # 만약 LLM이 URL을 아예 못 찾았다면, 정규식으로 직접 찾아서 강제 주입
     if not identified_url or identified_url == "null":
@@ -280,7 +296,10 @@ async def select_signature_node(state: IBSEState) -> dict:
                     break
 
     if identified_url and identified_url != "null" and isinstance(identified_url, str):
-        if identified_url in match_text and identified_url not in sig_text:
+        # 만약 위장 방패막이 도메인이면, 절대로 강제 삽입 방어 로직을 실행하지 않고 LLM이 누락한 것을 존중함
+        is_safe_url_injection = state.get("is_safe_url_injection", False)
+        
+        if identified_url in match_text and identified_url not in sig_text and not is_safe_url_injection:
             logger.warning(f"⚠️ [IBSE Agent] LLM missed URL in signature or gave up! Forcing inclusion programmatically: {identified_url}")
             url_len = len(identified_url.encode("cp949", errors="replace"))
             

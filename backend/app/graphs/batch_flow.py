@@ -70,9 +70,10 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         c_res = state.get("content_result", {})
         signals = c_res.get("signals", {})
         is_garbage = signals.get("is_garbage_obfuscation", False)
+        is_safe_url_injection = signals.get("is_safe_url_injection", False)
         
         # IBSE Agent is now Async
-        res = await ibse_service.process_message(msg, is_garbage_obfuscation=is_garbage)
+        res = await ibse_service.process_message(msg, is_garbage_obfuscation=is_garbage, is_safe_url_injection=is_safe_url_injection)
         return {"ibse_result": res}
 
     def aggregator_node(state: BatchState):
@@ -142,7 +143,15 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # IBSE Agent extracts a contextual sentence instead of the broken URL.
              # We must drop the URL from the final output to fulfill "URL : 없음" requirement.
              is_broken = u_res and u_res.get("details", {}).get("is_broken_short_url") is True
-             if is_broken:
+             
+             # User requested fix: Drop URL if Safe URL Injection is detected.
+             # This is flagged by fp_sentinel_node setting final["drop_url"] = True later,
+             # but we can also set it proactively here if we have a url_reason indicating it.
+             url_reason = final.get("reason", "")
+             url_reason_lower = url_reason.lower()
+             is_injection = "위장 url" in url_reason_lower or "정상 도메인 위장" in url_reason_lower or "방패막이" in url_reason_lower or "decoy" in url_reason_lower or "safe url injection" in url_reason_lower
+             
+             if is_broken or is_injection:
                  final["drop_url"] = True
                  if "details" in u_res:
                      u_res["details"]["extracted_url"] = None
@@ -183,11 +192,35 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              u_blocked = u_res.get("bot_protection_active", False)
              u_spam = u_res.get("is_spam") is True
              
+        # [Priority 0.5] Safe URL Injection Detection
+        # content_agent가 도박/불법 텍스트인데 youtube.com 등 정상 사이트(혹은 아무 관련 없는 사이트)를 방패막이로 썼다고 판별한 경우.
+        # URL Agent가 파싱 중 (404 에러 등으로) SPAM 판정을 내렸든 SAFE 판정을 내렸든 무관하게,
+        # 이 URL은 스팸 본질과 무관한 '정상 도메인'이므로 무조건 추출 명단에서 드롭해야 한다. (youtube.com을 치명적 스팸으로 차단하는 것 방지)
+        is_safe_url_injection = signals.get("is_safe_url_injection", False)
+        text_prob = final.get("spam_probability", 0.0)
+        
+        if is_safe_url_injection and text_prob >= 0.8:
+            semantic_class = "Type_B" if (c_impersonation or c_vague_cta or c_personal_lure or c_normal_layout) else "Type_A"
+            learning_label = "HAM" if semantic_class == "Type_B" else "SPAM"
+            final["is_spam"] = True # Enforcement
+            final["drop_url"] = True # 무조건 URL 드롭 지시 (가장 중요)
+            existing_reason = final.get("reason", "")
+            
+            if "[Safe-URL Injection 감지" not in existing_reason:
+                final["reason"] = f"{existing_reason} | [Safe-URL Injection 감지: 방패막이 위장 전술 (URL 스크래핑 결과와 무관). URL 드롭 및 SPAM 확정]"
+            
+            # Type B 방패 처리
+            if semantic_class == "Type_B" and "[FP Sentinel Override]" not in final["reason"]:
+                 final["reason"] += " | [FP Sentinel Override] 사칭/기만(Type_B) 보호"
+                 
+            # Priority 0.5가 발동하면 이후 로직은 스킵
+            pass
+                 
         # [Priority 0] URL CONFIRMED SAFE → 무조건 HAM 확정
+        # (단, 위 Priority 0.5의 Safe-URL Injection에 해당하지 않는 경우에만)
         # URL Agent가 안전하다고 명시적으로 확인한 경우, c_impersonation 여부와 무관하게 HAM 처리
         # (관리비 미납 알림 등 정상 URL을 포함한 메시지가 사칭으로 오분류되는 것 방지)
-        final_reason = final.get("reason", "")
-        if "CONFIRMED SAFE" in final_reason:
+        elif "CONFIRMED SAFE" in final.get("reason", ""):
              semantic_class = "Ham"
              learning_label = "HAM"
              # is_spam은 aggregator가 이미 False로 설정했으므로 그대로 유지

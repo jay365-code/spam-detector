@@ -1094,16 +1094,20 @@ function App() {
                                 추출된 URL
                               </span>
                               <span className="bg-slate-800/80 px-1.5 py-1 rounded text-slate-300 font-mono text-[11px] break-all border border-slate-700/50">
-                                {log.result.url_result.details.attempted_urls && log.result.url_result.details.attempted_urls.length > 0 
-                                  ? log.result.url_result.details.attempted_urls.join(', ')
-                                  : (
-                                    <>
-                                      {log.result.url_result.details.extracted_url}
-                                      {log.result.url_result.details.final_url && log.result.url_result.details.extracted_url !== log.result.url_result.details.final_url && (
-                                          <span className="text-slate-500 ml-1">→ {log.result.url_result.details.final_url}</span>
-                                      )}
-                                    </>
-                                  )}
+                                {log.result.drop_url ? (
+                                    <span className="text-red-400 font-semibold" title="정상 도메인을 방패막이로 악용한 위장 URL로 판별되어 추출 목록에서 폐기되었습니다.">[위장 방패막이 판별: 해당 정상 URL 폐기]</span>
+                                ) : (
+                                  log.result.url_result.details.attempted_urls && log.result.url_result.details.attempted_urls.length > 0 
+                                    ? log.result.url_result.details.attempted_urls.join(', ')
+                                    : (
+                                      <>
+                                        {log.result.url_result.details.extracted_url}
+                                        {log.result.url_result.details.final_url && log.result.url_result.details.extracted_url !== log.result.url_result.details.final_url && (
+                                            <span className="text-slate-500 ml-1">→ {log.result.url_result.details.final_url}</span>
+                                        )}
+                                      </>
+                                    )
+                                )}
                               </span>
                             </div>
                           )}

@@ -27,9 +27,8 @@ class IBSEState(TypedDict):
     
     final_result: Optional[dict] # Final JSON output format for API
     
-    final_result: Optional[dict] # Final JSON output format for API
-    
     retry_count: int            # For repair/retry logic
     error: Optional[str]        # Error message if any
     
     is_garbage_obfuscation: bool # Signal from content_agent for intentional obfuscation
+    is_safe_url_injection: bool # Signal from content_agent for intentional obfuscation

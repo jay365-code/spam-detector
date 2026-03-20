@@ -696,8 +696,10 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
             if '/' in clean_cand:
                 domain_part = clean_cand.split('/', 1)[0]
                 path_part = clean_cand[len(domain_part):]
-                # 경로 첫 단어부터 한글인 경우(예: bit.ly/오픈채팅방)는 커스텀 URL이므로 자르지 않고, 영어/숫자 뒤에 한글이 붙은 경우(예: ko.gl/1VP2차상담)만 자름
-                kr_match = re.search(r'(?<=[a-zA-Z0-9_\-])[\uac00-\ud7a3\u3131-\u3163]', path_part)
+                # 경로 첫 단어부터 한글인 경우(예: bit.ly/오픈채팅방)는 커스텀 URL이므로 자르지 않고, 
+                # 영어/숫자 바로 뒤에 한글이 붙은 경우(예: ko.gl/1VP2차상담)만 자름.
+                # 단, 하이픈(-)이나 언더스코어(_) 뒤에 한글이 오면 의도된 커스텀 경로(예: AI-GPT-강은정)일 수 있으므로 자르지 않음.
+                kr_match = re.search(r'(?<=[a-zA-Z0-9])[\uac00-\ud7a3\u3131-\u3163]', path_part)
                 if kr_match:
                     first_kr_idx = kr_match.start()
                     cut_idx = first_kr_idx

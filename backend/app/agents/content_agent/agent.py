@@ -542,6 +542,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         is_personal_lure = signals.get("is_personal_lure", False)
         is_garbage_obfuscation = signals.get("is_garbage_obfuscation", False)
         is_normal_layout = signals.get("is_normal_layout", False)
+        is_safe_url_injection = signals.get("is_safe_url_injection", False)
         
         # Ensure signals dict is up to date
         signals["is_impersonation"] = is_impersonation
@@ -549,6 +550,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         signals["is_personal_lure"] = is_personal_lure
         signals["is_garbage_obfuscation"] = is_garbage_obfuscation
         signals["is_normal_layout"] = is_normal_layout
+        signals["is_safe_url_injection"] = is_safe_url_injection
 
         # ========== TRUST SPAM GUIDE & LLM ==========
         # Spam Guide 기반 프롬프트와 Type B 방어 시스템을 전적으로 신뢰합니다.
@@ -586,6 +588,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             signals["is_personal_lure"] = False
             signals["is_garbage_obfuscation"] = False
             signals["is_normal_layout"] = False
+            signals["is_safe_url_injection"] = False
 
         obfuscated_urls = result_json.get("obfuscated_urls", [])
         if not isinstance(obfuscated_urls, list):
@@ -691,7 +694,8 @@ Step 4. [Type B 시그널 추출: CNN 모델 데이터 오염 방어]
    - 4-3. [is_vague_cta]: 특정 악성 단어조차 없이 "확인 바람", "아래 링크 참고" 등 너무 범용적인 문구만으로 교묘하게 클릭을 유도하여 평범한 안내문자까지 오탐을 유발할 수 있는가?
    - 4-4. [is_garbage_obfuscation]: 단어를 비정상적으로 찢거나 무의미한 특수문자/기호를 마구 혼합해 형태소를 고의로 파괴(난독화)하여 시스템을 교란시키는가? (만약 '점켬', '쩜컴', '닷넷' 등 도메인/URL을 한글로 난독화한 것이 발견되거나, 혹은 `급등주bit.ly/정보방선착순` 처럼 URL 앞뒤에 한글 문맥이 띄어쓰기 없이 엉겨붙어 있는 경우 이 시그널을 true로 켜고, 해당 도메인을 영문으로 정상 복원하거나 순수한 URL 부분(`bit.ly/정보방`)만 정제하여 아래 `obfuscated_urls` 리스트에 반드시 포함하라.)
    - 4-5. [is_normal_layout]: 메시지 레이아웃 자체는 매우 정상적인 일반 광고/알림/모집 텍스트처럼 보이지만, 수신거부(080) 누락 같은 정통망법 위반이나 식별 불가능한 발신자, 미묘한 사행성 유도 등의 사유로 SPAM 판정되었는가? (이런 평범한 형태의 메시지가 Type A로 들어가면 정상 광고들을 스팸으로 오탐하게 함)
-
+   - 4-6. [is_safe_url_injection]: (위장 URL 방패막이 전술 감지 - 문맥 불일치) 본문의 목적이 "명백한 도박/불법대출/주식리딩방/성인" 중 하나인데, 텍스트 안에 삽입된 링크가 이 목적과 **전혀 무관해 보이는 일반 정상 웹사이트(뉴스 기사, 포털, 블로그, 관공서, 일반 기업 사이트 등 규모 무관)** 도메인인가? (즉, 스팸 필터를 우회할 목적으로 상관없는 정상 링크를 방패막이로 세웠다고 확신할 때만 `true`로 설정)
+     ⚠️ 주의: 텍스트가 "관리비", "택배", "부고장" 등 일상 안내를 사칭하는 스미싱(Smishing) 텍스트이고, 첨부된 URL이 단축 URL(`bit.ly`, `agshort.link` 등)이거나 사설 웹 주소라면 이는 해당 스미싱과 연결된 "진짜 피싱/청구서 사이트"일 가능성이 높다.(즉, 문맥이 일치함). 따라서 이는 엉뚱한 사이트를 가져다 쓴 '방패막이(injection)' 전술이 **아니므로** 절대로 `true`로 설정하지 말고 `false`로 두어야 한다!
 Step 5. 최종 판정 (label 확정):
    - Guide 기준에 따라 완벽한 정상문자면 HAM. 
    - Guide 기준 SPAM 사유에 해당하면 무조건 SPAM. SPAM일 경우 spam_code (0, 1, 2, 3 중 택1)를 반드시 Guide의 3항목에 맞게 지정하라.
@@ -702,7 +706,7 @@ Step 5. 최종 판정 (label 확정):
 "spam_code": "0|1|2|3|null",
 "spam_probability": 0.0,
 "reason": "Spam Guide의 어떤 기준에 의해 판정했는지 명시하고, SPAM인 경우 CNN 오탐 위험성(Type B 사유) 혹은 안전한 표본(Type A) 여부에 대한 너의 논리를 포함하여 한국어로 짧게 작성할 것.",
-"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false, "is_personal_lure": false, "is_garbage_obfuscation": false, "is_normal_layout": false }},
+"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false, "is_personal_lure": false, "is_garbage_obfuscation": false, "is_normal_layout": false, "is_safe_url_injection": false }},
 "obfuscated_urls": []
 }}
 """
