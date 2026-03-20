@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import re
 from typing import List, Optional
 from .state import IBSEState
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception, before_sleep_log
@@ -313,6 +314,42 @@ async def select_signature_node(state: IBSEState) -> dict:
         sig_text = result["signature"]
         
         # Safely truncate CP949
+        encoded = sig_text.encode("cp949", errors="replace")
+        
+        # [Dead Zone 방어] 문장열(use_sentence) 규정 위반 방지: 길이가 39바이트 미만인 경우 패딩(Padding) 혹은 강등 처리
+        if result["decision"] == "use_sentence" and len(encoded) < 39:
+            idx = match_text.find(sig_text)
+            if idx != -1:
+                end_idx = idx + len(sig_text)
+                pad_front = match_text[:end_idx].encode("cp949", errors="replace")
+                pad_back = match_text[idx:].encode("cp949", errors="replace")
+                
+                if len(pad_front) >= 39:
+                    encoded = pad_front[-40:]
+                    while len(encoded) > 0:
+                        try:
+                            sig_text = encoded.decode("cp949", errors="strict")
+                            break
+                        except UnicodeDecodeError:
+                            encoded = encoded[1:]
+                elif len(pad_back) >= 39:
+                    encoded = pad_back[:40]
+                    while len(encoded) > 0:
+                        try:
+                            sig_text = encoded.decode("cp949", errors="strict")
+                            break
+                        except UnicodeDecodeError:
+                            encoded = encoded[:-1]
+                else:
+                    # 원문 전체를 모아도 39바이트 미만인 불가항력 -> 무조건 문자열(use_string)로 강제 다운그레이드
+                    result["decision"] = "use_string"
+                    max_bytes = 20
+            else:
+                # 할루시네이션(원문에 없는 텍스트) 등 -> 문자열(use_string)로 강제 변환
+                result["decision"] = "use_string"
+                max_bytes = 20
+                
+        # 확정된 max_bytes (20 or 40)와 최신 sig_text를 기준으로 다시 인코딩 진행
         encoded = sig_text.encode("cp949", errors="replace")
         if len(encoded) > max_bytes:
             truncated = encoded[:max_bytes]

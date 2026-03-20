@@ -155,7 +155,9 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              if is_broken: has_extracted_url = False
                  
              if i_res.get("decision") == "unextractable" and not has_extracted_url:
-                 final["exclude_from_excel"] = True
+                 # SPAM으로 분류된 건은 시그니처가 없더라도 육안분석 시트에 로그를 남기기 위해 예외 처리
+                 if not final.get("is_spam"):
+                     final["exclude_from_excel"] = True
                  
         return {"final_result": final}
 
