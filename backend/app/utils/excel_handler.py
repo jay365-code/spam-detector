@@ -342,13 +342,21 @@ class ExcelHandler:
         ws.column_dimensions[get_column_letter(6)].width = 10     # 분류
             
         # Write Data
+        # Deduplicate by signature
+        unique_sigs = set()
+        deduped_data = []
+        for item in blocklist_data:
+            if item['sig'] not in unique_sigs:
+                unique_sigs.add(item['sig'])
+                deduped_data.append(item)
+                
         # Sort data: 문자열 (length <= 20) first, then 문장열 (length > 20).
         # Within each category, sort by length descending.
         def sort_key(item):
             is_sentence = item['len'] > 20
             return (is_sentence, -item['len'])
             
-        sorted_data = sorted(blocklist_data, key=sort_key)
+        sorted_data = sorted(deduped_data, key=sort_key)
         
         row_num = 2
         for item in sorted_data:
