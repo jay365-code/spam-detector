@@ -587,12 +587,17 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             signals["is_garbage_obfuscation"] = False
             signals["is_normal_layout"] = False
 
+        obfuscated_urls = result_json.get("obfuscated_urls", [])
+        if not isinstance(obfuscated_urls, list):
+            obfuscated_urls = []
+
         return {
             "is_spam": is_spam,
             "spam_probability": spam_prob,
             "classification_code": classification_code,
             "reason": reason,
             "signals": signals,
+            "obfuscated_urls": obfuscated_urls,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens
         }
@@ -684,7 +689,7 @@ Step 4. [Type B 시그널 추출: CNN 모델 데이터 오염 방어]
    - 4-1. [is_impersonation]: 공공기관, 구직 제안, 대기업 알림, 혹은 평범한 식당/학원 마케팅 전단지 레이아웃을 완벽하게 모방하여 정상 알림까지 스팸으로 오탐하게 할 템플릿 위험성이 있는가?
    - 4-2. [is_personal_lure]: 부고, 청첩장, 안부 인사 등 지인 간의 사적인 대화를 완벽히 위장하여 사적 대화 오탐을 유발할 위험이 있는가?
    - 4-3. [is_vague_cta]: 특정 악성 단어조차 없이 "확인 바람", "아래 링크 참고" 등 너무 범용적인 문구만으로 교묘하게 클릭을 유도하여 평범한 안내문자까지 오탐을 유발할 수 있는가?
-   - 4-4. [is_garbage_obfuscation]: 단어를 비정상적으로 찢거나 무의미한 특수문자/기호를 마구 혼합해 형태소를 고의로 파괴(난독화)하여 시스템을 교란시키는가?
+   - 4-4. [is_garbage_obfuscation]: 단어를 비정상적으로 찢거나 무의미한 특수문자/기호를 마구 혼합해 형태소를 고의로 파괴(난독화)하여 시스템을 교란시키는가? (만약 '점켬', '쩜컴', '닷넷' 등 도메인/URL을 한글로 난독화한 것이 발견되거나, 혹은 `급등주bit.ly/정보방선착순` 처럼 URL 앞뒤에 한글 문맥이 띄어쓰기 없이 엉겨붙어 있는 경우 이 시그널을 true로 켜고, 해당 도메인을 영문으로 정상 복원하거나 순수한 URL 부분(`bit.ly/정보방`)만 정제하여 아래 `obfuscated_urls` 리스트에 반드시 포함하라.)
    - 4-5. [is_normal_layout]: 메시지 레이아웃 자체는 매우 정상적인 일반 광고/알림/모집 텍스트처럼 보이지만, 수신거부(080) 누락 같은 정통망법 위반이나 식별 불가능한 발신자, 미묘한 사행성 유도 등의 사유로 SPAM 판정되었는가? (이런 평범한 형태의 메시지가 Type A로 들어가면 정상 광고들을 스팸으로 오탐하게 함)
 
 Step 5. 최종 판정 (label 확정):
@@ -697,7 +702,8 @@ Step 5. 최종 판정 (label 확정):
 "spam_code": "0|1|2|3|null",
 "spam_probability": 0.0,
 "reason": "Spam Guide의 어떤 기준에 의해 판정했는지 명시하고, SPAM인 경우 CNN 오탐 위험성(Type B 사유) 혹은 안전한 표본(Type A) 여부에 대한 너의 논리를 포함하여 한국어로 짧게 작성할 것.",
-"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false, "is_personal_lure": false, "is_garbage_obfuscation": false, "is_normal_layout": false }}
+"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false, "is_personal_lure": false, "is_garbage_obfuscation": false, "is_normal_layout": false }},
+"obfuscated_urls": []
 }}
 """
         return prompt_text, valid_examples

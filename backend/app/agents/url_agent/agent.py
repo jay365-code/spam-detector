@@ -237,7 +237,9 @@ class UrlAnalysisAgent:
                     "captcha_detected": captcha_detected,
                     "depth": depth,
                     "extracted_url": extracted_url,
-                    "final_url": final_url
+                    "final_url": final_url,
+                    "attempted_urls": scraped_data.get("attempted_urls", []),
+                    "is_broken_short_url": result_state.get("is_broken_short_url", False)
                 }
             }
         except Exception as e:

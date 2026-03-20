@@ -23,6 +23,9 @@ from langchain_core.prompts import PromptTemplate
 from .state import SpamState
 from app.core.constants import SPAM_CODE_MAP
 
+# 자주 쓰이는 영문 TLD (단축 도메인 포함)
+COMMON_TLDS = {'com', 'net', 'org', 'info', 'biz', 'co', 'kr', 'me', 'tv', 'us', 'app', 'site', 'io', 'ai', 'store', 'shop', 'click', 'link', 'top', 'vip', 'club', 'cc', 'ly', 'gl', 'do', 'la', 'to'}
+
 # 유명/신뢰 도메인 리스트 (리다이렉트 후 이 도메인이면 HAM)
 # ※ 주의: 사용자 생성 콘텐츠(UGC) 도메인은 포함하면 안 됨
 TRUSTED_DOMAINS = [
@@ -524,10 +527,25 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
     # 난독화 디코딩된 텍스트가 있으면 우선 사용
     message = state.get("decoded_text") or state.get("sms_content", "")
     
+    # 0. Content Agent (LLM)에서 복원한 난독화 URL 주입
+    content_context = state.get("content_context") or {}
+    obfuscated_urls = content_context.get("obfuscated_urls", [])
+
     # 1. 프로토콜이 있는 URL 추출 (가장 확실, 한글 포함 가능)
     # http://오징어.오뎅탕 -> 허용
     protocol_pattern = r'(?:http|https)://[^\s\[\]<>◆▶★♥→※○●◎◇□■△▲▽▼▷◁◀♤♠♡♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬]+'
     protocol_urls = re.findall(protocol_pattern, message)
+    
+    # obfuscated_urls 병합 (우선순위를 위해 맨 앞에 삽입)
+    if isinstance(obfuscated_urls, list):
+        for ou in obfuscated_urls[::-1]:  # 역순으로 insert해야 원래 순서 유지
+            if ou and isinstance(ou, str) and len(ou) > 3:
+                ou_stripped = ou.strip()
+                if not ou_stripped.startswith(("http://", "https://")):
+                    ou_stripped = "http://" + ou_stripped
+                if ou_stripped not in protocol_urls:
+                    protocol_urls.insert(0, ou_stripped)
+                    logger.info(f"[URL Agent] LLM De-obfuscated/Cleaned URL injected: {ou_stripped}")
     
     # 2. 프로토콜이 없는 도메인 패턴 추출 (엄격한 검증 필요)
     # 한글.한글 -> 오징어.오뎅탕 (제외되어야 함)
@@ -568,16 +586,22 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
     
     urls = []
     
+    # URL 꼬리부분(suffix)에 엉겨붙은 스팸성 식별자(code:, tel) 제거용 정규식
+    suffix_regex = r'(?i)(code|tel|id|kakao|line|best|pw|password|상담|문의)[\.,;:!\?\)\]\}\"\'\s]*$'
+    strip_chars = '.,;:!?)]}"\''
+    
     # 2-1. 프로토콜 URL 처리
     for url in protocol_urls:
-         # 뒤에 붙은 구두점 제거
-        url = url.rstrip('.,;!?)]}"\'')
+         # 뒤에 붙은 스팸성 키워드(code: 등) 및 구두점 제거
+        url = re.sub(suffix_regex, '', url)
+        url = url.rstrip(strip_chars)
         if len(url) > 7: # http://...
             urls.append(url)
             
     # 2-2. 도메인 후보 검증
     for cand in raw_candidates:
-        cand = cand.rstrip('.,;!?)]}"\'')
+        cand = re.sub(suffix_regex, '', cand)
+        cand = cand.rstrip(strip_chars)
         if not cand: continue
         
         # 이미 프로토콜 URL에 포함된 경우 스킵
@@ -588,6 +612,17 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
         try:
             # 도메인과 경로를 분리 (TLD 검사 목적)
             domain_part = cand.split('/')[0]
+            
+            # TLD 쪽에 한글이 병합된 "Back-Gluing" 현상 해결 (youtube-dm.com재무상담 -> youtube-dm.com)
+            if '.' in domain_part:
+                tld_cand = domain_part.split('.')[-1]
+                t_match = re.match(r'^([a-zA-Z]{2,7}|한국|닷컴|닷넷|회사)([\uac00-\ud7a3\u3131-\u3163].*)$', tld_cand)
+                if t_match:
+                    clean_tld = t_match.group(1)
+                    garbage = t_match.group(2)
+                    domain_part = domain_part[:-len(garbage)]
+                    cand = cand.replace(tld_cand, clean_tld, 1) # 경로가 없다면 뒷부분 가비지 삭제됨
+                    
             parts = domain_part.split('.')
             
             # [Sentence Gluing Filter]
@@ -602,6 +637,19 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
                     if cut_idx >= 0:
                         new_domain_part = ".".join(parts[cut_idx+1:])
                         # 경로 등 뒤쪽 문자는 살려둔 채 앞부분만 교체
+                        cand = new_domain_part + cand[len(domain_part):]
+                        domain_part = new_domain_part
+                        parts = domain_part.split('.')
+            elif len(parts) == 2:
+                # 예: "급등주bit.ly" -> SLD(parts[0])에 한글+영문이 섞여있고 TLD가 영문인 경우
+                sld = parts[0]
+                tld = parts[1].lower()
+                if tld in COMMON_TLDS or tld.startswith('xn--'):
+                    # 한글로 시작해서 영문숫자 기호로 끝나는 패턴 찾기
+                    m = re.search(r'[\uac00-\ud7a3\u3131-\u3163%↑↓]+([a-zA-Z0-9-]+)$', sld)
+                    if m:
+                        new_sld = m.group(1)
+                        new_domain_part = f"{new_sld}.{parts[1]}"
                         cand = new_domain_part + cand[len(domain_part):]
                         domain_part = new_domain_part
                         parts = domain_part.split('.')
@@ -638,6 +686,36 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
         except Exception:
             continue
             
+    # 2-3. Path Back-Gluing Logic (URL 경로 뒤에 한글 문장이 병합된 경우 방어)
+    # 예: "https://ko.gl/1VP2차상담" -> "https://ko.gl/1VP"
+    path_cleaned_urls = []
+    for url in urls:
+        if "://" in url:
+            protocol, clean_cand = url.split("://", 1)
+            protocol += "://"
+            if '/' in clean_cand:
+                domain_part = clean_cand.split('/', 1)[0]
+                path_part = clean_cand[len(domain_part):]
+                # 경로 첫 단어부터 한글인 경우(예: bit.ly/오픈채팅방)는 커스텀 URL이므로 자르지 않고, 영어/숫자 뒤에 한글이 붙은 경우(예: ko.gl/1VP2차상담)만 자름
+                kr_match = re.search(r'(?<=[a-zA-Z0-9_\-])[\uac00-\ud7a3\u3131-\u3163]', path_part)
+                if kr_match:
+                    first_kr_idx = kr_match.start()
+                    cut_idx = first_kr_idx
+                    if first_kr_idx > 0 and path_part[first_kr_idx-1].isdigit():
+                        num_match = re.search(r'\d+$', path_part[:first_kr_idx])
+                        if num_match:
+                            num_start = num_match.start()
+                            kr_word = path_part[first_kr_idx:first_kr_idx+2]
+                            units = ['차', '번', '위', '일', '명', '원', '만', '억', '퍼', '개', '건', '달', '주', '배', '년', '월', '시', '분', '초', '등', '백', '천', '조', '탄', '기']
+                            if any(kr_word.startswith(u) for u in units) or any(kr_word.startswith(w) for w in ["프로", "만원", "억원", "종목", "코드", "상담", "수익"]):
+                                cut_idx = num_start
+                    url = protocol + domain_part + path_part[:cut_idx]
+        
+        if url not in path_cleaned_urls:
+            path_cleaned_urls.append(url)
+    
+    urls = path_cleaned_urls
+            
     # 2-4. Short URL 특수 처리 (Garbage 튜닝)
     # bit.ly/abcd미납금액결제 -> bit.ly/abcd 만 뽑히도록 쓰레기값 정리
     shorteners = ['bit.ly', 'me2.do', 'vo.la', 'han.gl', 'url.kr', 'sbz.kr', 'cutt.ly', 'tinyurl.com', 'naver.me', 'kko.to', 't.ly', 't.co', 'g.co']
@@ -645,7 +723,7 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
     for url in urls:
         if any(s in url.lower() for s in shorteners):
             # 숏주소 뒤에 특수기호가 붙으면 거기서부터 잘라냄 (단, 한글 가-힣은 정상 커스텀 URL일 수 있으므로 추출에선 자르지 않음!)
-            url = re.sub(r'[\[\]\(\)<>◆▶★♥+\-:\.].*$', '', url)
+            url = re.sub(r'[\[\]\(\)<>◆▶★♥※○●◎◇□■△▲▽▼▷◁◀♤♠♡♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬].*$', '', url)
             # 쓰레기값을 잘라냈는데 파라미터가 비어버린다면 가짜 URL (예: bit.ly/)이므로 통과
             if url.endswith('/') and url.split('/')[-2] in shorteners:
                 logger.info(f"[URL Agent] Dropping empty short URL: {url}")
@@ -706,6 +784,11 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
             manager = get_playwright_manager()
             
         result = await manager.scrape_url(url)
+        fallback_log = []
+        attempted_urls = list(state.get("attempted_urls", []))
+        if url not in attempted_urls:
+            attempted_urls.append(url)
+            
         if not result:
             result = {"status": "failed", "error": "No result returned", "url": url}
             
@@ -715,31 +798,29 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
             title = str(result.get("title", ""))
             
             # 404 에러나 Not Found인 경우, 뒤에 붙은 쓰레기 문자열이 원인일 수 있음
-            if status == "failed" or "404" in title or "not found" in title.lower():
+            if status in ["error", "failed"] or "404" in title or "not found" in title.lower():
                 
                 # 1단계: 쓰레기값 잘라내기 (Trailing Garbage Stripping)
-                # 대괄호, 괄호, 꺾쇠, 한글이 처음 등장하는 지점부터 그 뒤 문자열을 싹둑 자름
                 cleaned_url = re.sub(r'[\[\]\(\)<>가-힣◆▶★♥]+.*$', '', url)
                 
-                # 방어 코드: 만약 다 잘라냈는데 남은 게 파라미터 없는 메인 도메인(http://bit.ly/) 뿐이라면 
-                # 메인 페이지를 스크래핑해봤자 의미가 없으므로 재시도 중단!
                 parsed_parts = cleaned_url.rstrip('/').split('/')
                 if len(parsed_parts) > 3:
                     if cleaned_url != url and len(cleaned_url) > 8:
                         logger.warning(f"⚠️ [URL Agent] 404/Failed detected. Stripping trailing garbage and retrying: {url} -> {cleaned_url}")
+                        fallback_log.append(f"{url} -> {cleaned_url} (가비지 제거)")
+                        attempted_urls.append(cleaned_url)
                         retry_result = await manager.scrape_url(cleaned_url)
                         if retry_result and retry_result.get("status") == "success":
                             retry_title = str(retry_result.get("title", ""))
                             if "404" not in retry_title and "not found" not in retry_title.lower():
                                 logger.info(f"✅ [URL Agent] Retry successful with cleaned URL!")
                                 result = retry_result
-                                url = cleaned_url # Update tracking URL
+                                url = cleaned_url
                                 
                 # 2단계: 띄어쓰기로 인해 끊긴 URL 복원 (Space-obfuscation Expansion)
                 current_status = result.get("status")
                 current_title = str(result.get("title", ""))
-                # 아직도 404라면, 스페이스로 인해 끊겼을 가능성을 고려해 최대 3단어 확장 (사용자 요청)
-                if current_status == "failed" or "404" in current_title or "not found" in current_title.lower():
+                if current_status in ["error", "failed"] or "404" in current_title or "not found" in current_title.lower():
                     sms_content = state.get("sms_content", "")
                     if url in sms_content:
                         parts = sms_content.split(url, 1)
@@ -751,12 +832,12 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
                                 
                                 for i in range(min(3, len(tokens))):
                                     expanded_url += tokens[i]
-                                    
-                                    # 확장된 문자열 뒤쪽의 스팸 기호나 정리
                                     check_url = re.sub(r'[\[\]\(\)<>◆▶★♥→※○●◎◇□■△▲▽▼▷◁◀♤♠♡♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬]+.*$', '', expanded_url)
                                     
                                     if check_url != url and len(check_url) > 10:
                                         logger.warning(f"⚠️ [URL Agent] 404 detected. Expanding cut-off URL (+{i+1} word): {url} -> {check_url}")
+                                        fallback_log.append(f"{url} -> {check_url} (공백 누락 확장)")
+                                        attempted_urls.append(check_url)
                                         exp_result = await manager.scrape_url(check_url)
                                         exp_status = exp_result.get("status", "")
                                         exp_title = str(exp_result.get("title", ""))
@@ -766,6 +847,32 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
                                             result = exp_result
                                             url = check_url
                                             break
+                                            
+                # 3단계: 앞쪽 숫자 난독화 제거 (DGA Numeric Prefix Stripping)
+                current_status = result.get("status")
+                current_title = str(result.get("title", ""))
+                if current_status in ["error", "failed"] or "404" in current_title or "not found" in current_title.lower():
+                    domain_match = re.match(r'(https?://)(\d+)([^/\s]+)(/.*)?', url)
+                    if domain_match:
+                        prefix = domain_match.group(1)
+                        digits = domain_match.group(2)
+                        rest_domain = domain_match.group(3)
+                        path = domain_match.group(4) or ""
+                        
+                        if rest_domain and '.' in rest_domain and len(rest_domain) > 3:
+                            stripped_url = f"{prefix}{rest_domain}{path}"
+                            visited = state.get("visited_history", [])
+                            if stripped_url not in visited:
+                                logger.warning(f"⚠️ [URL Agent] Scrape Failed. Stripping leading digits: {url} -> {stripped_url}")
+                                fallback_log.append(f"{url} -> {stripped_url} (숫자 난독화 제거)")
+                                attempted_urls.append(stripped_url)
+                                retry_result = await manager.scrape_url(stripped_url)
+                                if retry_result and retry_result.get("status") == "success":
+                                    retry_title = str(retry_result.get("title", ""))
+                                    if "404" not in retry_title and "not found" not in retry_title.lower():
+                                        logger.info(f"✅ [URL Agent] Prefix stripping successful!")
+                                        result = retry_result
+                                        url = stripped_url
         except Exception as retry_e:
             logger.error(f"[URL Agent] Retry fallback error: {retry_e}")
         
@@ -776,7 +883,6 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
                    f"captcha={result.get('captcha_detected')}, "
                    f"text_len={len(result.get('text', ''))}")
         
-        # 텍스트 일부 로깅 (디버깅용)
         text_preview = result.get('text', '').strip()
         if "403" in text_preview[:100] and ("Forbidden" in text_preview[:100] or "denied" in text_preview[:100].lower()):
              logger.warning(f"⚠️ [URL Agent] Scraper Blocked (403 Forbidden)! Site may have bot protection.")
@@ -794,9 +900,15 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
     if original_url and original_url not in history:
         history.append(original_url)
         
+    if fallback_log:
+        result["fallback_log"] = fallback_log
+        
+    result["attempted_urls"] = attempted_urls
+        
     return {
         "scraped_data": result,
-        "visited_history": history
+        "visited_history": history,
+        "attempted_urls": attempted_urls # LangGraph state에 추가!
     }
 
 async def analyze_node(state: SpamState) -> Dict[str, Any]:
@@ -808,15 +920,37 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     scraped = state.get("scraped_data", {})
     sms_content = state.get("sms_content", "")
     
+    fallback_log = scraped.get("fallback_log", [])
+    fallback_text = ""
+    if fallback_log:
+        fallback_text = " (※ 재시도 이력: " + ", ".join(fallback_log) + ")"
+    
     # 분석 시작 로그
     logger.info(f"URL 분석 시작 | msg={sms_content[:80]}{'...' if len(sms_content) > 80 else ''}")
     
     if scraped.get("status") != "success":
-        # 스크래핑 실패 시 TLD 검사 등 폴백 로직 (간소화)
+        scraped_url = scraped.get('url', '')
+        is_broken_short_url = False
+        if scraped_url:
+            from urllib.parse import urlparse
+            parsed = urlparse(scraped_url)
+            domain = parsed.netloc.lower()
+            path = parsed.path.strip('/')
+            
+            # 단축 URL 식별 로직 강화:
+            # 1. path가 짧고(0보다 크고 4 이하) 쿼리/플래그먼트가 없는 경우
+            # 2. 혹은 도메인 자체가 알려진 단축 도메인 계열인 경우
+            shorteners = ['bit.ly', 'me2.do', 'vo.la', 'han.gl', 'url.kr', 'sbz.kr', 'cutt.ly', 'tinyurl.com', 'naver.me', 'kko.to', 't.ly', 't.co', 'g.co']
+            is_known_shortener = any(domain.endswith(s) for s in shorteners)
+            
+            if (0 < len(path) <= 4 and not parsed.query and not parsed.fragment) or is_known_shortener:
+                is_broken_short_url = True
+
         logger.warning(f"스크래핑 실패: {scraped.get('error')}")
         return {
             "is_spam": None, 
-            "reason": f"Scraping failed: {scraped.get('error')}"
+            "reason": f"Scraping failed: {scraped.get('error')}{fallback_text}",
+            "is_broken_short_url": is_broken_short_url
         }
 
     # 프롬프트 구성
@@ -835,7 +969,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
             "is_spam": False,
             "spam_probability": 0.0,
             "classification_code": None,
-            "reason": f"리다이렉트 목적지가 신뢰할 수 있는 공식 도메인 ({current_url.split('/')[2]})",
+            "reason": f"리다이렉트 목적지가 신뢰할 수 있는 공식 도메인 ({current_url.split('/')[2]}){fallback_text}",
             "is_final": False, # 다른 URL도 확인해야 하므로 계속 진행
             "analysis_type": "trusted_domain"
         }
@@ -1028,7 +1162,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         
         is_spam = result_json.get("is_spam")
         prob = result_json.get("spam_probability", 0.0)
-        reason = result_json.get("reason", "")
+        reason = result_json.get("reason", "") + fallback_text
         if fallback_model and reason:
             result_json["reason"] = f"[URL_Fallback: {fallback_model}] " + reason
             reason = result_json["reason"]
@@ -1122,7 +1256,13 @@ async def select_link_node(state: SpamState) -> Dict[str, Any]:
     else:
         # 2. 모든 URL 방문 완료
         logger.info("[URL Agent] All URLs visited. No SPAM found.")
+        
+        prev_reason = state.get("reason", "")
+        final_reason = "All URLs scanned (No SPAM detected)"
+        if prev_reason and ("(※" in prev_reason or "failed" in prev_reason.lower()):
+            final_reason += f" | 마지막 시도: {prev_reason}"
+            
         return {
             "is_final": True,
-            "reason": "All URLs scanned (No SPAM detected)"
+            "reason": final_reason
         }

@@ -1085,7 +1085,12 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                         url_text += f"🚫 **스팸 URL 탐지됨**\n- 사유: {url_reason}\n"
                                     else:
                                         url_text += f"✅ **정상 URL**\n- 사유: {url_reason}\n"
-                                    url_text += f"- 접속 최종 URL: {url_details.get('final_url', 'N/A')}\n"
+                                    attempted_urls = url_details.get("attempted_urls", [])
+                                    if attempted_urls and len(attempted_urls) > 1:
+                                        url_list_str = ", ".join(attempted_urls)
+                                        url_text += f"- 접속 최종 URL: {url_details.get('extracted_url', 'N/A')} ==> URL: {url_list_str}\n"
+                                    else:
+                                        url_text += f"- 접속 최종 URL: {url_details.get('final_url', 'N/A')}\n"
                                     await send_text_chunk(url_text)
                                 
                                 # Step B-2: Append IBSE Data if extracted
@@ -1867,7 +1872,7 @@ async def update_excel_row(update: ExcelRowUpdate):
                 for bl_row in range(2, bl_ws.max_row + 1):
                     bl_msg = bl_ws.cell(row=bl_row, column=1).value
                     if bl_msg and str(bl_msg).strip() == clean_msg.strip():
-                        bl_ws.cell(row=bl_row, column=4, value=new_code)  # 분류 컬럼
+                        bl_ws.cell(row=bl_row, column=6, value=new_code)  # 변경: 6번째 컬럼으로 수정 (분류)
             
             # HAM → SPAM: 블록리스트 추가 불가 (ibse_signature 없음)
         

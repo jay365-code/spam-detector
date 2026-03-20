@@ -8,6 +8,8 @@ class SpamState(TypedDict):
     decoded_text: Optional[str]     # 난독화 디코딩된 텍스트 (없으면 sms_content 사용)
     target_urls: List[str]          # 추출된 URL 목록 (초기)
     current_url: Optional[str]      # 현재 분석 중인 URL
+    attempted_urls: List[str]       # 스크래핑 시도한 전체 URL 목록 (폴백 포함)
+    is_broken_short_url: bool       # 단축 URL 스크래핑 실패 및 만료 여부
     
     # 방문 기록 및 데이터
     visited_history: List[str]      # 방문한 URL 히스토리

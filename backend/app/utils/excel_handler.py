@@ -305,7 +305,7 @@ class ExcelHandler:
     def _create_blocklist_sheet(self, wb: Workbook, blocklist_data: list):
         """
         Create '문자문장차단등록' sheet for extracted signatures.
-        Columns: 메시지, 문자열, 길이, 분류
+        Columns: 메시지, 문자열, 길이, 문장열, 길이, 분류
         """
         if "문자문장차단등록" in wb.sheetnames:
              ws = wb["문자문장차단등록"]
@@ -313,7 +313,7 @@ class ExcelHandler:
              ws = wb.create_sheet("문자문장차단등록")
         
         # Headers
-        headers = ["메시지", "문자열", "길이", "분류"]
+        headers = ["메시지", "문자열", "길이", "문장열", "길이", "분류"]
         ws.append(headers)
         
         # Styling
@@ -334,33 +334,49 @@ class ExcelHandler:
             cell.fill = header_fill
             
         # 컬럼 너비 조정 (픽셀 -> 엑셀 width 환산)
-        # 메시지 컬럼 806 픽셀 -> 약 114.4
-        ws.column_dimensions[get_column_letter(1)].width = 114.4
-        # 문자열 컬럼 400 픽셀 -> 약 56.4
-        ws.column_dimensions[get_column_letter(2)].width = 56.4
+        ws.column_dimensions[get_column_letter(1)].width = 114.4  # 메시지
+        ws.column_dimensions[get_column_letter(2)].width = 56.4   # 문자열
+        ws.column_dimensions[get_column_letter(3)].width = 10     # 문자열 길이
+        ws.column_dimensions[get_column_letter(4)].width = 56.4   # 문장열
+        ws.column_dimensions[get_column_letter(5)].width = 10     # 문장열 길이
+        ws.column_dimensions[get_column_letter(6)].width = 10     # 분류
             
         # Write Data
-        # blocklist_data = [{"msg":..., "sig":..., "len":..., "code":...}, ...]
+        # Sort data: 문자열 (length <= 20) first, then 문장열 (length > 20).
+        # Within each category, sort by length descending.
+        def sort_key(item):
+            is_sentence = item['len'] > 20
+            return (is_sentence, -item['len'])
+            
+        sorted_data = sorted(blocklist_data, key=sort_key)
+        
         row_num = 2
-        for item in blocklist_data:
-            ws.append([
-                self._sanitize_cell_value(item['msg']), 
-                self._sanitize_cell_value(item['sig']), 
-                item['len'], 
-                self._sanitize_cell_value(item['code'])
-            ])
+        for item in sorted_data:
+            msg = self._sanitize_cell_value(item['msg'])
+            sig = self._sanitize_cell_value(item['sig'])
+            length = item['len']
+            code = self._sanitize_cell_value(item['code'])
+            
+            if length <= 20: # 문자열 부분
+                row_data = [msg, sig, length, "", 0, code]
+            else:            # 문장열 부분
+                row_data = [msg, "", 0, sig, length, code]
+                
+            ws.append(row_data)
+            
             # 데이터 셀 폰트 및 채우기 적용
             ws.cell(row=row_num, column=1).font = msg_font
             ws.cell(row=row_num, column=1).fill = msg_fill
-            ws.cell(row=row_num, column=2).font = base_font
-            ws.cell(row=row_num, column=3).font = base_font
-            ws.cell(row=row_num, column=4).font = base_font
+            
+            for c in range(2, 7):
+                ws.cell(row=row_num, column=c).font = base_font
             
             # 데이터 셀 정렬 속성 적용 (분류는 정렬 우측/들여쓰기 1)
             cls_align = Alignment(horizontal='right', vertical='center', indent=1)
-            for col_idx in range(1, 4):
-                ws.cell(row=row_num, column=col_idx).alignment = data_align
-            ws.cell(row=row_num, column=4).alignment = cls_align
+            
+            for c in range(1, 6):
+                ws.cell(row=row_num, column=c).alignment = data_align
+            ws.cell(row=row_num, column=6).alignment = cls_align
             
             row_num += 1
 
@@ -510,19 +526,31 @@ class ExcelHandler:
                     # --- URL Collection Logic ---
                     # Only collect URL from the input column if SPAM or extracted from HAM
                     if result.get("is_spam") is True or result.get("malicious_url_extracted"):
-                        raw_url_code = str(result.get("classification_code") or "")
-                        _m = re.search(r'\d+', raw_url_code)
-                        url_dedup_code = _m.group(0) if _m else raw_url_code
-                        if not result.get("is_spam"):
-                            url_dedup_code = extracted_url_code
-                        
-                        # Use the directly mapped input URL, not regex from message
-                        url_val = ws.cell(row=row_idx, column=get_col_idx("URL", len(headers) + 1)).value
-                        urls = [url_val] if url_val else []
+                        if result.get("drop_url"):
+                            try:
+                                url_col_idx = headers.index("URL") + 1
+                                ws.cell(row=row_idx, column=url_col_idx, value="없음")
+                            except ValueError:
+                                pass
+                            try:
+                                string_col_idx = headers.index("문자열") + 1
+                                ws.cell(row=row_idx, column=string_col_idx, value="없음")
+                            except ValueError:
+                                pass
+                        else:
+                            raw_url_code = str(result.get("classification_code") or "")
+                            _m = re.search(r'\d+', raw_url_code)
+                            url_dedup_code = _m.group(0) if _m else raw_url_code
+                            if not result.get("is_spam"):
+                                url_dedup_code = extracted_url_code
+                            
+                            # Use the directly mapped input URL, not regex from message
+                            url_val = ws.cell(row=row_idx, column=get_col_idx("URL", len(headers) + 1)).value
+                            urls = [url_val] if url_val else []
                         
                         for url in urls:
                             # Clean URL
-                            url = str(url).strip().rstrip('.,;!?)]}"\'')
+                            url = str(url).strip().rstrip('.,;:!?)]}"\'')
                             
                             if not self.is_short_url(url):
                                  # Only non-short URLs
@@ -835,7 +863,7 @@ class ExcelHandler:
                         target_url = url_val.strip() if url_val else ""
                         if target_url:
                             # Clean URL
-                            target_url = target_url.rstrip('.,;!?)]}"\'')
+                            target_url = target_url.rstrip('.,;:!?)]}"\'')
                             
                             # Additional Safety
                             if not re.search(r'[^\x00-\x7F]', target_url): # If pure ASCII (simple check) => Good

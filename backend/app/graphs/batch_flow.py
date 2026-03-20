@@ -96,7 +96,11 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              
              if is_inconclusive:
                  # Inconclusive -> Trust Content Verdict (no override)
-                 final["reason"] = f"{existing_reason} | [URL: Suspected but Inconclusive]"
+                 url_reason_text = u_res.get('reason', '')
+                 if 'All URLs scanned' in url_reason_text:
+                     final["reason"] = f"{existing_reason} | [URL: Inconclusive ({url_reason_text})]"
+                 else:
+                     final["reason"] = f"{existing_reason} | [URL: Suspected but Inconclusive ({url_reason_text})]"
              elif url_is_spam:
                  url_reason = u_res.get("reason", "Malicious URL detected")
                  url_code = u_res.get("classification_code")
@@ -133,8 +137,23 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              if i_res.get("signature"):
                  final["ibse_signature"] = i_res.get("signature")
                  final["ibse_len"] = i_res.get("byte_len_cp949", i_res.get("byte_len"))
+                 
+             # [Broken URL Drop Logic]
+             # IBSE Agent extracts a contextual sentence instead of the broken URL.
+             # We must drop the URL from the final output to fulfill "URL : 없음" requirement.
+             is_broken = u_res and u_res.get("details", {}).get("is_broken_short_url") is True
+             if is_broken:
+                 final["drop_url"] = True
+                 if "details" in u_res:
+                     u_res["details"]["extracted_url"] = None
+                     u_res["details"]["final_url"] = None
+                     u_res["details"]["attempted_urls"] = []
+
              # 3. User Requested: If unextractable AND no URL was found, drop completely from Excel
+             # If is_broken is True, treat it as no URL.
              has_extracted_url = bool(u_res and (u_res.get("target_urls") or u_res.get("current_url") or u_res.get("visited_history")))
+             if is_broken: has_extracted_url = False
+                 
              if i_res.get("decision") == "unextractable" and not has_extracted_url:
                  final["exclude_from_excel"] = True
                  
@@ -335,7 +354,11 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         # [NEW] KISA TXT 등으로 pre_parsed_url 이 명시적으로 넘어온 경우
         if state.get("pre_parsed_url"):
             has_url = True
-        
+            
+        # [NEW] Content Agent가 난독화 복원 도메인을 찾아낸 경우 무조건 URL 검사 진행
+        if c_res and c_res.get("obfuscated_urls"):
+            has_url = True
+            
         # If Content Spam -> Run URL (if exists) AND IBSE (Parallel)
         # If Content Ham -> Run URL (if exists) -> If URL Spam -> Aggregator
         

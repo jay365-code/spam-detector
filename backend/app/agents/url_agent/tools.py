@@ -669,6 +669,10 @@ class PlaywrightManager:
                     logger.warning(f"Scraping Timeout (likely bot protection): {e}")
                     result["error"] = "Timeout (Bot Protection?)"
                     result["status"] = "timeout"
+                elif "err_name_not_resolved" in err_str:
+                    logger.warning(f"net::ERR_NAME_NOT_RESOLVED (존재하지 않는 URL): {url}")
+                    result["error"] = "ERR_NAME_NOT_RESOLVED"
+                    result["status"] = "error"
                 else:
                     logger.exception("Scraping error")
                     result["error"] = str(e)
