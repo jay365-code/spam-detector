@@ -148,7 +148,56 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # [Broken URL Drop Logic]
              # IBSE Agent extracts a contextual sentence instead of the broken URL.
              # We must drop the URL from the final output to fulfill "URL : 없음" requirement.
-             is_broken = u_res and u_res.get("details", {}).get("is_broken_short_url") is True
+             u_details = u_res.get("details", {}) if u_res else {}
+             u_reason = u_res.get("reason", "").lower() if u_res else ""
+             
+             is_broken = u_details.get("is_broken_short_url") is True
+             
+             # [숫자 난독화 / 가짜 IP 방어]
+             extracted_for_check = str(u_details.get("extracted_url") or "")
+             if extracted_for_check and not is_broken:
+                 import re, urllib.parse
+                 # 콤마로 여러 개가 연결되어 올 수 있으므로 분리해서 검사
+                 valid_url_parts = []
+                 for url_part in extracted_for_check.split(","):
+                     url_part = url_part.strip()
+                     if not url_part: continue
+                     
+                     parsed = urllib.parse.urlparse(url_part)
+                     domain = parsed.netloc or parsed.path
+                     # remove 'http://' or 'https://' from path if netloc was empty
+                     if domain.startswith('//'):
+                         domain = domain[2:]
+                     domain = domain.split('/')[0].split(':')[0]
+                     
+                     is_ip_format = bool(re.match(r'^\d{1,3}(\.\d{1,3}){3}$', domain))
+                     is_invalid_ip = False
+                     
+                     if is_ip_format:
+                         import ipaddress
+                         try:
+                             ip_obj = ipaddress.ip_address(domain)
+                             if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_reserved or ip_obj.is_multicast or ip_obj.is_unspecified or domain.endswith('.0') or domain.endswith('.255'):
+                                 is_invalid_ip = True
+                         except:
+                             is_invalid_ip = True
+                     
+                     is_unreachable = "page unavailable" in u_reason or "error" in u_reason
+                     
+                     if is_ip_format and (is_invalid_ip or is_unreachable):
+                         # 이 URL 파편은 가짜/유효하지 않은 IP이므로 배제
+                         continue
+                     else:
+                         valid_url_parts.append(url_part)
+                 
+                 # 만약 가짜 IP들을 걸러내고 남은 정상 URL이 있다면 그것만 살린다
+                 if len(valid_url_parts) > 0:
+                     u_details["extracted_url"] = ", ".join(valid_url_parts)
+                     # final_url도 첫 번째 정상 URL로 맞춰줌
+                     u_details["final_url"] = valid_url_parts[0]
+                 else:
+                     # 모든 파편이 다 가짜 IP였다면 broken 처리
+                     is_broken = True
              
              # User requested fix: Drop URL if Safe URL Injection is detected.
              # This is flagged by fp_sentinel_node setting final["drop_url"] = True later,

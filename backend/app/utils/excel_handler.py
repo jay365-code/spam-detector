@@ -246,11 +246,11 @@ class ExcelHandler:
         except:
             return False
 
-    def _create_dedup_sheet(self, wb: Workbook, unique_urls: dict):
+    def _create_dedup_sheet(self, wb: Workbook, unique_urls: dict, unique_short_urls: dict = None):
         """
-        Create 'URL중복 제거' sheet with unique non-short URLs.
-        Columns: URL(중복제거), 길이, 분류
-        Style: Header Bold, Center, Light Gray Fill
+        Create 'URL중복 제거' sheet with unique non-short URLs and short URLs.
+        Columns A-C: URL(중복제거), 길이, 분류
+        Columns T-V: URL(단축URL), 길이, 분류
         """
         if "URL중복 제거" in wb.sheetnames:
             ws = wb["URL중복 제거"]
@@ -259,6 +259,9 @@ class ExcelHandler:
             
         # Headers
         headers = ["URL(중복제거)", "길이", "분류"]
+        for _ in range(16): headers.append("")
+        headers.extend(["URL(단축URL)", "길이", "분류"])
+        
         ws.append(headers)
         
         # Style Definition
@@ -272,27 +275,23 @@ class ExcelHandler:
         data_align = Alignment(vertical='center')
         
         # Apply Style to Header
-        for cell in ws[1]:
-            cell.font = header_font
-            cell.alignment = header_align
-            cell.fill = header_fill
+        for col_idx, h_val in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=col_idx)
+            if h_val:
+                cell.font = header_font
+                cell.alignment = header_align
+                cell.fill = header_fill
             
         # 컬럼 너비 조정 (픽셀 -> 엑셀 width 환산)
-        # URL(중복제거) 컬럼 303 픽셀 -> 약 42.5
         ws.column_dimensions[get_column_letter(1)].width = 42.5
+        ws.column_dimensions[get_column_letter(20)].width = 42.5
             
-        # Write Data
+        # Write Data (Normal URLs)
         row_num = 2
         for url, info in unique_urls.items():
-            ws.append([
-                self._sanitize_cell_value(url), 
-                info['len'], 
-                self._sanitize_cell_value(info['code'])
-            ])
-            # 데이터 셀 폰트 적용 (URL=10.5, 나머지=10)
-            ws.cell(row=row_num, column=1).font = msg_font
-            ws.cell(row=row_num, column=2).font = base_font
-            ws.cell(row=row_num, column=3).font = base_font
+            ws.cell(row=row_num, column=1, value=self._sanitize_cell_value(url)).font = msg_font
+            ws.cell(row=row_num, column=2, value=info['len']).font = base_font
+            ws.cell(row=row_num, column=3, value=self._sanitize_cell_value(info['code'])).font = base_font
             
             # 정렬 일반 적용 (기본: 가로 일반/세로 가운데, 분류: 우측/들여쓰기 1)
             cls_align = Alignment(horizontal='right', vertical='center', indent=1)
@@ -301,6 +300,21 @@ class ExcelHandler:
             ws.cell(row=row_num, column=3).alignment = cls_align
             
             row_num += 1
+
+        # Write Data (Short URLs)
+        if unique_short_urls:
+            row_num = 2
+            for url, info in unique_short_urls.items():
+                ws.cell(row=row_num, column=20, value=self._sanitize_cell_value(url)).font = msg_font
+                ws.cell(row=row_num, column=21, value=info['len']).font = base_font
+                ws.cell(row=row_num, column=22, value=self._sanitize_cell_value(info['code'])).font = base_font
+                
+                cls_align = Alignment(horizontal='right', vertical='center', indent=1)
+                for col_idx in range(20, 22):
+                    ws.cell(row=row_num, column=col_idx).alignment = data_align
+                ws.cell(row=row_num, column=22).alignment = cls_align
+                
+                row_num += 1
 
     def _create_blocklist_sheet(self, wb: Workbook, blocklist_data: list):
         """
@@ -439,6 +453,7 @@ class ExcelHandler:
             
             batch_buffer = [] # List of (vocab_row_idx, message_str, row_object)
             unique_urls = {} # URL Reduplication Store
+            unique_short_urls = {} # Short URL Reduplication Store
             blocklist_data = [] # IBSE Blocklist Store
             
             def flush_batch(start_index=0):
@@ -568,6 +583,14 @@ class ExcelHandler:
                                          "code": url_dedup_code,
                                          "malicious_url_extracted": result.get("malicious_url_extracted", False)
                                      }
+                            else:
+                                 # Short URLs
+                                 if url not in unique_short_urls:
+                                     unique_short_urls[url] = {
+                                         "len": self._lenb(url),
+                                         "code": url_dedup_code,
+                                         "malicious_url_extracted": result.get("malicious_url_extracted", False)
+                                     }
 
                     # --- IBSE Collection Logic ---
                     if result.get("ibse_signature"):
@@ -638,7 +661,7 @@ class ExcelHandler:
             self._apply_formatting(ws, headers)
 
             # 4. Create Dedup Sheet (After all rows processed)
-            self._create_dedup_sheet(wb, unique_urls)
+            self._create_dedup_sheet(wb, unique_urls, unique_short_urls)
 
             # 6. Create Blocklist Sheet
             self._create_blocklist_sheet(wb, blocklist_data)
@@ -764,6 +787,7 @@ class ExcelHandler:
             # 4. Batch Processing
             batch_buffer = []
             unique_urls = {} # URL Reduplication Store
+            unique_short_urls = {} # Short URL Reduplication Store
             blocklist_data = [] # IBSE Blocklist Store
 
             def flush_batch(start_idx):
@@ -893,6 +917,18 @@ class ExcelHandler:
                                          if not result.get("is_spam"):
                                              url_dedup_code = extracted_url_code
                                          unique_urls[target_url] = {
+                                             "len": self._lenb(target_url),
+                                             "code": url_dedup_code,
+                                             "malicious_url_extracted": result.get("malicious_url_extracted", False)
+                                         }
+                                else:
+                                     if target_url not in unique_short_urls:
+                                         raw_url_code = str(result.get("classification_code", ""))
+                                         _m = re.search(r'\d+', raw_url_code)
+                                         url_dedup_code = _m.group(0) if _m else raw_url_code
+                                         if not result.get("is_spam"):
+                                             url_dedup_code = extracted_url_code
+                                         unique_short_urls[target_url] = {
                                              "len": self._lenb(target_url),
                                              "code": url_dedup_code,
                                              "malicious_url_extracted": result.get("malicious_url_extracted", False)
