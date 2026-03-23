@@ -226,11 +226,19 @@ class ExcelHandler:
         
         # Common Shortener Domains (Korean & Global)
         shortener_domains = [
+            # 기존 글로벌/초기등록
             "bit.ly", "goo.gl", "tinyurl.com", "ow.ly", "t.co", 
             "is.gd", "buff.ly", "adf.ly", "bit.do", "mcaf.ee", 
+            # 기존 한국/포털/많이쓰이는사설
             "me2.do", "naver.me", "kakaolink.com", "buly.kr", 
             "vo.la", "url.kr", "zrr.kr", "yun.kr", "han.gl",
-            "shorter.me", "shrl.me"
+            "shorter.me", "shrl.me", "link24.kr", "myip.kr",
+            "sbz.kr", "tne.kr", "dokdo.in", "uto.kr",
+            # 신규 검색 추가 (글로벌/한국/수익형)
+            "rb.gy", "short.io", "dub.co", "bl.ink", "tiny.cc", 
+            "t.ly", "tr.ee", "reurl.kr", "abit.ly", "blow.pw", 
+            "c11.kr", "di.do", "koe.kr", "lrl.kr", "muz.so", 
+            "t2m.kr", "ouo.io", "adfoc.us"
         ]
         
         try:
