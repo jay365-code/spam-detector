@@ -71,9 +71,15 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         signals = c_res.get("signals", {})
         is_garbage = signals.get("is_garbage_obfuscation", False)
         is_safe_url_injection = signals.get("is_safe_url_injection", False)
+        obfuscated_urls = c_res.get("obfuscated_urls", [])
         
         # IBSE Agent is now Async
-        res = await ibse_service.process_message(msg, is_garbage_obfuscation=is_garbage, is_safe_url_injection=is_safe_url_injection)
+        res = await ibse_service.process_message(
+            msg, 
+            is_garbage_obfuscation=is_garbage, 
+            is_safe_url_injection=is_safe_url_injection,
+            obfuscated_urls=obfuscated_urls
+        )
         return {"ibse_result": res}
 
     def aggregator_node(state: BatchState):
@@ -268,8 +274,16 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              learning_label = "HAM"
              
              existing_reason = final.get("reason", "")
-             if "[FP Sentinel Override]" not in existing_reason:
-                 final["reason"] = f"{existing_reason} | [FP Sentinel Override] 난독화/쓰레기 토큰(Type_B) 보호"
+             
+             # 도메인 난독화가 감지된 경우, 원본 텍스트의 URL은 잘못 파싱된 가비지 값(예: 6.com)일 확률이 매우 높으므로 무조건 드롭
+             obfuscated_urls = c_res.get("obfuscated_urls", [])
+             if obfuscated_urls:
+                 final["drop_url"] = True
+                 if "[FP Sentinel Override]" not in existing_reason:
+                     final["reason"] = f"{existing_reason} | [FP Sentinel Override] 도메인 난독화(Type_B) 보호: 잘못된 URL 필터 오염 방지를 위해 강제 드롭"
+             else:
+                 if "[FP Sentinel Override]" not in existing_reason:
+                     final["reason"] = f"{existing_reason} | [FP Sentinel Override] 난독화/쓰레기 토큰(Type_B) 보호"
 
         # Ruleset 1.5: Type_B (URL-Separated / URL-Blocked Case)
         # Content Agent가 HAM으로 판단했지만 URL이 악성이거나 접근 불가(timeout, bot-block)인 경우

@@ -43,6 +43,7 @@ class LLMSelector:
 [최우선 순위 (KISA 가이드라인 강제 사항)]
 1. (최우선) 본문 내에 URL(http, bit.ly, p-e.kr 등 모든 형태의 인터넷 주소)이 단 1개라도 존재한다면, **반드시 그 URL을 포함하여** 시그니처를 추출하라. URL의 일부가 포함되는 것은 허용하나, 아예 URL을 배제하고 한글 텍스트만 추출하는 것은 중대한 가이드라인 위반이다!
    - ⚠️ 단, 'is_safe_url_injection' 플래그가 'true'로 설정되어 있다면 이 규칙은 예외다! 이는 스패머가 필터를 우회하려고 정상 도메인(유튜브, 네이버 등)을 방패막이 조끼처럼 입혀놓은 '위장 시그니처'이므로, 이때는 **절대로 URL을 시그니처에 포함시키지 말고** 철저히 배제한 채 순수 악성 텍스트(예: "토지노 꽁머니") 부분만 추출하라!
+   - ⚠️ **[중요] 만약 `obfuscated_urls` (복원된 난독화 도메인) 목록이 제공되었다면, 이는 원본 텍스트 내에 특수기호나 한글로 교묘하게 변형된 도메인(예: `ariⓐⓔ6.com`, `점켬` 등)이 숨어있다는 뜻이다. 이때 시그니처로는 복원된 영문 도메인이 아니라, 원문(`match_text`)에 존재하는 '난독화된 원본 문자열 자체'를 찾아내어 반드시 포함시켜야 한다! (시그니처는 무조건 원문과 100% 일치해야 함)**
 2. (차순위) 연락처 명시: 전화번호(예: 010-1234-5678), 텔레그램 ID(예: @SpamID) 등이 식별의 핵심이 되므로 가급적 포함하라.
 3. (극단적 난독화) URL이나 번호가 아예 없는데, 자음/모음이 분절되거나(`ㅋ ㅏ ㅈ ㅣ ㄴ ㅗ`) 특수문자가 비정상적으로 섞인(`ㅅ_ㅏ+ㄷ.ㅏ:ㄹl`) 극악의 난독화 구간이 있다면 उस 블록 전체를 추출하라.
 
@@ -74,6 +75,7 @@ is_safe_url_injection: {is_safe_url_injection}
 - 분석 대상 메시지 (공백 제거 상태): {match_text}
 - 극단적 난독화(Garbage Obfuscation) 여부: {is_garbage_obfuscation}
 - 위장 URL 방패막이(Safe URL Injection) 여부: {is_safe_url_injection}
+- 복원된 난독화 도메인 (obfuscated_urls): {obfuscated_urls}
 
 출력(JSON):
 {{
@@ -96,6 +98,7 @@ is_safe_url_injection: {is_safe_url_injection}
 동일 입력 원본(match_text): {match_text}
 is_garbage_obfuscation: {is_garbage_obfuscation}
 is_safe_url_injection: {is_safe_url_injection}
+obfuscated_urls: {obfuscated_urls}
 
 규칙에 맞춰 JSON을 다시 출력해라.
 {{
@@ -166,6 +169,7 @@ is_safe_url_injection: {is_safe_url_injection}
         match_text = state.get("match_text", "")
         is_garbage = 'true' if state.get("is_garbage_obfuscation", False) else 'false'
         is_safe_url_injection = 'true' if state.get("is_safe_url_injection", False) else 'false'
+        obfuscated_urls = json.dumps(state.get("obfuscated_urls", []), ensure_ascii=False)
         
         if is_repair:
             system_prompt = self.REPAIR_SYSTEM_PROMPT
@@ -175,6 +179,7 @@ is_safe_url_injection: {is_safe_url_injection}
                 match_text=match_text,
                 is_garbage_obfuscation=is_garbage,
                 is_safe_url_injection=is_safe_url_injection,
+                obfuscated_urls=obfuscated_urls,
                 message_id=message_id
             )
         else:
@@ -183,7 +188,8 @@ is_safe_url_injection: {is_safe_url_injection}
                 message_id=message_id,
                 match_text=match_text,
                 is_garbage_obfuscation=is_garbage,
-                is_safe_url_injection=is_safe_url_injection
+                is_safe_url_injection=is_safe_url_injection,
+                obfuscated_urls=obfuscated_urls
             )
             
         return await self._call_llm(system_prompt, user_prompt)

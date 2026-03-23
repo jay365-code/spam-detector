@@ -849,6 +849,11 @@ class ExcelHandler:
                     msg_len = self._lenb(msg_val)
                     url_len = self._lenb(url_val)
                     
+                    # drop_url Flag Check
+                    if result.get("drop_url"):
+                        url_val = "없음"
+                        url_len = 0
+                    
                     # Write Row
                     ws.append([
                         self._sanitize_cell_value(msg_val), 
@@ -865,33 +870,33 @@ class ExcelHandler:
                     
                     # --- URL Collection Logic ---
                     # Only collect URLs from SPAM messages or extracted from HAM
-                    # 사용자의 조건: "메시지가 SPAM이고, 소스 text에 url 필드가 존재하면 TYPE B URL로 판단하고 엑셀 결과에 URL을 작성한다."
-                    # Type_B도 is_spam=True 이므로 해당 로직에 의해 자연스럽게 들어와야 함.
-                    if result.get("is_spam") is True or result.get("malicious_url_extracted"):
-                        target_url = url_val.strip() if url_val else ""
-                        if target_url:
-                            # Clean URL
-                            target_url = target_url.rstrip('.,;:!?)]}"\'')
-                            
-                            # Additional Safety
-                            if not re.search(r'[^\x00-\x7F]', target_url): # If pure ASCII (simple check) => Good
-                                 pass 
-                            else:
-                                 pass
-
-                            if not self.is_short_url(target_url):
-                                 if target_url not in unique_urls:
-                                     # URL중복 제거 시트에는 classification_code 원본 사용 (Type_B여도 실제 코드 표시)
-                                     raw_url_code = str(result.get("classification_code", ""))
-                                     _m = re.search(r'\d+', raw_url_code)
-                                     url_dedup_code = _m.group(0) if _m else raw_url_code
-                                     if not result.get("is_spam"):
-                                         url_dedup_code = extracted_url_code
-                                     unique_urls[target_url] = {
-                                         "len": self._lenb(target_url),
-                                         "code": url_dedup_code,
-                                         "malicious_url_extracted": result.get("malicious_url_extracted", False)
-                                     }
+                    # drop_url이 True인 경우 (위장 URL, 가비지 URL 등) 중복제거 시트에서도 완벽히 배제
+                    if not result.get("drop_url"):
+                        if result.get("is_spam") is True or result.get("malicious_url_extracted"):
+                            target_url = original_data["url"].strip() if original_data["url"] else ""
+                            if target_url:
+                                # Clean URL
+                                target_url = target_url.rstrip('.,;:!?)]}"\'')
+                                
+                                # Additional Safety
+                                if not re.search(r'[^\x00-\x7F]', target_url): # If pure ASCII (simple check) => Good
+                                     pass 
+                                else:
+                                     pass
+    
+                                if not self.is_short_url(target_url):
+                                     if target_url not in unique_urls:
+                                         # URL중복 제거 시트에는 classification_code 원본 사용 (Type_B여도 실제 코드 표시)
+                                         raw_url_code = str(result.get("classification_code", ""))
+                                         _m = re.search(r'\d+', raw_url_code)
+                                         url_dedup_code = _m.group(0) if _m else raw_url_code
+                                         if not result.get("is_spam"):
+                                             url_dedup_code = extracted_url_code
+                                         unique_urls[target_url] = {
+                                             "len": self._lenb(target_url),
+                                             "code": url_dedup_code,
+                                             "malicious_url_extracted": result.get("malicious_url_extracted", False)
+                                         }
 
 
                     # --- IBSE Collection Logic ---
