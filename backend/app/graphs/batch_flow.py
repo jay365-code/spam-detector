@@ -159,6 +159,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              
              if is_broken or is_injection:
                  final["drop_url"] = True
+                 final["drop_url_reason"] = "broken" if is_broken else "safe_injection"
                  if "details" in u_res:
                      u_res["details"]["extracted_url"] = None
                      u_res["details"]["final_url"] = None
@@ -210,6 +211,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
             learning_label = "HAM" if semantic_class == "Type_B" else "SPAM"
             final["is_spam"] = True # Enforcement
             final["drop_url"] = True # 무조건 URL 드롭 지시 (가장 중요)
+            final["drop_url_reason"] = "safe_injection"
             existing_reason = final.get("reason", "")
             
             if "[Safe-URL Injection 감지" not in existing_reason:
@@ -279,6 +281,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              obfuscated_urls = c_res.get("obfuscated_urls", [])
              if obfuscated_urls:
                  final["drop_url"] = True
+                 final["drop_url_reason"] = "obfuscation"
                  if "[FP Sentinel Override]" not in existing_reason:
                      final["reason"] = f"{existing_reason} | [FP Sentinel Override] 도메인 난독화(Type_B) 보호: 잘못된 URL 필터 오염 방지를 위해 강제 드롭"
              else:

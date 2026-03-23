@@ -377,13 +377,54 @@ async def select_signature_node(state: IBSEState) -> dict:
         # 확정된 max_bytes (20 or 40)와 최신 sig_text를 기준으로 다시 인코딩 진행
         encoded = sig_text.encode("cp949", errors="replace")
         if len(encoded) > max_bytes:
-            truncated = encoded[:max_bytes]
-            while len(truncated) > 0:
-                try:
-                    sig_text = truncated.decode("cp949", errors="strict")
-                    break
-                except UnicodeDecodeError:
-                    truncated = truncated[:-1]
+            url_to_preserve = result.get("identified_url_or_domain")
+            obfuscated_urls = state.get("obfuscated_urls", [])
+            if obfuscated_urls and isinstance(obfuscated_urls[0], str) and obfuscated_urls[0] in sig_text:
+                url_to_preserve = obfuscated_urls[0]
+
+            preserved = False
+            if url_to_preserve and url_to_preserve != "null" and isinstance(url_to_preserve, str) and url_to_preserve in sig_text:
+                url_encoded = url_to_preserve.encode("cp949", errors="replace")
+                if len(url_encoded) <= max_bytes:
+                    url_start_idx = sig_text.find(url_to_preserve)
+                    url_end_idx = url_start_idx + len(url_to_preserve)
+                    
+                    left_idx = url_start_idx
+                    right_idx = url_end_idx
+                    
+                    # 한 글자씩 양옆으로 윈도우를 확장하며 바이트 제한을 넘지 않는 선에서 최대한 넓힘
+                    # CP949 바이트 중간이 잘려 한글이 깨지는(Mojibake) 치명적 문제 방지
+                    while True:
+                        expanded_left = False
+                        if left_idx > 0:
+                            test_str = sig_text[left_idx - 1 : right_idx]
+                            if len(test_str.encode("cp949", errors="replace")) <= max_bytes:
+                                left_idx -= 1
+                                expanded_left = True
+                                
+                        expanded_right = False
+                        if right_idx < len(sig_text):
+                            test_str = sig_text[left_idx : right_idx + 1]
+                            if len(test_str.encode("cp949", errors="replace")) <= max_bytes:
+                                right_idx += 1
+                                expanded_right = True
+                                
+                        if not (expanded_left or expanded_right):
+                            break
+                            
+                    sig_text = sig_text[left_idx:right_idx]
+                    preserved = True
+
+            if not preserved:
+                # 앞에서부터 1글자 단위로 바이트를 채움
+                valid_len = 0
+                for i in range(1, len(sig_text) + 1):
+                    if len(sig_text[:i].encode("cp949", errors="replace")) <= max_bytes:
+                        valid_len = i
+                    else:
+                        break
+                sig_text = sig_text[:valid_len]
+                
             result["signature"] = sig_text
             
         try:

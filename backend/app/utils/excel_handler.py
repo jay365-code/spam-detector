@@ -537,12 +537,12 @@ class ExcelHandler:
                         if result.get("drop_url"):
                             try:
                                 url_col_idx = headers.index("URL") + 1
-                                ws.cell(row=row_idx, column=url_col_idx, value="없음")
+                                ws.cell(row=row_idx, column=url_col_idx, value="")
                             except ValueError:
                                 pass
                             try:
                                 string_col_idx = headers.index("문자열") + 1
-                                ws.cell(row=row_idx, column=string_col_idx, value="없음")
+                                ws.cell(row=row_idx, column=string_col_idx, value="")
                             except ValueError:
                                 pass
                         else:
@@ -851,7 +851,7 @@ class ExcelHandler:
                     
                     # drop_url Flag Check
                     if result.get("drop_url"):
-                        url_val = "없음"
+                        url_val = ""
                         url_len = 0
                     
                     # Write Row

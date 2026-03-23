@@ -1095,7 +1095,22 @@ function App() {
                               </span>
                               <span className="bg-slate-800/80 px-1.5 py-1 rounded text-slate-300 font-mono text-[11px] break-all border border-slate-700/50">
                                 {log.result.drop_url ? (
-                                    <span className="text-red-400 font-semibold" title="정상 도메인을 방패막이로 악용한 위장 URL로 판별되어 추출 목록에서 폐기되었습니다.">[위장 방패막이 판별: 해당 정상 URL 폐기]</span>
+                                  <>
+                                    <span className="text-slate-500 mr-2">
+                                      {log.result.url_result.details.attempted_urls && log.result.url_result.details.attempted_urls.length > 0
+                                        ? log.result.url_result.details.attempted_urls.join(', ')
+                                        : log.result.url_result.details.extracted_url && log.result.url_result.details.extracted_url !== "Unknown" 
+                                          ? log.result.url_result.details.extracted_url 
+                                          : ""}
+                                    </span>
+                                    {log.result.drop_url_reason === "obfuscation" ? (
+                                        <span className="text-orange-400 font-semibold" title="난독화된 기형 URL(특수문자/한글 등)이 감지되어 추출 목록 대신 시그니처로 단독 추출되었습니다.">[난독화 URL 감지: 시그니처 추출]</span>
+                                    ) : log.result.drop_url_reason === "safe_injection" ? (
+                                        <span className="text-red-400 font-semibold" title="정상 도메인을 방패막이로 악용한 위장 URL로 판별되어 추출 목록에서 제외되었습니다.">[정상 도메인 위장 감지: 우회 방어]</span>
+                                    ) : (
+                                        <span className="text-slate-400 font-semibold" title="접속 불가하거나 불완전한 URL로 판별되어 추출 목록에서 제외되었습니다.">[불완전 URL: 추출 제외]</span>
+                                    )}
+                                  </>
                                 ) : (
                                   log.result.url_result.details.attempted_urls && log.result.url_result.details.attempted_urls.length > 0 
                                     ? log.result.url_result.details.attempted_urls.join(', ')
