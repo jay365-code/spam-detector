@@ -238,7 +238,10 @@ class ExcelHandler:
             "rb.gy", "short.io", "dub.co", "bl.ink", "tiny.cc", 
             "t.ly", "tr.ee", "reurl.kr", "abit.ly", "blow.pw", 
             "c11.kr", "di.do", "koe.kr", "lrl.kr", "muz.so", 
-            "t2m.kr", "ouo.io", "adfoc.us"
+            "t2m.kr", "ouo.io", "adfoc.us",
+            # 최근 스팸 다발 단축/리다이렉트 도메인 (피드백 반영)
+            "ii.ad", "vvd.bz", "gooal.kr", "ko.gl", "qrco.de",
+            "pf.kakao.com", "open.kakao.com", "band.us", "linktr.ee"
         ]
         
         try:
