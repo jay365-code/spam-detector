@@ -230,7 +230,7 @@ class ExcelHandler:
             "bit.ly", "goo.gl", "tinyurl.com", "ow.ly", "t.co", 
             "is.gd", "buff.ly", "adf.ly", "bit.do", "mcaf.ee", 
             # 기존 한국/포털/많이쓰이는사설
-            "me2.do", "naver.me", "kakaolink.com", "buly.kr", 
+            "me2.do", "kakaolink.com", "buly.kr", 
             "vo.la", "url.kr", "zrr.kr", "yun.kr", "han.gl",
             "shorter.me", "shrl.me", "link24.kr", "myip.kr",
             "sbz.kr", "tne.kr", "dokdo.in", "uto.kr",
@@ -239,9 +239,8 @@ class ExcelHandler:
             "t.ly", "tr.ee", "reurl.kr", "abit.ly", "blow.pw", 
             "c11.kr", "di.do", "koe.kr", "lrl.kr", "muz.so", 
             "t2m.kr", "ouo.io", "adfoc.us",
-            # 최근 스팸 다발 단축/리다이렉트 도메인 (피드백 반영)
-            "ii.ad", "vvd.bz", "gooal.kr", "ko.gl", "qrco.de",
-            "pf.kakao.com", "open.kakao.com", "band.us", "linktr.ee"
+            # 최근 스팸 다발 단축 도메인 (피드백 반영, 카카오/네이버/밴드는 일반 URL로 취급)
+            "ii.ad", "vvd.bz", "gooal.kr", "ko.gl", "qrco.de", "linktr.ee"
         ]
         
         try:
