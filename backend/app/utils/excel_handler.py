@@ -1001,7 +1001,7 @@ class ExcelHandler:
             self._apply_formatting(ws, headers)
             
             # 5. Create Dedup Sheet
-            self._create_dedup_sheet(wb, unique_urls)
+            self._create_dedup_sheet(wb, unique_urls, unique_short_urls)
             
             # 6. Create Blocklist Sheet
             self._create_blocklist_sheet(wb, blocklist_data)
