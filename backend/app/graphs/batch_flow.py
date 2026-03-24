@@ -171,24 +171,11 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                      domain = domain.split('/')[0].split(':')[0]
                      
                      is_ip_format = bool(re.match(r'^\d{1,3}(\.\d{1,3}){3}$', domain))
-                     is_invalid_ip = False
-                     
                      if is_ip_format:
-                         import ipaddress
-                         try:
-                             ip_obj = ipaddress.ip_address(domain)
-                             if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_reserved or ip_obj.is_multicast or ip_obj.is_unspecified or domain.endswith('.0') or domain.endswith('.255'):
-                                 is_invalid_ip = True
-                         except:
-                             is_invalid_ip = True
-                     
-                     is_unreachable = "page unavailable" in u_reason or "error" in u_reason
-                     
-                     if is_ip_format and (is_invalid_ip or is_unreachable):
-                         # 이 URL 파편은 가짜/유효하지 않은 IP이므로 배제
+                         # 사용자 요청안: 공인/사설 여부와 상관없이 모든 IP 형태(예: 1.4.7.9)는 URL 추출에서 강제 배제 (버전, 일반 숫자 나열 오탐 방지)
                          continue
-                     else:
-                         valid_url_parts.append(url_part)
+                     
+                     valid_url_parts.append(url_part)
                  
                  # 만약 가짜 IP들을 걸러내고 남은 정상 URL이 있다면 그것만 살린다
                  if len(valid_url_parts) > 0:
