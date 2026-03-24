@@ -1433,15 +1433,30 @@ export default function ValidatorPage() {
                                                     </div>
 
                                                     {/* 2. Message */}
-                                                    <div className="pr-4 border-r border-slate-100 relative">
+                                                    <div className="pr-4 border-r border-slate-100 relative flex flex-col justify-between">
                                                         <p className={cn("text-sm text-slate-700 leading-relaxed font-medium break-all whitespace-pre-wrap transition-all", !isExpanded && "line-clamp-4")}>
                                                             <HighlightText text={item.message_full} highlight={diffSearchText} />
                                                         </p>
-                                                        {item.message_full.length > 150 && (
-                                                            <div className="mt-2 text-[10px] font-bold text-indigo-400 opacity-60 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                                                                {isExpanded ? '접기 ▲' : '더보기 ▼'}
+                                                        
+                                                        <div className="flex justify-between items-center mt-2 group-hover:opacity-100 opacity-70 transition-opacity">
+                                                            <div className="flex gap-2">
+                                                                {item.match_status === 'MISSING_IN_LLM' && (
+                                                                    <span className={cn(
+                                                                        "text-[10px] font-bold px-1.5 py-0.5 rounded border",
+                                                                        item.message_full.replace(/\s+/g, '').replace(/[\u0080-\uFFFF]/g, 'xx').length < 9 
+                                                                            ? "bg-amber-50 text-amber-600 border-amber-200" 
+                                                                            : "bg-slate-50 text-slate-500 border-slate-200"
+                                                                    )}>
+                                                                        {item.message_full.replace(/\s+/g, '').replace(/[\u0080-\uFFFF]/g, 'xx').length} bytes (공백제외)
+                                                                    </span>
+                                                                )}
                                                             </div>
-                                                        )}
+                                                            {item.message_full.length > 150 && (
+                                                                <div className="text-[10px] font-bold text-indigo-400 cursor-pointer hover:text-indigo-600 transition-colors flex items-center gap-1">
+                                                                    {isExpanded ? '접기 ▲' : '더보기 ▼'}
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
 
                                                     {/* 3. Human */}

@@ -218,12 +218,8 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # If is_broken is True, treat it as no URL.
              has_extracted_url = bool(u_res and (u_res.get("target_urls") or u_res.get("current_url") or u_res.get("visited_history")))
              if is_broken: has_extracted_url = False
-                 
-             if i_res.get("decision") == "unextractable" and not has_extracted_url:
-                 # SPAM으로 분류된 건은 시그니처가 없더라도 육안분석 시트에 로그를 남기기 위해 예외 처리
-                 if not final.get("is_spam"):
-                     final["exclude_from_excel"] = True
-                 
+             # [수정] 정상(HAM) 메시지도 모두 엑셀 리포트에 포함되도록 exclude_from_excel 드롭 로직 제거
+                  
         return {"final_result": final}
 
     def fp_sentinel_node(state: BatchState):
@@ -338,17 +334,16 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                      final["reason"] = f"{existing_reason} | [FP Sentinel Override] 난독화/쓰레기 토큰(Type_B) 보호"
 
         # Ruleset 1.5: Type_B (URL-Separated / URL-Blocked Case)
-        # Content Agent가 HAM으로 판단했지만 URL이 악성이거나 접근 불가(timeout, bot-block)인 경우
+        # Content Agent가 HAM으로 판단했지만 URL이 악성으로 명확히 판별된 경우
         # → 텍스트는 정상처럼 보이지만 URL 위험이 있는 FP-Sensitive 케이스
-        elif c_res.get("is_spam") is False and (
-            final.get("malicious_url_extracted") is True or u_blocked
-        ):
+        # (주의: timeout, bot-block 등 inconclusive 상태라면 원본 텍스트 판단인 HAM을 그대로 유지함)
+        elif c_res.get("is_spam") is False and final.get("malicious_url_extracted") is True:
              semantic_class = "Type_B"
              learning_label = "HAM"
              final["is_spam"] = True  # Enforcement: 차단
              existing_reason = final.get("reason", "")
              if "[FP Sentinel Override]" not in existing_reason:
-                 cause = "악성 URL 탐지" if final.get("malicious_url_extracted") else "URL 접근 불가(timeout/bot-block)"
+                 cause = "악성 URL 탐지"
                  final["reason"] = f"{existing_reason} | [FP Sentinel Override] {cause} Type_B 확정 차단"
 
         # Ruleset 1.6: Type_B (Safety Block)

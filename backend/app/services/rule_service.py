@@ -19,11 +19,11 @@ class RuleBasedFilter:
         except ValueError:
             self.alphanumeric_obfuscation_threshold = 0.55
 
-        # 메시지 최소 길이 필터링 (환경변수 로드)
+        # 메시지 최소 길이 필터링 (환경변수 로드, 기본값 9바이트)
         try:
-            self.min_message_length = int(os.getenv("MIN_MESSAGE_LENGTH", "10"))
+            self.min_message_length = int(os.getenv("MIN_MESSAGE_LENGTH", "9"))
         except ValueError:
-            self.min_message_length = 10
+            self.min_message_length = 9
 
         # 숫자와 혼동될 수 있는 알파벳 (대소문자 포함)
         # O, o, I, l, B, S, Z, b, q, g, z ... 
@@ -39,7 +39,7 @@ class RuleBasedFilter:
         """런타임에 설정 임계값들을 다시 로드"""
         try:
             self.alphanumeric_obfuscation_threshold = float(os.getenv("ALPHANUMERIC_OBFUSCATION_RATIO_THRESHOLD", "0.55"))
-            self.min_message_length = int(os.getenv("MIN_MESSAGE_LENGTH", "10"))
+            self.min_message_length = int(os.getenv("MIN_MESSAGE_LENGTH", "9"))
             import logging
             logger = logging.getLogger(__name__)
             logger.info(f"⚙️ [RuleFilter] 임계값 갱신: MIN_LEN={self.min_message_length}, ALPHANUMERIC={self.alphanumeric_obfuscation_threshold}")
@@ -270,9 +270,14 @@ class RuleBasedFilter:
         # 이제 한글 포함 여부와 무관하게 무조건 지정된 길이 미만이면 SKIP 처리함 (요청 반영)
         has_korean = self.get_korean_ratio(message) > 0
         
-        # 공백과 줄바꿈을 제외한 실제 의미 있는 문자 길이 계산
+        # 공백과 줄바꿈을 제외한 실제 의미 있는 문자열의 바이트 길이(CP949 기준) 계산
         import re
-        visible_len = len(re.sub(r'\s+', '', message)) if message else 0
+        visible_text = re.sub(r'\s+', '', message) if message else ""
+        try:
+             visible_len = len(visible_text.encode('cp949'))
+        except UnicodeEncodeError:
+             # 인코딩 불가 문자가 있을 경우를 대비한 대략적 폴백 (문자수 * 2)
+             visible_len = len(visible_text) * 2
         
         if message and visible_len < self.min_message_length:
             return {

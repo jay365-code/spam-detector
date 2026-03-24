@@ -32,15 +32,28 @@ app.add_middleware(
 
 app.include_router(monitor.router)
 
+import re
+
 def normalize_text(text: Any) -> str:
     if pd.isna(text):
         return ""
     text = str(text)
     # NFKC normalization
     text = unicodedata.normalize('NFKC', text)
+    
+    # KISA 공통 접두어 제거 ([Web발신], [국제발신], (광고) 등)
+    text = re.sub(r'^(\W*(web발신|웹발신|국제발신|로밍발신|광고|fw|fwd)\W*)+', '', text, flags=re.IGNORECASE)
+    
     # Generic whitespace normalization (remove all spaces for robust matching)
-    text = "".join(text.split())
-    return text
+    text_no_space = "".join(text.split())
+    # Remove all non-alphanumeric characters (including punctuation) for robust matching
+    norm_t = re.sub(r'[^\w]', '', text_no_space)
+    
+    # 텍스트가 특수기호/구두점으로만 이루어진 경우 (예: 박스 기호), 원본 기호 집합(공백 제거)을 유지
+    if not norm_t:
+        return text_no_space
+        
+    return norm_t
 
 def normalize_label(val: Any) -> bool:
     if pd.isna(val):
