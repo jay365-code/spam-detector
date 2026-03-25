@@ -276,10 +276,10 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                             response = await asyncio.wait_for(llm.ainvoke([HumanMessage(content=prompt)]), timeout=45.0)
                         except asyncio.TimeoutError as e:
                             logger.warning(f"[{provider}] LLM Timeout occurred (45s). Attempting Fallback to Sub Model.")
-                            raw_sub_model = os.getenv("LLM_SUB_MODEL", "gemini-3.1-flash-lite-preview")
-                            sub_model = raw_sub_model.strip().strip("'").strip('"') if raw_sub_model else "gemini-3.1-flash-lite-preview"
+                            raw_sub_model = os.getenv("LLM_SUB_MODEL", "gemini-3.1-pro-preview")
+                            sub_model = raw_sub_model.strip().strip("'").strip('"') if raw_sub_model else "gemini-3.1-pro-preview"
                             if not sub_model:
-                                sub_model = "gemini-3.1-flash-lite-preview"
+                                sub_model = "gemini-3.1-pro-preview"
                             
                             fallback_key = key_manager.get_key("GEMINI")
                             if fallback_key:
@@ -1130,7 +1130,7 @@ Step 5. 최종 판정 (label 확정):
                         response = await asyncio.wait_for(llm.ainvoke([HumanMessage(content=prompt)]), timeout=45.0)
                     except asyncio.TimeoutError as e:
                         logger.warning(f"[{provider}] Summary LLM Timeout occurred. Attempting fallback.")
-                        sub_model = os.getenv("LLM_SUB_MODEL", "gemini-3.1-flash-lite-preview")
+                        sub_model = os.getenv("LLM_SUB_MODEL", "gemini-3.1-pro-preview")
                         fallback_key = key_manager.get_key("GEMINI")
                         if fallback_key:
                             fallback_llm = self._get_cached_client("GEMINI", fallback_key, sub_model)
@@ -1182,7 +1182,7 @@ Step 5. 최종 판정 (label 확정):
                             response = await asyncio.wait_for(new_llm.ainvoke([HumanMessage(content=prompt)]), timeout=45.0)
                         except asyncio.TimeoutError as e:
                             logger.warning(f"[ContentAgent] Rotated Summary LLM Timeout. Attempting fallback.")
-                            sub_model = os.getenv("LLM_SUB_MODEL", "gemini-3.1-flash-lite-preview")
+                            sub_model = os.getenv("LLM_SUB_MODEL", "gemini-3.1-pro-preview")
                             fallback_key = key_manager.get_key("GEMINI")
                             if fallback_key:
                                 fallback_llm = self._get_cached_client("GEMINI", fallback_key, sub_model)

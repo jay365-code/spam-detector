@@ -1,0 +1,58 @@
+QA Case: 극단적 난독화 텍스트 (Type B)
+원문: "FOMC"의 금·리 동결 발표 후, 코"스"피는 동시호가 기준  상승 종목 120여개 하락 종목 1,300여개  이미 예상했던 흐름이었고 이에 맞춰 따라오신 분들께 수익으로 보여드렸습니다.  이제 시장은 단순 매매가 아니라 정보와 해석의 차이에서 갈립니다.  신뢰있는 결과로 보여드리고 있습니다.  답장으로 숫자 【 7 】 회신 주세요. 입장안내 도와 드리겠습니다.
+판정 근거: FOMC 및 코스피 시황을 미끼로 하여 사설 주식 리딩방 입장을 유도하는 전형적인 금융 스팸입니다. '금·리', '코"스"피'와 같이 단어 사이에 특수문자를 삽입하여 필터링을 우회하려는 명백한 난독화(is_garbage_obfuscation) 패턴이 관찰되며, 특정 숫자(7) 회신을 통해 폐쇄적인 커뮤니티 입장을 유도하는 강한 CTA가 존재합니다. 시황 브리핑 형식을 취하고 있으나 고의적인 형태소 파괴가 심각하여 CNN 모델의 학습 데이터 오염을 막기 위해 Type B 시그널을 활성화합니다. | [FP Sentinel Override] 난독화/쓰레기 토큰(Type_B) 보호
+시그널: {'harm_anchor': True, 'route_or_cta': True, 'is_impersonation': False, 'is_vague_cta': False, 'is_personal_lure': False, 'is_garbage_obfuscation': True, 'is_normal_layout': False, 'is_safe_url_injection': False}
+
+
+QA Case: 극단적 난독화 텍스트 (Type B)
+원문: "ㄱ├"잎"시"10"만   "Ρ3566" "Ρ3560"
+판정 근거: 해당 메시지는 '가입시 10만'이라는 혜택을 미끼로 가입을 유도하는 문구를 자음/모음 분리(ㄱ├), 단어별 큰따옴표 삽입, 그리스 문자(Ρ) 사용 등 극심한 난독화를 통해 필터링 시스템을 회피하려 시도하고 있습니다. 이는 Spam Guide 2.B.4(난독화 및 필터 회피)에 해당하며, 전형적인 불법 도박 사이트의 가입 권유 패턴이므로 SPAM으로 판정합니다. 형태소가 완전히 파괴된 패턴이므로 CNN 모델 오염 방지를 위해 is_garbage_obfuscation 시그널을 활성화합니다. | [FP Sentinel Override] 난독화/쓰레기 토큰(Type_B) 보호
+시그널: {'harm_anchor': True, 'route_or_cta': True, 'is_impersonation': False, 'is_vague_cta': False, 'is_personal_lure': False, 'is_garbage_obfuscation': True, 'is_normal_layout': False, 'is_safe_url_injection': False}
+
+
+QA Case: 극단적 난독화 텍스트 (Type B)
+원문: (0ㅑ)(마)(토) 백탓의 쨔릿함 <+  `/,>    122.
+판정 근거: 불법 도박 게임인 '야마토'를 '(0ㅑ)(마)(토)'로 교묘하게 난독화하여 필터링 회피를 시도하였으며, '백탓(잭팟/배팅 추정)의 쨔릿함'과 같은 사행성 조장 문구를 포함하고 있습니다. 이는 가이드상 '불법 도박' 및 '난독화가 심하고 문맥이 부자연스러운 메시지'에 해당하여 즉시 SPAM으로 판정합니다. 형태소를 고의로 파괴한 패턴이므로 CNN 모델의 학습 오염을 막기 위해 garbage_obfuscation 시그널을 적용합니다. | [FP Sentinel Override] 난독화/쓰레기 토큰(Type_B) 보호
+시그널: {'harm_anchor': True, 'route_or_cta': False, 'is_impersonation': False, 'is_vague_cta': False, 'is_personal_lure': False, 'is_garbage_obfuscation': True, 'is_normal_layout': False, 'is_safe_url_injection': False}
+
+
+QA Case: 샌드위치 스팸 방어 (Type B)
+원문: (광고) 무료거부 0808100095
+판정 근거: 해당 메시지는 (광고) 표시와 수신거부 번호는 존재하나, 정통망법 제50조에 따른 필수 표기 사항인 '발신자의 명칭(상호명)'이 누락된 광고성 정보입니다. 가이드 2.B.5(정통망법 미준수)에 의거하여 SPAM으로 판정합니다. 다만, 구체적인 유해 내용 없이 형식적 요건만 결여된 상태이므로 CNN 모델의 오탐 방지를 위해 Type B(is_normal_layout) 시그널을 활성화하여 처리합니다. | [FP Sentinel Override] 템플릿 오탐 방지: 일반 광고 레이아웃(Type_B) 보호
+시그널: {'harm_anchor': True, 'route_or_cta': False, 'is_impersonation': False, 'is_vague_cta': False, 'is_personal_lure': False, 'is_garbage_obfuscation': False, 'is_normal_layout': True, 'is_safe_url_injection': False}
+
+
+QA Case: 샌드위치 스팸 방어 (Type B)
+원문: (광고) 문의전화 010-7262-7307 무료거부 080-550-1379
+판정 근거: 해당 메시지는 (광고) 표시와 수신거부 번호는 포함하고 있으나, 발신 주체(상호명/브랜드명)를 명시하지 않았으며 구체적인 홍보 내용 없이 전화 연락만을 유도하고 있어 정통망법 미준수 광고로 판단됩니다. 레이아웃 자체는 일반적인 광고 형식을 띠고 있어 정상 문자와의 혼동을 방지하기 위해 Type B(is_normal_layout, is_vague_cta) 시그널을 활성화합니다. | [FP Sentinel Override] 모호한 CTA 스팸(Type_B) 처리 (학습 보호)
+시그널: {'harm_anchor': True, 'route_or_cta': True, 'is_impersonation': False, 'is_vague_cta': True, 'is_personal_lure': False, 'is_garbage_obfuscation': False, 'is_normal_layout': True, 'is_safe_url_injection': False}
+
+
+QA Case: 샌드위치 스팸 방어 (Type B)
+원문: (광고)=Cozy Days= 힘든 월욜이지만 활기찬 한주보내세요^~ +이*영*아+ 무료거부 0808875572
+판정 근거: 과거 동일 사례 판정 적용. 'Cozy Days'라는 정체불명의 명칭과 '이*영*아'라는 가명을 사용하여 지인을 사칭하거나 친밀감을 형성하는 전형적인 유흥 호객 메시지입니다. 성명 사이에 별표를 삽입하여 필터를 회피하려는 난독화 패턴(`이*영*아`)이 명확하며, 일상적인 안부 인사를 앞세워 스팸 의도를 숨기는 '샌드위치' 수법을 사용하고 있어 CNN 모델의 오염을 방지하기 위해 Type B 시그널을 활성화합니다. | [FP Sentinel Override] 사적/경조사 위장(Type_B) 보호 + 시그니처: =CozyDays=힘든월욜이지만활기찬한주보내세
+시그널: {'harm_anchor': True, 'route_or_cta': False, 'is_impersonation': False, 'is_vague_cta': False, 'is_personal_lure': True, 'is_garbage_obfuscation': True, 'is_normal_layout': True, 'is_safe_url_injection': False}
+
+
+QA Case: 순수 고밀도 스팸 (Type A)
+원문: (광고)pnc   [060500-9-960] 19세미만사용금지   수신동의철회 [08-015-89695]
+판정 근거: '19세미만사용금지' 문구와 '060'으로 시작하는 유료 정보 서비스 번호 형식을 통해 성인 콘텐츠 또는 유흥 관련 광고임을 명확히 알 수 있습니다. 이는 Spam Guide의 즉시 SPAM 기준인 '성인/유흥' 카테고리에 해당하며, 핵심 키워드가 압축적으로 나열된 고순도 스팸 패턴(Type A)으로 판단됩니다.
+시그널: {'harm_anchor': True, 'route_or_cta': True, 'is_impersonation': False, 'is_vague_cta': False, 'is_personal_lure': False, 'is_garbage_obfuscation': False, 'is_normal_layout': False, 'is_safe_url_injection': False}
+
+
+QA Case: 순수 고밀도 스팸 (Type A)
+원문: (광고)북오산자이 리버블시티 ☎1844-1475 북오산자이 리버블시티  [[ 잔여세대 빠른 마감 진행 중 ]] ★마감 임박 긴급 안내★ ★계약 가능 세대 한정★ ★지금이 마지막 줍줍 기회★  고객님, 안녕하세요. 대단지의 가치로 동탄과 세교신도시를 연결하는 <북오산자이 리버블시티>에서 선착순 분양을 안내드립니다.   ■ 모델 하우스 예약 방문 이벤트 - 기간 : 2026년 3월 20일~소진 시까지 - 대상 : 방문예약 후 방문 고객님 (선착순 30명) - 혜택: 2박3일 제주도 여행권 (2인)      ■입지환경 및 인프라 - 중소형 평형대 59/74/84/99m2 - 동탄.세교 더블 생활인프라 ♥프리미엄 "자이" 브랜드   ■ 계약 조건 -선착순 동.호지정 -계약금 1천만원(1차) -2029년 3월 입주예정  ■ 특장점 - 1호선 오산대역 세마역 입지, 북오산 IC 수도권 접근성 용이 - 동탄/세교지구 생활권, 홈플러스/트레이더스 인접 - 단지내 초품아(초등학교 신설 계획), 매홀중/고 안심학세권 - 필봉산/오산천/물향기수목원/오산   ■방문예약 바로가기: https://naver.me/GowrwC8d  모델하우스는 사전 예약자 우선 상담으로 운영됩니다. 금주 내 방문 고객 중심으로 계약이 집중되고 있으니 검토 중이셨다면
+판정 근거: Spam Guide 5항(카테고리별 최종 판정)에 따라 부동산 관련 메시지는 HAM 처리 원칙을 적용한다. 본 메시지는 '북오산자이 리버블시티'라는 구체적인 브랜드와 분양 정보를 제공하고 있으며, 불법성, 사칭, 기망 요소가 없는 정상적인 마케팅 메시지로 판단된다. 오늘 날짜(2026년 3월 25일) 기준으로 이벤트 및 입주 예정일 등의 정보가 논리적으로 부합한다. | [텍스트 HAM + 악성 URL 분리 감지: SMS 메시지와 연결된 URL 페이지의 내용이 완전히 불일치합니다. SMS는 '북오산자이 리버블시티' 분양 및 모델하우스 예약을 안내하고 있으나, 실제 연결된 네이버 폼 페이지는 '브레인시티 비스타 동원'이라는 전혀 다른 아파트 단지의 예약 및 개인정보 수집을 목적으로 하고 있습니다. 이는 유명 브랜드나 특정 분양 정보를 미끼로 사용하여 다른 사업지의 가망 고객 DB를 수집하려는 기망적(Deception) 의도가 명확한 스팸으로 판단됩니다. SMS가 주장하는 목적(북오산자이 예약)을 해당 페이지에서 수행할 수 없으므로 문맥 일치(Consistency) 기준을 위반합니다.] | [FP Sentinel Override] 악성 URL 탐지 Type_B 확정 차단
+시그널: {'harm_anchor': False, 'route_or_cta': True, 'is_impersonation': False, 'is_vague_cta': False, 'is_personal_lure': False, 'is_garbage_obfuscation': False, 'is_normal_layout': False, 'is_safe_url_injection': False}
+
+
+QA Case: IBSE URL 도메인 추출 방어 (문장 통째 추출)
+원문: 1216차 1등 비법 오늘의 행운 확인하기 https://sbz.kr/BCvxyI
+파싱된 시그니처: 오늘의행운확인하기https://sbz.kr/BCvxyI
+시그니처 길이: 39
+
+
+QA Case: IBSE URL 도메인 추출 방어 (문장 통째 추출)
+원문: 2차 인증 요청 미진행 계정은 삭제됩니다. https://i i .me/TOPsaz
+파싱된 시그니처: 행계정은삭제됩니다.https://ii.me/TOPsaz
+시그니처 길이: 39

@@ -215,7 +215,7 @@ obfuscated_urls: {obfuscated_urls}
             current_model = self.model_name
             is_fallback = getattr(self, "_use_fallback", False)
             if is_fallback:
-                current_model = os.getenv("LLM_SUB_MODEL", "gemini-1.5-flash-lite").strip().strip("'")
+                current_model = os.getenv("LLM_SUB_MODEL", "gemini-3.1-pro-preview").strip().strip("'")
                 logger.warning(f"[IBSE] Fallback mode active: Switching model to {current_model}.")
 
             client_instance = self._get_cached_client(provider, api_key, current_model)

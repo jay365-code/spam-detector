@@ -1,0 +1,43 @@
+Total Logs: 996
+HAM Count: 728
+SPAM Count: 268
+  - Type A Count: 24
+  - Type B Count: 244
+
+--- [Rule 1: Sandwich Defense] Type B (is_normal_layout) Samples ---
+Text: (광고)  봄~새로운터전에서의 새시작  문의 01021569552  연우   무료수신거부080-888-8489...
+Signals: ['is_personal_lure', 'is_normal_layout']
+Reason: 과거 유사 사례(예시 2)와 문구 구성 및 발신 주체(연우)가 매우 흡사합니다. 구체적인 사업자명이나 서비스 종류를 밝히지 않은 채 '새로운 터전', '새 시작'과 같은 모호하고 감성적인 문구로 연락을 유도하는 것은 유흥업소나 성인 관련 영업진의 전형적인 홍보 방식입니다. 정통망법 규격(광고, 080)을 준수하고 있어 일반적인 정상 광고와 레이아웃이 매우 유사하므로, 이를 그대로 학습할 경우 정상 광고를 오탐할 위험이 커 Type B(is_normal_layout)로 분류합니다. | [FP Sentinel Override] 사적/경조사 위장(Type_B) 보호
+
+Text: (광고) [통신사장애 안내] 49플라워입니다 대표번호는 문자만 가능합니다 통화가능한 폰번호는 010-4324-9949 문자로 <주문>이라고 해주시면 연락드리겠습니다. 무료수신거부번...
+Signals: ['is_impersonation', 'is_normal_layout']
+Reason: 본 메시지는 꽃배달 광고임에도 불구하고 '[통신사장애 안내]'라는 허위의 시스템 공지형 제목을 사용하여 수신자를 기망하고 내용을 확인하게 유도하는 사칭형 스팸입니다. Spam Guide 기준상 사칭 및 기망 요소가 포함된 경우 SPAM으로 판정하며, 수신자의 행동(문자 회신)을 유도하므로 route_or_cta를 true로 설정합니다. 다만, 메시지 형식이 일반적인 광고 레이아웃을 따르고 있어 정상적인 통신사 안내 문자까지 오탐할 위험이 매우 크므로, 시스템 보호를 위해 Type B 시그널(is_impersonation, is_normal_layout)을 활성화합니다. | [FP Sentinel Override] 사칭/기만(Type_B) 보호
+
+Text: (광고) 무료거부 0808069658...
+Signals: ['is_normal_layout']
+Reason: 해당 메시지는 '(광고)' 문구와 수신거부 번호를 포함하고 있으나, 발신 주체(사업자명 또는 서비스명)를 전혀 명시하지 않아 정통망법의 광고성 정보 게시 원칙을 위반한 불법 스팸에 해당합니다. 다만, 메시지 구조가 매우 단순하고 일반적인 광고 레이아웃을 따르고 있어, 이를 그대로 학습할 경우 정상적인 광고 안내 문자까지 오탐할 위험이 크므로 Type B(is_normal_layout) 시그널을 적용하여 격리 처리합니다. | [FP Sentinel Override] 템플릿 오탐 방지: 일반 광고 레이아웃(Type_B) 보호
+
+
+--- [Rule 3: Obfuscation Defense] Type B (is_garbage_obfuscation) Samples ---
+Text: "     "             +ㅂㅐ        FF4844 ㅅㅊㅎㅇ1...
+Signals: ['is_garbage_obfuscation']
+Reason: 해당 메시지는 공백과 특수문자를 과도하게 삽입하여 필터링 시스템을 회피하려는 명백한 난독화 패턴을 보입니다. '+ㅂㅐ'(배팅/배당), 'ㅅㅊㅎㅇ1'(신규회원/선착순) 등 도박 사이트에서 주로 사용하는 은어와 참여 코드로 추정되는 'FF4844'를 조합하여 불법 도박 가입을 유도하는 것으로 판단됩니다. 이는 스팸 가이드의 '난독화가 심하고 문맥이 부자연스러운 메시지' 및 '도박' 기준에 부합하며, 형태소가 완전히 파괴된 패턴이므로 CNN 모델의 학습 데이터 오염을 방지하기 위해 is_garbage_obfuscation을 true로 설정합니다. | [FP Sentinel Override] 난독화/쓰레기 토큰(Type_B) 보호
+
+Text: &&                 && &&                 &&  g k...
+Signals: ['is_garbage_obfuscation']
+Reason: 해당 메시지는 특수문자(&&)와 무의미한 공백, 알파벳 파편(g k)으로만 구성되어 정상적인 의사소통 문장으로 볼 수 없습니다. 이는 스팸 가이드 2.B.4항에서 명시한 '난독화가 심하고 문맥이 부자연스러운 메시지' 및 '필터 회피 목적의 문맥 파악 방해'에 해당하여 즉시 SPAM으로 판정합니다. 또한, 무의미한 기호의 나열은 CNN 모델의 학습 데이터를 오염시킬 수 있는 전형적인 가비지 패턴이므로 is_garbage_obfuscation 시그널을 true로 설정합니다. | [FP Sentinel Override] 난독화/쓰레기 토큰(Type_B) 보호
+
+Text: "     "             +ㅂㅐ        KGM488...
+Signals: ['is_garbage_obfuscation']
+Reason: 해당 메시지는 특수문자(따옴표)와 공백을 무분별하게 삽입하고, '+ㅂㅐ'와 같은 자음/모음 분리 및 'KGM488'이라는 정체불명의 코드를 조합한 전형적인 난독화 스팸입니다. 이는 스팸 필터를 회피하기 위해 의도적으로 형태소를 파괴한 패턴(Spam Guide 2.B.4)에 해당하며, 이러한 난독화된 코드는 주로 불법 도박 사이트의 추천인 코드나 입장 코드로 사용됩니다. 문맥이 전혀 없는 쓰레기 토큰의 나열이므로 CNN 모델의 오탐을 방지하기 위해 Type B(is_garbage_obfuscation) 처리가 반드시 필요합니다. | [FP Sentinel Override] 난독화/쓰레기 토큰(Type_B) 보호
+
+
+--- [Rule 2,4: Pure Spams] Type A Samples ---
+Text: 99김봉직 미짜 조건이랑 강간하는 미친새끼잡습니다 지 애비랑 같이미짜 따먹으러 다닌다는데 이새끼좀 누가말려주세요...
+Reason: Safety Filter Blocked: Content was flagged as prohibited (likely highly offensive or explicit) even after removing context. Assuming High-Risk SPAM. | [FP Sentinel Override] 안전 필터 차단 감지로 인한 Type_B 전환
+
+Text: FW 월세에서 매매로 surl.li/rqddtl...
+Reason: Spam Guide 제5항(카테고리별 최종 판정)에 따라 부동산 관련 메시지는 HAM 처리 원칙을 적용합니다. 본 메시지는 '월세에서 매매로'라는 부동산 거래 관련 내용을 담고 있으며, 제1항의 최우선 원칙에 따라 명백한 불법, 사칭, 기망 요소가 확인되지 않으므로 오차단 방지를 위해 HAM으로 분류합니다. 'FW' 접두어와 단축 URL이 사용되었으나, 이는 단순 홍보 목적으로 판단되어 harm_anchor를 false로 설정하며, 시스템 가이드에 따라 이는 HAM으로 처리됩니다. | [텍스트 HAM + 악성 URL 분리 감지: SMS 메시지의 'FW' 접두어와 단축 URL(surl.li) 사용은 스팸 필터링을 우회하기 위한 전형적인 수법입니다. Content Agent는 '월세에서 매매로'라는 문구에 집중하여 이를 부동산 관련 HAM으로 분류했으나, URL을 통해 연결되는 페이지의 명칭인 '시그니처투자그룹'은 전형적인 주식 및 투자 리딩방(금융 스팸)의 명칭입니다. SMS가 주장하는 '자산 증식(월세에서 매매로)'이라는 목적과 연결된 페이지의 '투자 그룹'이라는 성격은 문맥적으로 일치하지만, 이는 불특정 다수에게 투자를 유도하여 수익을 취하려는 금융 스팸(코드 3)의 의도가 명확하므로 SPAM으로 판단합니다.] | [FP Sentinel Override] 악성 URL 탐지 Type_B 확정 차단
+
+Text: ☎☎주말 두배 드려요! / 최고의 Chance! ☎☎   안녕하세요 사장님.  많은 곳들이 거짓된 감언이설로 사장님들을 혼란스럽게 하는 것을 보고만 있을 수는 없어서 이렇게 연락을...
+Reason: 메시지 내 '베팅', '당침금', '베당', '3플3 5플5' 등 불법 도박 사이트에서 사용하는 전형적인 용어와 프로모션 내용이 포함되어 있으며, '기회임.com'이라는 도메인을 통해 접속을 강하게 유도하고 있습니다. 이는 Spam Guide상 즉시 SPAM으로 분류되는 '도박' 카테고리에 해당하며, 위해성이 명확하여 CNN 모델 학습에 적합한 Type A 표본입니다. | [URL SPAM: SMS 메시지에서 '베팅', '당침금', '3플3 5플5' 등 불법 도박 사이트에서 주로 사용하는 용어를 사용하여 접속을 유도하고 있으며, 연결된 URL의 페이지 제목인 '신규최대 혜택'이 SMS에서 언급한 '처음 오신 분들을 위한 혜택'이라는 내용과 문맥적으로 완벽히 일치합니다. 이는 전형적인 불법 도박 홍보 스팸으로 판단됩니다.]

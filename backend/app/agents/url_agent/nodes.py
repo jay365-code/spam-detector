@@ -290,10 +290,10 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
                         return response
                     except asyncio.TimeoutError as timeout_e:
                         logger.warning(f"[URL Agent] Vision API Timeout Detected. Attempting Fallback to Sub Model.")
-                        raw_sub_model = os.getenv("LLM_SUB_MODEL", "gemini-3.1-flash-lite-preview")
-                        sub_model = raw_sub_model.strip().strip("'").strip('"') if raw_sub_model else "gemini-3.1-flash-lite-preview"
+                        raw_sub_model = os.getenv("LLM_SUB_MODEL", "gemini-3.1-pro-preview")
+                        sub_model = raw_sub_model.strip().strip("'").strip('"') if raw_sub_model else "gemini-3.1-pro-preview"
                         if not sub_model:
-                            sub_model = "gemini-3.1-flash-lite-preview"
+                            sub_model = "gemini-3.1-pro-preview"
                             
                         fallback_key = key_manager.get_key("GEMINI")
                         if fallback_key:
@@ -1080,10 +1080,10 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                 return response
             except asyncio.TimeoutError as e:
                 logger.warning(f"[URL Agent] {provider} LLM Timeout occurred (45s). Attempting Fallback to Sub Model.")
-                raw_sub_model = os.getenv("LLM_SUB_MODEL", "gemini-3.1-flash-lite-preview")
-                sub_model = raw_sub_model.strip().strip("'").strip('"') if raw_sub_model else "gemini-3.1-flash-lite-preview"
+                raw_sub_model = os.getenv("LLM_SUB_MODEL", "gemini-3.1-pro-preview")
+                sub_model = raw_sub_model.strip().strip("'").strip('"') if raw_sub_model else "gemini-3.1-pro-preview"
                 if not sub_model:
-                    sub_model = "gemini-3.1-flash-lite-preview"
+                    sub_model = "gemini-3.1-pro-preview"
                 
                 fallback_key = key_manager.get_key("GEMINI")
                 if fallback_key:

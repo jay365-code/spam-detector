@@ -1,0 +1,7 @@
+Total Logs: 1173
+HAM Count: 895
+SPAM Count: 278
+  - Type A Count: 34
+  - Type B Count: 244
+
+--- [IBSE URL Rule Check] Suspected Partial URL Extractions (len <= 20): 0 ---
