@@ -161,16 +161,20 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             return self._full_guide_cache
             
         try:
-            guide_path = os.path.join(os.path.dirname(__file__), "../../../data/spam_guide_20230724.md")
+            guide_path = os.path.join(os.path.dirname(__file__), "../../../data/spam_guide_20260326.md")
+            logger.info(f"    [Info] Try loading Spam Guide from: {guide_path}")
             with open(guide_path, "r", encoding="utf-8") as f:
-                self._full_guide_cache = f.read()
+                spam_guide_content = f.read()
+                self._full_guide_cache = spam_guide_content
                 return self._full_guide_cache
         except Exception as e:
             try: 
                 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
-                guide_path = os.path.join(base_dir, "data/spam_guide_20230724.md")
+                guide_path = os.path.join(base_dir, "data/spam_guide_20260326.md")
+                logger.info(f"    [Info] Try loading Spam Guide from fallback: {guide_path}")
                 with open(guide_path, "r", encoding="utf-8") as f:
-                    self._full_guide_cache = f.read()
+                    spam_guide_content = f.read()
+                    self._full_guide_cache = spam_guide_content
                     return self._full_guide_cache
             except Exception as e2:
                 logger.error(f"    [Error] Failed to load spam_guide_20230724.md: {e2}")
@@ -701,7 +705,7 @@ Step 4. [Type B 시그널 추출: CNN 모델 데이터 오염 방어]
      ⚠️ 주의: 텍스트가 "관리비", "택배", "부고장" 등 일상 안내를 사칭하는 스미싱(Smishing) 텍스트이고, 첨부된 URL이 단축 URL(`bit.ly`, `agshort.link` 등)이거나 사설 웹 주소라면 이는 해당 스미싱과 연결된 "진짜 피싱/청구서 사이트"일 가능성이 높다.(즉, 문맥이 일치함). 따라서 이는 엉뚱한 사이트를 가져다 쓴 '방패막이(injection)' 전술이 **아니므로** 절대로 `true`로 설정하지 말고 `false`로 두어야 한다!
 Step 5. 최종 판정 (label 확정):
    - Guide 기준에 따라 완벽한 정상문자면 HAM. 
-   - Guide 기준 SPAM 사유에 해당하면 무조건 SPAM. SPAM일 경우 spam_code (0, 1, 2, 3 중 택1)를 반드시 Guide의 3항목에 맞게 지정하라.
+   - Guide 기준 SPAM 사유에 해당하면 무조건 SPAM. SPAM일 경우 spam_code (0, 1, 2, 3 중 택1)를 반드시 Guide의 4항(스팸의 종류) 기준에 맞게 지정하라.
 
 [OUTPUT — JSON ONLY]
 {{

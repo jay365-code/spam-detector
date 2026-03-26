@@ -583,7 +583,29 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
                     raw_candidates.append(sp_c)
     except Exception as e:
         logger.warning(f"[URL Agent] Spaceless extraction failed: {e}")
+        
+    # [Covert Domain Inference Rule (PDF 가이드 5항 조건부 적용)]
+    # 도메인 확장자(.com)가 생략된 형태로 교묘하게 전달되는 위장 문자열 유추 (예: EUN888, 메인337)
+    # 전제 조건: Content Agent가 1(성인), 2(사기/도박), 3(불법대출/금융) 스팸 코드로 분류했을 때만 발동
+    content_ctx = state.get("content_context") or {}
+    class_code = str(content_ctx.get("classification_code", ""))
+    reason_text = str(content_ctx.get("reason", ""))
     
+    if class_code in ["1", "2", "3"] or any(kw in reason_text for kw in ["성인", "도박", "피싱", "사기", "금융", "대출"]):
+        hidden_domain_pattern = r'(?<![a-zA-Z0-9\uac00-\ud7a3])([a-zA-Z]{2,6}\d{2,4}|[\uac00-\ud7a3]{2,4}\d{2,4})(?![a-zA-Z0-9\uac00-\ud7a3])'
+        for msg_cand in [message, spaceless_message if 'spaceless_message' in locals() else ""]:
+            if not msg_cand:
+                continue
+            hidden_cands = re.findall(hidden_domain_pattern, msg_cand)
+            for cand in hidden_cands:
+                # 안전장치 제한: 길이 4자 이상
+                if len(cand) < 4:
+                    continue
+                guessed_url = f"http://{cand}.com"
+                if guessed_url not in protocol_urls and not any(cand in u for u in protocol_urls):
+                    protocol_urls.append(guessed_url)
+                    logger.info(f"[URL Agent] Inferred covert domain for GAMBLING msg: {guessed_url}")
+
     urls = []
     
     # URL 꼬리부분(suffix)에 엉겨붙은 스팸성 식별자(code:, tel) 제거용 정규식
@@ -1030,6 +1052,20 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
        - **핵심 질문**: "이 불일치하는 페이지가 수신자에게 해를 끼치는(도박, 성인, 사기, 개인정보 탈취 등) 유해한 의도를 가진 페이지인가?"
        - **유해한 의도가 명확할 때만 SPAM**으로 분류하고 적절한 코드를 부여하세요.
        - 만약 페이지가 단순히 범용 서비스 안내, 서비스 준비 중, 혹은 기타 해롭지 않은 내용이라면 **판단 보류(30)** 혹은 **Content Agent의 결과(HAM)**를 유지하세요.
+       - **[중요: 404/삭제 페이지 과잉 추론 금지]**: 스크래핑된 텍스트가 "페이지를 찾을 수 없습니다(404)", "삭제된/만료된 URL", "이용 제한" 등의 안내라면, **"정책 위반으로 삭제된 것을 보니 악성 링크 였을 것이다"라는 과도한 자체 추론(환각)을 절대 하지 마세요.** 실제 유해한 텍스트 증거가 없다면 무조건 **Content Agent의 결과(현재 HAM)를 유지**하거나 판단 보류해야 합니다.
+    [카카오톡 채널 / 유령 채널 검증 룰 (중요)]
+    - 카카오톡 채널(pf.kakao.com)로 연결되는 링크의 경우, 채널의 '친구 수'를 핵심 기준으로 활용하세요.
+    - 경품 추첨, 대규모 이벤트를 주장하지만 연결된 채널의 친구 수가 비정상적으로 적은 경우 (대략 1,000명 미만, 수십~수백 명 수준), 전형적인 피싱/기망용 유령 채널이므로 **SPAM**으로 처리하세요.
+    - 반대로 수천/수만 명 규모의 대형 채널이라면 (비록 메시지에 '시세표', '지원금', '성지' 등 스팸성 마케팅 키워드가 있더라도) 채널의 신뢰도를 우선하여 무조건 **HAM**으로 처리하세요.
+
+    [웹페이지 신뢰도 및 급조 사이트(Scam) 판별 룰]
+    - 일반 업체 홈페이지의 경우, 해당 사이트 내에 **회사 연혁, 연락처, 사업자등록번호, 고객센터 운영 정보** 등이 명확히 기재되어 있는지 확인하세요.
+    - 만약 이런 필수 비즈니스 정보가 누락되어 있고 허접하게 만들어진 '급조된 사기 사이트(랜딩 페이지)' 형태라면 스팸 의심을 강력히 하세요.
+
+    [휴대폰/통신 판매 사이트 판별 룰]
+    - 휴대폰 판매/할인 관련 사이트로 연결되었을 때: 통신3사(SKT, KT, LGU+) **직영대리점**이거나 대형 마트/판매점(전자랜드, 하이마트, 이마트, 삼성, LG 등)과 연관된 공식 페이지라면 **HAM**으로 처리하세요.
+    - 반면 휴대폰 '성지', '좌표', '단가표' 등을 은밀히 제공하는 **일반 판매점 전용 사이트**이거나, 비밀 네이버 밴드/오픈채팅방 가입을 유도하는 랜딩 페이지라면 **SPAM**으로 처리하세요.
+    - **(주의)** 단, 목적지가 카카오톡 공식 채널(pf.kakao.com)인 경우에는 이 '휴대폰 내용 규칙'보다 앞서 설명한 **'카카오톡 친구 수 규칙'을 무조건 우선 적용**하세요.
        
     [오판 방지 가이드 (Bias Correction)]
     - **성급한 일반화 금지**: "성인 사이트", "관리비 미납 안내"라는 키워드만으로 무조건 SPAM이라고 단정하지 마세요. 반드시 **"SMS가 안내한 목적(배송, 고지서 확인)을 수행하는가?"**를 확인해야 합니다.
