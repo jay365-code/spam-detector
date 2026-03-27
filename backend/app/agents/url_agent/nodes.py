@@ -184,42 +184,33 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
 
         # Vision 프롬프트
         prompt = f"""
-        You are a spam detection expert. Analyze this webpage screenshot and determine if it has **malicious/spam intent** or is **evading detection**.
+        당신은 스팸 탐지 전문가입니다. 이 웹페이지 스크린샷과 SMS 원문을 분석하여 **악성/스팸 의도(SPAM INTENT)**가 있는지 또는 **탐지 우회(EVADING)**를 시도하는지 판단하세요.
         
-        Page Title: {title}
+        페이지 제목: {title}
         {content_context_str}
         
-        **Your task: Determine if this page has SPAM INTENT, is EVADING, or is INCONCLUSIVE based on VISUAL CONTENT**
+        **당신의 임무: 시각적 증거(스크린샷)를 기반으로 이 페이지의 스팸 여부를 판별하세요.**
         
-        **CRITICAL: HANDLING MISMATCH (Intent-Based Reasoning)**:
-        - If SMS Context and Screenshot are logically unrelated (Mismatch):
-        - **DO NOT** automatically flag as SPAM.
-        - **Analyze the Intent of the Screenshot**: Does the visual content itself show harmful intent (Gambling, Adult, Scam, Phishing)?
-        - If the page is **Harmless but Unrelated** (e.g., generic landing page, domain notice), mark as **Inconclusive** or match the **Content Agent's Hammer verdict**.
-        - Only flag as **SPAM** if the visual content itself is independently malicious or clearly fraudulent.
+        **CRITICAL 1: 제0원칙 (SUPREME PRINCIPLE - 악성 스팸 절대 차단)**
+        - 웹페이지 콘텐츠(스크린샷) 자체에 명백한 악성/스팸 의도가 보인다면, SMS 텍스트 내용과 일치하든 말든 상관없이 즉시 **SPAM**으로 확정해야 합니다.
+        - 악성 의도 포함 명단: 불법 도박(카지노, 환전, 슬롯, 토토), 성인/성매매, 피싱(가짜 로그인 창), 불법 사금융, 그리고 **불법 주식/코인 리딩방 (장외 주식, VIP정보방, 종목 전문가 카톡/텔레그램 방 유도, 구체적 수익 보장 등)**.
+        - 이 제0원칙은 다른 모든 문맥 일치 규칙보다 최우선시됩니다 (OVERRIDES).
+        - **(🚨 풍선 효과 제어)**: 단, "전문가", "상담", "수익" 등의 키워드가 존재하더라도, 스크린샷 상의 기업 로고나 화면 UI가 **제1금융권 은행, 대한민국 대형 공식 증권사, 통신 3사 공식 대리점**임이 명확히 입증되는 합법적 공식 비즈니스 페이지라면, 이를 '불법 사설 리딩방/사기'로 오인하지 말고 정상(HAM) 처리하여 오탐을 방지하세요.
 
-        SPAM INTENT (requires CLEAR visual evidence):
-        - Illegal gambling (chips, cards, slots, betting)
-        - Adult/prostitution
-        - Phishing (fake logins)
-        - Illegal finance (unlicensed loans)
-        - Fraud/Scam
-        
-        NOT SPAM (legitimate purposes - BUT MUST MATCH CONTEXT):
-        - Delivery tracking (IF SMS is about delivery)
-        - Normal business page (IF SMS is about that business)
-        
-        **CRITICAL RULE**: If you cannot verify the relation between SMS Context and this Screenshot (e.g., totally different content), mark as **Inconclusive**.
+        **CRITICAL 2: 목적 불일치 시의 판단 (Handling Mismatch & Inconclusive)**
+        - 스크린샷 텍스트가 제0원칙(악성)에 해당되지는 않지만, SMS가 주장하는 목적(예: 택배 조회, 결제 내역)과 논리적으로 전혀 무관한 경우:
+        - 해당 사유만으로 무조건 SPAM이라고 추론(환각)하지 **마세요**.
+        - 페이지가 **무해하지만 단순히 관련이 없거나 판단할 수 없는 내용**(예: 에러 페이지, 트래픽 초과, 단순 포털 메인, 판매 중지 안내 등)이라면 **Inconclusive(판단 불가/보류)** 처리하거나 **Content Agent의 기존 판정(HAM/SPAM)** 결과를 그대로 유지하세요.
 
-        Classification Codes (use only if SPAM):
+        분류 코드 (SPAM인 경우에만 아래 목록에서 하나 사용):
 {code_list_str}
         
         Response (JSON):
         {{
             "is_spam": boolean,
-            "classification_code": "string or null if HAM",
+            "classification_code": "명확한 스팸 코드 문자열 (HAM/Inconclusive인 경우 null)",
             "spam_probability": float (0.0-1.0),
-            "reason": "Korean explanation based on visual content vs context match"
+            "reason": "시각적 콘텐츠에서 발견된 팩트와 SMS 문맥 일치 여부에 기반한 한국어 설명 (판단 근거를 구체적으로 서술)"
         }}
         """
         
@@ -1040,19 +1031,21 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     웹 페이지(증거)가 SMS 내용(주장)과 일치하는지 검증하여 최종 판단을 내리세요.
     
     [핵심 판단 기준]
-    1. **문맥 일치 (Consistency) - 최우선 기준**:
-       - URL이 연결된 사이트의 성격(예: 성인, 쇼핑, 금융 등)이 무엇이든, SMS 메시지에서 안내하는 특정 목적(배송 조회, 결제 내역 확인, 본인 인증 등)을 **실제로 수행할 수 있는 합당한 페이지**라면 **HAM(정상)**으로 판단하세요.
-       - 사이트의 일반적인 평판이나 카테고리보다, **"SMS가 주장하는 트랜잭션이 해당 페이지에서 실제로 일어날 수 있는가?"**를 기준으로 삼으세요.
+    1. **제0원칙 (Supreme Principle) - 악성 스팸 절대 차단 (가장 우선순위)**:
+       - 웹 페이지 콘텐츠나 페이지 제목(Title)에 명백한 악성 의도(도박, 성인, 불법약물, 사기/피싱, **불법 주식 리딩방, VIP정보방, 종목 리딩 전문가, 구체적 수익률 보장 과장광고**)가 발견된다면, SMS 내용과의 일치 여부에 관계없이 **무조건 통쾌하게 SPAM(코드 할당)**으로 확정하세요.
+       - SMS가 주식 종목 추천(HAM)처럼 보였더라도, 클릭한 URL이 "리딩전문가 카카오톡 채널"이나 "VIP 시크릿 텔레그램방"으로 연결되는 전형적인 수법이라면 텍스트 판정을 기각(Override)하고 무조건 SPAM 처리하십시오.
+       - **(🚨 오탐 방지 / 풍선 효과 제어)**: 단, "전문가", "상담", "수익", "성지" 등의 키워드가 있더라도, 해당 페이지가 **제1금융권, 대형 공식 증권사(KB, NH, 삼성 등)**이거나 **카카오톡 채널 친구 수가 수천/수만 명에 달하는 대형 공식 인증 채널**임이 증명되는 경우에는 불법 사설 스팸(리딩방)이 아니므로 이 제0원칙(SPAM 강제 타격) 적용을 면제하고 **채널/기관의 공식 신뢰도를 최우선하여 존중(HAM으로 보호)**하세요.
 
-    2. **Content Agent 가설 검증**:
-       - Content Agent가 텍스트만으로 판단한 결과("스미싱 의심" 등)에 얽매이지 마세요. URL 페이지가 **실제 서비스의 정상적인 기능(예: 구체적인 청구 내역 표시, 공식적인 서비스 UI)**을 제공하고 있다면, 텍스트 기반의 의심을 기각(Override)하고 **HAM**으로 확정하세요.
+    2. **문맥 일치 (Consistency) - 제0원칙을 통과한 경우에만 적용**:
+       - 악성 의도가 없는 정상/일반 페이지의 경우, SMS 메시지에서 안내하는 특정 목적(배송 조회, 일반 판촉 홍보, 청구서 확인 등)을 실제로 수행할 수 있는 합당한 페이지라면 **HAM(정상)**으로 판단하세요.
 
-    3. **목적 불일치 시의 판단 (Handling Mismatch)**:
-       - SMS 내용과 URL 페이지 내용이 무관할 때, **무조건 SPAM으로 처리하지 마세요.**
-       - **핵심 질문**: "이 불일치하는 페이지가 수신자에게 해를 끼치는(도박, 성인, 사기, 개인정보 탈취 등) 유해한 의도를 가진 페이지인가?"
-       - **유해한 의도가 명확할 때만 SPAM**으로 분류하고 적절한 코드를 부여하세요.
+    3. **Content Agent 가설 검증**:
+       - Content Agent가 텍스트만으로 판단한 결과("스미싱 의심" 등)에 얽매이지 마세요. URL 페이지가 실제 서비스의 정상적인 기능(예: 구체적인 청구 내역 표시, 공식적인 서비스 UI)을 제공하고 악성 의도가 아예 없다면, 텍스트 기반의 의심을 기각하고 **HAM**으로 확정하세요.
+
+    4. **목적 불일치 시의 판단 (Handling Mismatch)**:
+       - SMS 내용과 URL 페이지 내용이 무관할 때, 무조건 SPAM으로 처리하지 마세요. (이미 제0원칙에서 유해성은 다 걸렀음)
        - 만약 페이지가 단순히 범용 서비스 안내, 서비스 준비 중, 혹은 기타 해롭지 않은 내용이라면 **판단 보류(30)** 혹은 **Content Agent의 결과(HAM)**를 유지하세요.
-       - **[중요: 404/삭제 페이지 과잉 추론 금지]**: 스크래핑된 텍스트가 "페이지를 찾을 수 없습니다(404)", "삭제된/만료된 URL", "이용 제한" 등의 안내라면, **"정책 위반으로 삭제된 것을 보니 악성 링크 였을 것이다"라는 과도한 자체 추론(환각)을 절대 하지 마세요.** 실제 유해한 텍스트 증거가 없다면 무조건 **Content Agent의 결과(현재 HAM)를 유지**하거나 판단 보류해야 합니다.
+       - **[중요: 404/삭제 페이지 과잉 추론 금지]**: 스크래핑된 텍스트가 "페이지를 찾을 수 없습니다(404)", "삭제/만료", "이용 제한" 등의 안내라면, "삭제된 것을 보니 악성 링크였을 것이다"라는 환각(Hallucination) 추론을 절대 하지 마세요. 실제 유해 텍스트 증거가 없다면 무조건 **Content Agent의 결과(HAM/SPAM)를 유지**하거나 판단 보류해야 합니다.
     [카카오톡 채널 / 유령 채널 검증 룰 (중요)]
     - 카카오톡 채널(pf.kakao.com)로 연결되는 링크의 경우, 채널의 '친구 수'를 핵심 기준으로 활용하세요.
     - 경품 추첨, 대규모 이벤트를 주장하지만 연결된 채널의 친구 수가 비정상적으로 적은 경우 (대략 1,000명 미만, 수십~수백 명 수준), 전형적인 피싱/기망용 유령 채널이므로 **SPAM**으로 처리하세요.
