@@ -6,6 +6,8 @@ class SpamState(TypedDict):
     """
     sms_content: str                # 원본 문자 메시지
     decoded_text: Optional[str]     # 난독화 디코딩된 텍스트 (없으면 sms_content 사용)
+    pre_parsed_urls: List[str]      # KISA TXT 등에서 미리 파싱된 URL (없으면 본문에서 추출)
+    pre_parsed_only_mode: bool      # True일 경우, 본문 추출을 건너뛰고 pre_parsed_urls만 참조함
     target_urls: List[str]          # 추출된 URL 목록 (초기)
     current_url: Optional[str]      # 현재 분석 중인 URL
     attempted_urls: List[str]       # 스크래핑 시도한 전체 URL 목록 (폴백 포함)

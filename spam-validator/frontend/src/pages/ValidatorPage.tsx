@@ -122,6 +122,9 @@ interface HumanBasedDiffItem {
     llm_is_spam: boolean | null;
     llm_code: string;
     llm_reason: string;
+    llm_url: string;
+    llm_message_extracted_url: string;
+    llm_signature: string;
     match_status: "MATCH" | "FN" | "FP" | "MISSING_IN_LLM";
 }
 
@@ -1557,6 +1560,28 @@ export default function ValidatorPage() {
                                                                         </span>
                                                                     )}
                                                                 </div>
+                                                                
+                                                                <div className="flex flex-col gap-1 mt-1">
+                                                                    {item.llm_url && (
+                                                                        <div className="text-[10px] text-slate-600 flex items-start gap-1">
+                                                                            <span className="font-bold whitespace-nowrap shrink-0 text-blue-600 mt-0.5" title="KISA 텍스트 파일의 URL 필드에서 입력받은 값을 분석한 결과입니다.">텍스트입력 URL:</span>
+                                                                            <span className="break-all bg-blue-50 px-1 rounded border border-blue-100">{item.llm_url}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {item.llm_message_extracted_url && (
+                                                                        <div className="text-[10px] text-slate-600 flex items-start gap-1">
+                                                                            <span className="font-bold whitespace-nowrap shrink-0 text-emerald-600 mt-0.5" title="메시지 본문 내용에서 AI가 직접 텍스트를 분석하여 추출/복원한 URL입니다.">메시지내 URL:</span>
+                                                                            <span className="break-all bg-emerald-50 px-1 rounded border border-emerald-100">{item.llm_message_extracted_url}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {item.llm_signature && (
+                                                                        <div className="text-[10px] text-slate-600 flex items-start gap-1">
+                                                                            <span className="font-bold whitespace-nowrap shrink-0 text-purple-600 mt-0.5">시그니처:</span>
+                                                                            <span className="break-all bg-purple-50 px-1 rounded border border-purple-100">{item.llm_signature}</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                
                                                                 {item.llm_reason && (
                                                                     <div className={cn("text-xs text-slate-600 bg-violet-50/50 border border-violet-100 p-2 rounded-lg break-words transition-all overflow-hidden", isExpanded ? "" : "max-h-[72px] relative")}>
                                                                         <div className="prose prose-sm prose-slate max-w-none text-[11px] leading-relaxed">

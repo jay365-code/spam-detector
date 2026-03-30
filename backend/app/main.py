@@ -1288,7 +1288,7 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                             "s1_result": s1_res,
                             "prefetched_context": context_data, # [Batch Optimization] Inject Context
                             "pre_parsed_url": url_from_file.strip() if url_from_file else None,  # KISA TXT 파싱 URL (본문 추출 대신 사용)
-                            "pre_parsed_only_mode": from_kisa_txt,  # KISA TXT면 URL 없을 때 본문 추출 스킵
+                            "pre_parsed_only_mode": False,  # [User Requirement] KISA TXT라도 URL 필드가 없으면 본문에서 추출해서 스크래핑해야 함. (단 중복제거 시트엔 안들어감)
                             "content_result": None,
                             "url_result": None,
                             "ibse_result": None,

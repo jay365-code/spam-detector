@@ -31,7 +31,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
     
     async def content_node(state: BatchState):
         msg = state["message"]
-        s1 = state["s1_result"]
+        s1 = state.get("s1_result") or {}
         prefetched = state.get("prefetched_context")
         
         loop = asyncio.get_running_loop()
@@ -53,10 +53,43 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
 
     async def url_node(state: BatchState):
         msg = state["message"]
-        content_result = state.get("content_result", {})
-        s1 = state.get("s1_result", {})
+        content_result = state.get("content_result") or {}
+        s1 = state.get("s1_result") or {}
         pre_parsed_url = state.get("pre_parsed_url")
         pre_parsed_only_mode = state.get("pre_parsed_only_mode", False)
+        
+        # [NEW] 단축 URL 예외 처리: KISA 입력 URL이 파손된 단축(Shortener) URL일 경우 조기 차단
+        if pre_parsed_url:
+            import re
+            from urllib.parse import urlparse
+            test_url = pre_parsed_url if "://" in pre_parsed_url else "http://" + pre_parsed_url
+            try:
+                parsed = urlparse(test_url)
+                domain = parsed.netloc.lower()
+                path = parsed.path.strip("/")
+                
+                # 주요 단축 URL 서비스 식별
+                shortener_domains = [
+                    "bit.ly", "goo.gl", "buly.kr", "vo.la", "han.gl", 
+                    "ko.gl", "tuney.kr", "sbz.kr", "me2.do", "vvd.bz", 
+                    "url.kr", "m.site.naver.com", "vdo.kr"
+                ]
+                
+                is_short = any(d in domain for d in shortener_domains)
+                if is_short:
+                    # 경로 부재 (길이 1 이하) OR 괄호/별표/한글 등 파손 문자 포함 여부 검사
+                    if len(path) <= 1 or bool(re.search(r'[\[\]\*\(\)\{\}\<\>가-힣]', path)):
+                        res = {
+                            "is_spam": None, # Aggregator가 Content 결과를 유지하도록 Inconclusive 취급
+                            "classification_code": "",
+                            "reason": "[URL Agent 단축 URL 필터] 원본 URL 필드가 훼손되었거나 경로가 없는 단축 URL 도메인으로 판명되어 URL 검사를 중단하고 시그니처 판정으로 우회합니다.",
+                            "drop_url": True,
+                            "details": {"extracted_url": pre_parsed_url, "final_url": None, "attempted_urls": []}
+                        }
+                        return {"url_result": res}
+            except Exception:
+                pass
+                
         # 난독화 디코딩된 텍스트가 있으면 전달
         decoded_text = s1.get("decoded_text")
         # URL Agent is already Async - Content 결과를 컨텍스트로 전달
@@ -67,8 +100,8 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
 
     async def ibse_node(state: BatchState):
         msg = state["message"]
-        c_res = state.get("content_result", {})
-        signals = c_res.get("signals", {})
+        c_res = state.get("content_result") or {}
+        signals = c_res.get("signals") or {}
         is_garbage = signals.get("is_garbage_obfuscation", False)
         is_safe_url_injection = signals.get("is_safe_url_injection", False)
         obfuscated_urls = c_res.get("obfuscated_urls", [])
@@ -84,11 +117,14 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
 
     def aggregator_node(state: BatchState):
         # Merge Logic
-        c_res = state.get("content_result", {})
-        u_res = state.get("url_result")
-        i_res = state.get("ibse_result")
+        c_res = state.get("content_result") or {}
+        u_res = state.get("url_result") or {}
+        i_res = state.get("ibse_result") or {}
         
         final = c_res.copy()
+        
+        # [Frontend UI Hint] 전달된 KISA 입력 URL 파라미터 보존
+        final["pre_parsed_url"] = state.get("pre_parsed_url")
         
         # 1. URL Override Logic (Chat mode와 동일한 로직)
         # Bidirectional Override: URL 결과에 따라 Content 판정을 수정할 수 있음
@@ -138,6 +174,21 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # Ensure the value is properly returned
              final["malicious_url_extracted"] = True
 
+        # Extract URL purely from text (for Excel & UI reporting)
+        extracted_from_text = ""
+        u_details = u_res.get("details", {}) if u_res else {}
+        extracted_for_check = str(u_details.get("extracted_url") or "").strip()
+        if extracted_for_check and extracted_for_check.lower() != "none":
+            extracted_from_text = extracted_for_check
+            
+        c_obfuscated = c_res.get("obfuscated_urls") if c_res else []
+        if c_obfuscated:
+            if isinstance(c_obfuscated, list):
+                extracted_from_text = ", ".join(c_obfuscated)
+            else:
+                extracted_from_text = str(c_obfuscated)
+                
+        final["message_extracted_url"] = extracted_from_text
 
         # 2. Add IBSE Info
         if i_res:
@@ -197,10 +248,21 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              url_reason_lower = url_reason.lower()
              is_injection = "위장 url" in url_reason_lower or "정상 도메인 위장" in url_reason_lower or "방패막이" in url_reason_lower or "decoy" in url_reason_lower or "safe url injection" in url_reason_lower
              
-             # [Fix] Drop URL ONLY if it is a Fake IP or Safe Injection. Do NOT drop true short URLs that are just dead (404/520).
-             if is_injection or is_fake_ip:
+             # [Fix] Drop URL ONLY if it is a Fake IP, Safe Injection, Filtered Short URL, or Dead Domain(Typo).
+             is_filtered_short = u_res.get("drop_url", False)
+             is_dead_domain = any(keyword in u_reason for keyword in ["err_name_not_resolved", "dns_probe_finished_nxdomain", "err_connection_refused", "존재하지 않는 url", "네트워크 에러"])
+             
+             if is_injection or is_fake_ip or is_filtered_short or is_dead_domain:
                  final["drop_url"] = True
-                 final["drop_url_reason"] = "fake_ip" if is_fake_ip else "safe_injection"
+                 if is_fake_ip:
+                     final["drop_url_reason"] = "fake_ip"
+                 elif is_filtered_short:
+                     final["drop_url_reason"] = "filtered_short_url"
+                 elif is_dead_domain:
+                     final["drop_url_reason"] = "dead_domain"
+                     final["reason"] = f"[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | {final.get('reason', '')}"
+                 else:
+                     final["drop_url_reason"] = "safe_injection"
                  if "details" in u_res:
                      u_res["details"]["extracted_url"] = None
                      u_res["details"]["final_url"] = None
@@ -219,11 +281,11 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         FP Sentinel (오탐 방지 정책 에이전트)
         의미 클래스(Semantic Class)를 분류하고, Type_B에 대해 학습 라벨(Learning Label)과 차단(Enforcement) 정책을 분리/강제합니다.
         """
-        final = state.get("final_result", {})
-        c_res = state.get("content_result", {})
-        u_res = state.get("url_result")
+        final = state.get("final_result") or {}
+        c_res = state.get("content_result") or {}
+        u_res = state.get("url_result") or {}
         
-        signals = c_res.get("signals", {})
+        signals = c_res.get("signals") or {}
         c_impersonation = signals.get("is_impersonation", False)
         c_vague_cta = signals.get("is_vague_cta", False)
         c_personal_lure = signals.get("is_personal_lure", False)
@@ -261,8 +323,22 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
             # Priority 0.5가 발동하면 이후 로직은 스킵
             pass
                  
+        # [Priority 0.6] Filtered Short URL Detection
+        # url_node에서 파손된 단축 URL을 발견하여 무시한 경우, URL 없이 시그니처 차단으로 우회되므로 학습에서 보호
+        is_filtered_short_url = final.get("drop_url_reason") == "filtered_short_url"
+        
+        if is_filtered_short_url and final.get("is_spam") is True:
+            semantic_class = "Type_B"
+            learning_label = "HAM"
+            
+            existing_reason = final.get("reason", "")
+            if "[FP Sentinel Override]" not in existing_reason:
+                final["reason"] = f"{existing_reason} | [FP Sentinel Override] 파손된 단축 도메인(Type_B) 보호 및 시그니처 대체"
+                
+            pass
+            
         # [Priority 0] URL CONFIRMED SAFE → 무조건 HAM 확정
-        # (단, 위 Priority 0.5의 Safe-URL Injection에 해당하지 않는 경우에만)
+        # (단, 위 Priority의 Safe-URL이나 파손 단축 URL에 해당하지 않는 경우에만)
         # URL Agent가 안전하다고 명시적으로 확인한 경우, c_impersonation 여부와 무관하게 HAM 처리
         # (관리비 미납 알림 등 정상 URL을 포함한 메시지가 사칭으로 오분류되는 것 방지)
         elif "CONFIRMED SAFE" in final.get("reason", ""):
@@ -314,13 +390,12 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              
              existing_reason = final.get("reason", "")
              
-             # 도메인 난독화가 감지된 경우, 원본 텍스트의 URL은 잘못 파싱된 가비지 값(예: 6.com)일 확률이 매우 높으므로 무조건 드롭
+             # 도메인 난독화가 감지된 경우, 분석 보고서에는 복원/추출된 URL을 남겨두어 작업 내역을 증명하되,
+             # 분류 자체는 Input 텍스트 기준(Type B Signature)을 따르도록 함. (드롭하지 않음)
              obfuscated_urls = c_res.get("obfuscated_urls", [])
              if obfuscated_urls:
-                 final["drop_url"] = True
-                 final["drop_url_reason"] = "obfuscation"
                  if "[FP Sentinel Override]" not in existing_reason:
-                     final["reason"] = f"{existing_reason} | [FP Sentinel Override] 도메인 난독화(Type_B) 보호: 잘못된 URL 필터 오염 방지를 위해 강제 드롭"
+                     final["reason"] = f"{existing_reason} | [FP Sentinel Override] 도메인 난독화(Type_B) 식별"
              else:
                  if "[FP Sentinel Override]" not in existing_reason:
                      final["reason"] = f"{existing_reason} | [FP Sentinel Override] 난독화/쓰레기 토큰(Type_B) 보호"
@@ -409,9 +484,9 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
     # --- Conditional Logic ---
     
     def router(state: BatchState):
-        c_res = state.get("content_result", {})
+        c_res = state.get("content_result") or {}
         msg = state.get("message", "")
-        s1 = state.get("s1_result", {})
+        s1 = state.get("s1_result") or {}
         
         # [Fallback] If Content Agent failed due to Quota Error, halt the pipeline immediately 
         c_reason = c_res.get("reason", "").lower()

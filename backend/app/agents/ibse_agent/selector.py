@@ -86,7 +86,7 @@ is_safe_url_injection: {is_safe_url_injection}
   "message_id": "{message_id}",
   "decision": "use_string" | "use_sentence" | "unextractable",
   "identified_url_or_domain": "원문에서 찾은 URL/도메인 본체 (없으면 null)",
-  "signature": "추출한 원본 부분 문자열 (반드시 identified_url_or_domain을 포함할 것!)",
+  "signature": "추출한 원본 부분 문자열 (최우선: 난독화/투명 기호가 섞인 특이한 문자열(예: '쿠-팡')이 있다면 이를 1일 단기 차단용으로 우선 추출할 것. 평범한 텍스트일 때는 가급적 identified_url_or_domain을 포함할 것)",
   "risk": "low" | "medium" | "high",
   "reason": "왜 이 문자열이 가장 고유하고 강력한 시그니처인지 1~2줄 요약 (오탐 여부 등)"
 }}"""

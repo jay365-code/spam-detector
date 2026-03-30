@@ -325,15 +325,24 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
     # Pre-process signature signatures mapped by matching message text
     signature_map = {}
     if df_llm_sig is not None and not df_llm_sig.empty:
-        # Looking for '메시지' and '문자열' columns
+        # Looking for '메시지' and '문자열'/'문장열' columns
         msg_col = next((c for c in df_llm_sig.columns if '메시지' in str(c)), None)
-        sig_col = next((c for c in df_llm_sig.columns if '문자열' in str(c) or 'signature' in str(c).lower()), None)
+        sig_col = next((c for c in df_llm_sig.columns if str(c) == '문자열'), None)
+        sentence_col = next((c for c in df_llm_sig.columns if str(c) == '문장열'), None)
         
-        if msg_col and sig_col:
+        if msg_col:
             for _, sig_row in df_llm_sig.iterrows():
                 try:
                     s_msg = normalize_text(str(sig_row[msg_col]))
-                    s_val = str(sig_row[sig_col])
+                    s_val = ""
+                    
+                    # 1. Check 짧은 문자열 (<= 20)
+                    if sig_col and str(sig_row[sig_col]) and str(sig_row[sig_col]) != 'nan':
+                        s_val = str(sig_row[sig_col])
+                    # 2. Check 긴 문장열 (> 20)
+                    elif sentence_col and str(sig_row[sentence_col]) and str(sig_row[sentence_col]) != 'nan':
+                        s_val = str(sig_row[sentence_col])
+                        
                     if s_val and s_val != 'nan':
                         # CSV Injection 방어용으로 추가된 선행 홑따옴표 제거 ('=이*영*아= -> =이*영*아=)
                         if s_val.startswith("'") and len(s_val) > 1 and s_val[1] in ('=', '+', '-', '@'):
@@ -362,10 +371,14 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
         # Get URL & SIGNATURE
         llm_url = ""
         llm_signature = ""
+        llm_message_extracted_url = ""
         if not is_missing_in_llm:
-            llm_url = str(row.get('URL_llm', '')) if 'URL_llm' in row and pd.notna(row['URL_llm']) else ""
-            norm_msg = normalize_text(str(row['메시지_human']))
-            llm_signature = signature_map.get(norm_msg, "")
+            is_llm_spam = bool(row.get('is_spam_llm', False))
+            if is_llm_spam:
+                llm_url = str(row.get('URL_llm', '')) if 'URL_llm' in row and pd.notna(row['URL_llm']) else ""
+                llm_message_extracted_url = str(row.get('메시지 추출 URL_llm', '')) if '메시지 추출 URL_llm' in row and pd.notna(row['메시지 추출 URL_llm']) else ""
+                norm_msg = normalize_text(str(row['메시지_human']))
+                llm_signature = signature_map.get(norm_msg, "")
             
         human_based_diffs.append({
             "index": int(row['original_index_human']),
@@ -375,9 +388,10 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
             "human_reason": str(row.get('reason_human', '')),
             "llm_is_spam": bool(row.get('is_spam_llm', False)) if not is_missing_in_llm else None,
             "llm_semantic_class": str(row.get('semantic_class_llm', '')) if not is_missing_in_llm else "",
-            "llm_code": str(row.get('code_llm', '')) if not is_missing_in_llm else "",
+            "llm_code": str(row.get('code_llm', '')) if not is_missing_in_llm and is_llm_spam else "",
             "llm_reason": str(row.get('reason_llm', '')) if not is_missing_in_llm else "",
             "llm_url": llm_url,
+            "llm_message_extracted_url": llm_message_extracted_url,
             "llm_signature": llm_signature,
             "match_status": match_status
         })
@@ -512,6 +526,12 @@ async def export_diff(request: ExportDiffRequest):
             elif m_status == "FN":
                 m_status_disp = "FN (미탐)"
                 
+            # 엑셀 출력용 URL (규칙 적용: Type B인데 URL 구분이 아니면 빈칸 처리)
+            llm_url_for_excel = safe_str(d.get("llm_url", ""))
+            sem_class = d.get("llm_semantic_class", "")
+            if sem_class and sem_class.startswith("Type_B") and "(URL" not in sem_class:
+                llm_url_for_excel = ""
+                
             diff_items.append({
                 "Row 순번": d.get("index", idx) + 1,
                 "메시지 원본": safe_str(d.get("message_full", "")),
@@ -519,7 +539,8 @@ async def export_diff(request: ExportDiffRequest):
                 "Human 분류코드": safe_str(d.get("human_code", "")),
                 "AI 판단 (LLM)": llm_val,
                 "AI 분류코드": safe_str(d.get("llm_code", "")),
-                "AI 추출 URL": safe_str(d.get("llm_url", "")),
+                "AI 제출용 URL (입력 URL 기준)": llm_url_for_excel,
+                "AI 자체 추출본 (메시지 본문 기준)": safe_str(d.get("llm_message_extracted_url", "")),
                 "AI 추출 SIGNATURE": safe_str(d.get("llm_signature", "")),
                 "AI 사유": safe_str(d.get("llm_reason", "")),
                 "매칭 상태": safe_str(m_status_disp)

@@ -1087,11 +1087,12 @@ function App() {
                         <div className="text-xs text-slate-500 mt-1 pl-2 border-l-2 border-slate-700 space-y-1.5">
                           <div className="text-slate-400 break-words">{cleanReason}</div>
                           
-                          {/* URL 출력 보장 */}
+                          {/* URL 단위 1: 입력 파일 URL 필드 전용 분석 */}
                           {log.result.url_result?.details?.extracted_url && log.result.url_result.details.extracted_url !== "Unknown" && (
-                            <div className="flex items-center gap-1.5 text-blue-400 border-l border-blue-500/30 pl-2">
-                              <span className="font-semibold border border-blue-400/30 bg-blue-400/10 px-1 py-0.5 rounded shadow-sm text-[10px] uppercase tracking-wider shrink-0">
-                                추출된 URL
+                            <div className="flex items-center gap-1.5 text-blue-400 border-l border-blue-500/30 pl-2 mt-1">
+                              <span className="font-semibold border border-blue-400/30 bg-blue-400/10 px-1 py-0.5 rounded shadow-sm text-[10px] uppercase tracking-wider shrink-0" 
+                                    title={isManual ? "단건 테스트 화면에서 URL Agent가 자체 추출한 URL입니다." : (log.result.pre_parsed_url ? "KISA 텍스트 파일의 URL 필드에서 입력받은 값을 분석한 결과입니다." : "입력 파일에 URL이 없어 AI가 본문에서 강제로 추출해 스크래핑한 결과입니다.")}>
+                                {isManual ? "AI 자체 추출 URL (URL Agent)" : (log.result.pre_parsed_url ? "입력 URL 분석" : "본문 강제 추출 경로 분석")}
                               </span>
                               <span className="bg-slate-800/80 px-1.5 py-1 rounded text-slate-300 font-mono text-[11px] break-all border border-slate-700/50">
                                 {log.result.drop_url ? (
@@ -1123,6 +1124,18 @@ function App() {
                                       </>
                                     )
                                 )}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* URL 단위 2: 메시지 본문 직접 추출 */}
+                          {log.result.message_extracted_url && log.result.message_extracted_url !== "" && (
+                            <div className="flex items-center gap-1.5 text-emerald-400 border-l border-emerald-500/30 pl-2 mt-1">
+                              <span className="font-semibold border border-emerald-400/30 bg-emerald-400/10 px-1 py-0.5 rounded shadow-sm text-[10px] uppercase tracking-wider shrink-0" title="메시지 본문 내용에서 AI가 직접 텍스트를 분석하여 추출/복원한 URL입니다.">
+                                본문 추출 URL
+                              </span>
+                              <span className="bg-slate-800/80 px-1.5 py-1 rounded text-slate-300 font-mono text-[11px] break-all border border-slate-700/50">
+                                {log.result.message_extracted_url}
                               </span>
                             </div>
                           )}

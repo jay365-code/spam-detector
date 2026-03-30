@@ -38,12 +38,30 @@ class ExcelHandler:
         
         return value
 
-    def _sort_sheet_by_gubun(self, ws, gubun_col_idx: int, reason_col_idx: int = None):
+    def _sort_sheet_by_type(self, ws, headers: list):
         """
-        구분 컬럼 기준으로 정렬: SPAM("o") 상단, HAM("") 하단
+        분류(Semantic Class) 기준으로 자동 그룹핑 및 정렬:
+        1. Type A
+        2. Type B (서브타입 - URL, SIGNATURE 등 - 알파벳 정렬)
+        3. 텍스트 HAM + 악성 URL 발췌 (분리 감지)
+        4. 기타 미분류 SPAM
+        5. 일반 HAM
         """
-        if ws.max_row <= 1:
+        if ws.max_row <= 1 or not headers:
             return  # 헤더만 있거나 데이터 없음
+
+        # 헤더 이름을 기반으로 동적 컬럼 인덱스 찾기(1-based)
+        def get_col_idx(name: str):
+            try:
+                return headers.index(name) + 1
+            except ValueError:
+                return None
+                
+        gubun_col_idx = get_col_idx("구분")
+        reason_col_idx = get_col_idx("Reason")
+        semantic_col_idx = get_col_idx("Semantic Class")
+        code_col_idx = get_col_idx("분류")
+        prob_col_idx = get_col_idx("Probability")
         
         # 모든 데이터 행 읽기 (헤더 제외)
         data_rows = []
@@ -53,20 +71,40 @@ class ExcelHandler:
                 row_data.append(ws.cell(row=row_idx, column=col_idx).value)
             data_rows.append(row_data)
         
-        # 구분 콜럼 기준 정렬: SPAM("o") -> Type_B (살구색) -> HAM
+        # 그룹핑 및 정렬 기준 키
         def sort_key(row):
-            gubun_val = row[gubun_col_idx - 1] if len(row) >= gubun_col_idx else ""
-            reason_val = row[reason_col_idx - 1] if reason_col_idx and len(row) >= reason_col_idx else ""
+            def safe_get(idx):
+                return str(row[idx - 1] if idx and len(row) >= idx else "").strip()
 
-            # Type_B 판별: FP Sentinel이 reason에 [FP Sentinel Override] 태그를 삽입
-            is_type_b = bool(reason_val and "[FP Sentinel Override]" in str(reason_val))
+            semantic_val = safe_get(semantic_col_idx)
+            reason_val = safe_get(reason_col_idx)
+            gubun_val = safe_get(gubun_col_idx)
+            code_val = safe_get(code_col_idx)
+            prob_str = safe_get(prob_col_idx)
+            
+            try:
+                prob_num = float(prob_str.replace("%", ""))
+            except Exception:
+                prob_num = 0.0
 
-            if gubun_val == "o":
-                return 0
-            elif is_type_b:  # Type_B (FP Sentinel)
-                return 1
-            else:  # 일반 HAM
-                return 2
+            if semantic_val.startswith("Type_A"):
+                rank = 0
+            elif semantic_val.startswith("Type_B"):
+                rank = 1
+            elif "[텍스트 HAM + 악성 URL 분리 감지" in reason_val:
+                rank = 2
+            elif gubun_val.lower() == "o":
+                rank = 3
+            elif semantic_val.lower() == "ham":
+                rank = 4
+            else:
+                rank = 5
+            
+            # 1순위: 메인 그룹(rank)
+            # 2순위: 서브타입 명칭 알파벳 정렬 적용 (Type_B 세부분류 등)
+            # 3순위: 분류 코드 라벨 (도박, 대출 등 끼리 모으기)
+            # 4순위: 스팸 확률 (높은 순서대로 정렬)
+            return (rank, semantic_val, code_val, -prob_num)
         
         data_rows.sort(key=sort_key)
         
@@ -141,7 +179,9 @@ class ExcelHandler:
             header_cell = ws.cell(row=1, column=col_idx)
             header_cell.font = header_font
             header_cell.border = box_border
-        
+        # 엑셀 자동 필터(정렬 드롭다운) 적용 (전체 데이터 영역)
+        ws.auto_filter.ref = ws.dimensions
+
         for row_idx in range(2, ws.max_row + 1):
             # 행 단위 전체 셀에 테두리 및 기본 폰트 적용
             for col_idx in range(1, ws.max_column + 1):
@@ -446,7 +486,8 @@ class ExcelHandler:
 
             gubun_col_idx = get_col_idx("구분", len(headers) + 1)
             code_col_idx = get_col_idx("분류", gubun_col_idx + 1)
-            prob_col_idx = get_col_idx("Probability", code_col_idx + 1)
+            msg_url_col_idx = get_col_idx("메시지 추출 URL", code_col_idx + 1)
+            prob_col_idx = get_col_idx("Probability", msg_url_col_idx + 1)
             semantic_col_idx = get_col_idx("Semantic Class", prob_col_idx + 1)
             learning_col_idx = get_col_idx("Learning Label", semantic_col_idx + 1)
             reason_col_idx = get_col_idx("Reason", learning_col_idx + 1)
@@ -549,6 +590,10 @@ class ExcelHandler:
                     
                     ws.cell(row=row_idx, column=gubun_col_idx, value=gubun_val)
                     ws.cell(row=row_idx, column=code_col_idx, value=code_val)
+                    
+                    msg_extracted_url_val = result.get("message_extracted_url", "")
+                    ws.cell(row=row_idx, column=msg_url_col_idx, value=self._sanitize_cell_value(msg_extracted_url_val))
+                    
                     ws.cell(row=row_idx, column=prob_col_idx, value=prob_val)
                     ws.cell(row=row_idx, column=semantic_col_idx, value=semantic_val)
                     ws.cell(row=row_idx, column=learning_col_idx, value=learning_val)
@@ -781,7 +826,7 @@ class ExcelHandler:
             ws.title = "육안분석(시뮬결과35_150)"
             
             # Define Headers
-            headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Learning Label", "Reason"]
+            headers = ["메시지", "URL", "메시지 추출 URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Learning Label", "Reason"]
             ws.append(headers)
             
             # Styling
@@ -888,10 +933,13 @@ class ExcelHandler:
                         url_val = ""
                         url_len = 0
                     
+                    msg_ext_val = result.get("message_extracted_url", "")
+                    
                     # Write Row
                     ws.append([
                         self._sanitize_cell_value(msg_val), 
                         self._sanitize_cell_value(url_val), 
+                        self._sanitize_cell_value(msg_ext_val), 
                         self._sanitize_cell_value(gubun_val), 
                         self._sanitize_cell_value(code_val), 
                         msg_len, 
@@ -905,44 +953,48 @@ class ExcelHandler:
                     # --- URL Collection Logic ---
                     # Only collect URLs from SPAM messages or extracted from HAM
                     # drop_url이 True인 경우 (위장 URL, 가비지 URL 등) 중복제거 시트에서도 완벽히 배제
-                    if not result.get("drop_url"):
-                        if result.get("is_spam") is True or result.get("malicious_url_extracted"):
-                            target_url = original_data["url"].strip() if original_data["url"] else ""
-                            if target_url:
-                                # Clean URL
-                                target_url = target_url.rstrip('.,;:!?)]}"\'')
-                                
-                                # Additional Safety
-                                if not re.search(r'[^\x00-\x7F]', target_url): # If pure ASCII (simple check) => Good
-                                     pass 
-                                else:
-                                     pass
+                    if (result.get("is_spam") is True or result.get("malicious_url_extracted")) and not result.get("drop_url"):
+                        target_url = original_data["url"].strip() if original_data["url"] else ""
+                        # --- [UI vs KISA Export Separation] ---
+                        # 도메인 난독화로 추출된 URL은 엑셀(UI 표시용)에는 로깅하되,
+                        # KISA 전송용 URL 텍스트파일(차단기 IP 연동용)에서는 제외해야 함
+                        is_obfuscated = "[FP Sentinel Override] 도메인 난독화" in str(result.get("reason", ""))
+                        
+                        if target_url and not is_obfuscated:
+                            # Clean URL
+                            target_url = target_url.rstrip('.,;:!?)}"\'')
+                            
+                            # Additional Safety
+                            if not re.search(r'[^\x00-\x7F]', target_url): # If pure ASCII (simple check) => Good
+                                 pass 
+                            else:
+                                 pass
     
-                                if not self.is_short_url(target_url):
-                                     if target_url not in unique_urls:
-                                         # URL중복 제거 시트에는 classification_code 원본 사용 (Type_B여도 실제 코드 표시)
-                                         raw_url_code = str(result.get("classification_code", ""))
-                                         _m = re.search(r'\d+', raw_url_code)
-                                         url_dedup_code = _m.group(0) if _m else raw_url_code
-                                         if not result.get("is_spam"):
-                                             url_dedup_code = extracted_url_code
-                                         unique_urls[target_url] = {
-                                             "len": self._lenb(target_url),
-                                             "code": url_dedup_code,
-                                             "malicious_url_extracted": result.get("malicious_url_extracted", False)
-                                         }
-                                else:
-                                     if target_url not in unique_short_urls:
-                                         raw_url_code = str(result.get("classification_code", ""))
-                                         _m = re.search(r'\d+', raw_url_code)
-                                         url_dedup_code = _m.group(0) if _m else raw_url_code
-                                         if not result.get("is_spam"):
-                                             url_dedup_code = extracted_url_code
-                                         unique_short_urls[target_url] = {
-                                             "len": self._lenb(target_url),
-                                             "code": url_dedup_code,
-                                             "malicious_url_extracted": result.get("malicious_url_extracted", False)
-                                         }
+                            if not self.is_short_url(target_url):
+                                 if target_url not in unique_urls:
+                                     # URL중복 제거 시트에는 classification_code 원본 사용 (Type_B여도 실제 코드 표시)
+                                     raw_url_code = str(result.get("classification_code", ""))
+                                     _m = re.search(r'\d+', raw_url_code)
+                                     url_dedup_code = _m.group(0) if _m else raw_url_code
+                                     if not result.get("is_spam"):
+                                         url_dedup_code = extracted_url_code
+                                     unique_urls[target_url] = {
+                                         "len": self._lenb(target_url),
+                                         "code": url_dedup_code,
+                                         "malicious_url_extracted": result.get("malicious_url_extracted", False)
+                                     }
+                            else:
+                                 if target_url not in unique_short_urls:
+                                     raw_url_code = str(result.get("classification_code", ""))
+                                     _m = re.search(r'\d+', raw_url_code)
+                                     url_dedup_code = _m.group(0) if _m else raw_url_code
+                                     if not result.get("is_spam"):
+                                         url_dedup_code = extracted_url_code
+                                     unique_short_urls[target_url] = {
+                                         "len": self._lenb(target_url),
+                                         "code": url_dedup_code,
+                                         "malicious_url_extracted": result.get("malicious_url_extracted", False)
+                                     }
 
 
                     # --- IBSE Collection Logic ---
@@ -992,10 +1044,8 @@ class ExcelHandler:
             if batch_buffer:
                 flush_batch(total_rows - len(batch_buffer))
             
-            # 4.5 구분 컬럼 기준 정렬 (SPAM 상단, Type_B 중간, HAM 하단)
-            # Headers: ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Learning Label", "Reason"]
-            # 구분=3번째, Reason=10번째
-            self._sort_sheet_by_gubun(ws, gubun_col_idx=3, reason_col_idx=10)
+            # 4.5 타입 및 자동 필터 연계용 그룹핑 정렬 (Type A -> Type B 서브분류 -> HAM 순서로 모아주기)
+            self._sort_sheet_by_type(ws, headers)
             
             # 4.6 서식 적용
             self._apply_formatting(ws, headers)
