@@ -161,6 +161,8 @@ class PlaywrightManager:
         self.playwright = None
         self.loop = None
         self._lock = None # Lock for atomic browser launch
+        self._url_cache = {}
+        self._url_locks = {}
 
     async def start(self):
         current_loop = asyncio.get_running_loop()
@@ -479,11 +481,25 @@ class PlaywrightManager:
             "text": "",
             "screenshot_b64": "",
             "status": "failed",
-            "error": ""
         }
 
-        context = None
-        page = None
+        # [Cache Check]
+        if not hasattr(self, "_url_cache"):
+            self._url_cache = {}
+            self._url_locks = {}
+            
+        if url not in self._url_locks:
+            self._url_locks[url] = asyncio.Lock()
+            
+        # URL Lock을 획득하여 동일 URL 중복 스크래핑 대기
+        async with self._url_locks[url]:
+            if url in self._url_cache:
+                logger.debug(f"[PlaywrightManager] Using cached result for duplicate URL: {url}")
+                # return a shallow copy to prevent modification by different agents
+                return dict(self._url_cache[url])
+            
+            context = None
+            page = None
         
         # Retry logic for browser connection (TargetClosedError 시 3회, 그 외 2회)
         for attempt in range(3):
@@ -628,6 +644,7 @@ class PlaywrightManager:
                         result["status"] = "success"
                         logger.info(f"Scraping success: {result['title'][:50]}")
                         
+                        self._url_cache[url] = result
                         return result # Return immediately on success
 
                     finally:
@@ -684,8 +701,10 @@ class PlaywrightManager:
 
         # If we reached here (not returned), it means we failed or loop attempt failed inside semaphore
         if result["status"] == "success":
+             self._url_cache[url] = result
              return result # Should have returned above, but safety check
         
+        self._url_cache[url] = result
         return result # [Fix] Always return result dict (with error status) instead of None
 
 

@@ -141,9 +141,12 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
 
         # 2. Add IBSE Info
         if i_res:
-             if i_res.get("signature"):
-                 final["ibse_signature"] = i_res.get("signature")
+             sig_val = i_res.get("signature")
+             if sig_val and str(sig_val).strip().upper() != "NONE":
+                 final["ibse_signature"] = sig_val
                  final["ibse_len"] = i_res.get("byte_len_cp949", i_res.get("byte_len"))
+             else:
+                 final["ibse_signature"] = None
                  
              # [Broken URL Drop Logic]
              # IBSE Agent extracts a contextual sentence instead of the broken URL.
@@ -152,6 +155,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              u_reason = u_res.get("reason", "").lower() if u_res else ""
              
              is_broken = u_details.get("is_broken_short_url") is True
+             is_fake_ip = False
              
              # [숫자 난독화 / 가짜 IP 방어]
              extracted_for_check = str(u_details.get("extracted_url") or "")
@@ -183,8 +187,8 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                      # final_url도 첫 번째 정상 URL로 맞춰줌
                      u_details["final_url"] = valid_url_parts[0]
                  else:
-                     # 모든 파편이 다 가짜 IP였다면 broken 처리
-                     is_broken = True
+                     # 모든 파편이 다 가짜 IP였다면 fake ip 처리
+                     is_fake_ip = True
              
              # User requested fix: Drop URL if Safe URL Injection is detected.
              # This is flagged by fp_sentinel_node setting final["drop_url"] = True later,
@@ -193,9 +197,10 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              url_reason_lower = url_reason.lower()
              is_injection = "위장 url" in url_reason_lower or "정상 도메인 위장" in url_reason_lower or "방패막이" in url_reason_lower or "decoy" in url_reason_lower or "safe url injection" in url_reason_lower
              
-             if is_broken or is_injection:
+             # [Fix] Drop URL ONLY if it is a Fake IP or Safe Injection. Do NOT drop true short URLs that are just dead (404/520).
+             if is_injection or is_fake_ip:
                  final["drop_url"] = True
-                 final["drop_url_reason"] = "broken" if is_broken else "safe_injection"
+                 final["drop_url_reason"] = "fake_ip" if is_fake_ip else "safe_injection"
                  if "details" in u_res:
                      u_res["details"]["extracted_url"] = None
                      u_res["details"]["final_url"] = None

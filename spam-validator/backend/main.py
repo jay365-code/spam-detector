@@ -322,39 +322,6 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
             "policy_interpretation": policy_tag
         })
 
-    # Generate Human-based Integrated Diffs
-    human_based_diffs = []
-    
-    # We want ALL rows from human (both matched and missing in LLM)
-    human_all = pd.concat([merged, missing_in_llm_df])
-    
-    # Sort by original index to keep the sequence of the human file
-    human_all = human_all.sort_values(by='original_index_human')
-
-    for _, row in human_all.iterrows():
-        is_missing_in_llm = pd.isna(row.get('메시지_llm'))
-        
-        # Determine Match Status
-        match_status = "MISSING_IN_LLM"
-        if not is_missing_in_llm:
-            match_status = "MATCH" if row['is_spam_human'] == row['is_spam_llm'] else ("FN" if row['is_spam_human'] else "FP")
-            
-        human_based_diffs.append({
-            "index": int(row['original_index_human']),
-            "message_full": str(row['메시지_human']),
-            "human_is_spam": bool(row['is_spam_human']),
-            "human_code": str(row.get('code_human', '')),
-            "human_reason": str(row.get('reason_human', '')),
-            "llm_is_spam": bool(row.get('is_spam_llm', False)) if not is_missing_in_llm else None,
-            "llm_semantic_class": str(row.get('semantic_class_llm', '')) if not is_missing_in_llm else "",
-            "llm_code": str(row.get('code_llm', '')) if not is_missing_in_llm else "",
-            "llm_reason": str(row.get('reason_llm', '')) if not is_missing_in_llm else "",
-            "match_status": match_status
-        })
-
-    # Generate Type B List
-    type_b_items = []
-    
     # Pre-process signature signatures mapped by matching message text
     signature_map = {}
     if df_llm_sig is not None and not df_llm_sig.empty:
@@ -374,6 +341,49 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
                         signature_map[s_msg] = s_val
                 except Exception:
                     pass
+
+    # Generate Human-based Integrated Diffs
+    human_based_diffs = []
+    
+    # We want ALL rows from human (both matched and missing in LLM)
+    human_all = pd.concat([merged, missing_in_llm_df])
+    
+    # Sort by original index to keep the sequence of the human file
+    human_all = human_all.sort_values(by='original_index_human')
+
+    for _, row in human_all.iterrows():
+        is_missing_in_llm = pd.isna(row.get('메시지_llm'))
+        
+        # Determine Match Status
+        match_status = "MISSING_IN_LLM"
+        if not is_missing_in_llm:
+            match_status = "MATCH" if row['is_spam_human'] == row['is_spam_llm'] else ("FN" if row['is_spam_human'] else "FP")
+            
+        # Get URL & SIGNATURE
+        llm_url = ""
+        llm_signature = ""
+        if not is_missing_in_llm:
+            llm_url = str(row.get('URL_llm', '')) if 'URL_llm' in row and pd.notna(row['URL_llm']) else ""
+            norm_msg = normalize_text(str(row['메시지_human']))
+            llm_signature = signature_map.get(norm_msg, "")
+            
+        human_based_diffs.append({
+            "index": int(row['original_index_human']),
+            "message_full": str(row['메시지_human']),
+            "human_is_spam": bool(row['is_spam_human']),
+            "human_code": str(row.get('code_human', '')),
+            "human_reason": str(row.get('reason_human', '')),
+            "llm_is_spam": bool(row.get('is_spam_llm', False)) if not is_missing_in_llm else None,
+            "llm_semantic_class": str(row.get('semantic_class_llm', '')) if not is_missing_in_llm else "",
+            "llm_code": str(row.get('code_llm', '')) if not is_missing_in_llm else "",
+            "llm_reason": str(row.get('reason_llm', '')) if not is_missing_in_llm else "",
+            "llm_url": llm_url,
+            "llm_signature": llm_signature,
+            "match_status": match_status
+        })
+
+    # Generate Type B List
+    type_b_items = []
 
     type_b_df = df_l[df_l['semantic_class'].str.startswith("Type_B", na=False)]
     for _, row in type_b_df.iterrows():
@@ -509,6 +519,8 @@ async def export_diff(request: ExportDiffRequest):
                 "Human 분류코드": safe_str(d.get("human_code", "")),
                 "AI 판단 (LLM)": llm_val,
                 "AI 분류코드": safe_str(d.get("llm_code", "")),
+                "AI 추출 URL": safe_str(d.get("llm_url", "")),
+                "AI 추출 SIGNATURE": safe_str(d.get("llm_signature", "")),
                 "AI 사유": safe_str(d.get("llm_reason", "")),
                 "매칭 상태": safe_str(m_status_disp)
             })
@@ -707,6 +719,9 @@ async def export_diff(request: ExportDiffRequest):
         
         logger.info(f"Diff Excel exported successfully to {save_path}")
         return {"success": True, "path": save_path, "filename": request.filename}
+    except PermissionError:
+        logger.warning(f"Excel Export PermissionError: {save_path} is opened by another program.")
+        raise HTTPException(status_code=400, detail="엑셀 파일이 열려있어서 덮어쓸 수 없습니다. 열려있는 엑셀 파일을 닫고 다시 내보내기를 시도해주세요.")
     except Exception as e:
         logger.exception("Excel Export Error")
         raise HTTPException(status_code=500, detail=str(e))
