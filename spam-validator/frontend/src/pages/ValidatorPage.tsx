@@ -507,6 +507,52 @@ export default function ValidatorPage() {
         setTimeout(() => setCopied(false), 2000);
     };
 
+    // Diff 결과를 Excel로 저장 (백엔드 경로에 저장)
+    const handleSaveDiffExcel = async () => {
+        if (!data) return;
+        if (!data.human_based_diffs || data.human_based_diffs.length === 0) {
+            alert("저장할 데이터가 없습니다.");
+            return;
+        }
+        
+        let filename = 'DIFF_result.xlsx';
+        const todayDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        
+        if (isAutoMode && autoDate && autoType) {
+            filename = `DIFF_${autoDate}_${autoType}.xlsx`;
+        } else if (humanFile) {
+            const match = humanFile.name.match(/(\d{8})_([A-Z])/);
+            if (match) {
+                filename = `DIFF_${match[1]}_${match[2]}.xlsx`;
+            } else {
+                filename = `DIFF_${todayDate}_A.xlsx`;
+            }
+        } else {
+            filename = `DIFF_${todayDate}_A.xlsx`;
+        }
+
+        try {
+            const response = await axios.post('http://localhost:8001/export/diff', {
+                summary: data.summary,
+                human_based_diffs: data.human_based_diffs,
+                filename: filename
+            });
+            
+            const openIt = window.confirm(`엑셀 파일이 성공적으로 지정된 폴더에 저장되었습니다:\n${response.data.path}\n\n지금 해당 파일을 바로 여시겠습니까?`);
+            if (openIt) {
+                try {
+                    await axios.post('http://localhost:8001/export/open', { path: response.data.path });
+                } catch (openErr) {
+                    console.error("Failed to open file automatically:", openErr);
+                    alert("파일 여는 중 오류가 발생했습니다. 직접 폴더에서 열어주세요.");
+                }
+            }
+        } catch (error) {
+            console.error('Failed to export diff excel:', error);
+            alert('엑셀 저장 중 (서버) 오류가 발생했습니다.');
+        }
+    };
+
     return (
         <main className="max-w-7xl mx-auto px-6 py-8 space-y-8">
 
@@ -1290,9 +1336,18 @@ export default function ValidatorPage() {
                                     정답(Human) 엑셀의 <strong>모든 메시지</strong>를 기준으로 AI 분석 결과를 1:1 매칭하여 보여줍니다.
                                 </p>
                             </div>
-                            <button onClick={() => setIsDiffModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-lg transition-colors">
-                                <X size={20} className="text-slate-500" />
-                            </button>
+                            <div className="flex items-center gap-3">
+                                <button 
+                                    onClick={handleSaveDiffExcel}
+                                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-sm flex items-center gap-2"
+                                >
+                                    <Download size={16} />
+                                    Excel 저장
+                                </button>
+                                <button onClick={() => setIsDiffModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-lg transition-colors">
+                                    <X size={20} className="text-slate-500" />
+                                </button>
+                            </div>
                         </div>
                         
                         {/* Filters & Search */}

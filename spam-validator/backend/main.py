@@ -67,6 +67,14 @@ def normalize_label(val: Any) -> bool:
 from logging_config import get_log_levels, set_log_level, set_console_enabled
 from pydantic import BaseModel
 
+class ExportDiffRequest(BaseModel):
+    summary: dict
+    human_based_diffs: list
+    filename: str
+
+class OpenFileRequest(BaseModel):
+    path: str
+
 class LogLevelChange(BaseModel):
     target: str  # "console" 또는 "file"
     level: str   # "DEBUG", "INFO", "WARNING", "ERROR"
@@ -338,6 +346,7 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
             "human_code": str(row.get('code_human', '')),
             "human_reason": str(row.get('reason_human', '')),
             "llm_is_spam": bool(row.get('is_spam_llm', False)) if not is_missing_in_llm else None,
+            "llm_semantic_class": str(row.get('semantic_class_llm', '')) if not is_missing_in_llm else "",
             "llm_code": str(row.get('code_llm', '')) if not is_missing_in_llm else "",
             "llm_reason": str(row.get('reason_llm', '')) if not is_missing_in_llm else "",
             "match_status": match_status
@@ -359,6 +368,9 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
                     s_msg = normalize_text(str(sig_row[msg_col]))
                     s_val = str(sig_row[sig_col])
                     if s_val and s_val != 'nan':
+                        # CSV Injection 방어용으로 추가된 선행 홑따옴표 제거 ('=이*영*아= -> =이*영*아=)
+                        if s_val.startswith("'") and len(s_val) > 1 and s_val[1] in ('=', '+', '-', '@'):
+                            s_val = s_val[1:]
                         signature_map[s_msg] = s_val
                 except Exception:
                     pass
@@ -454,6 +466,262 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
         "auto_summary": auto_summary
     }
 
+@app.post("/export/diff")
+async def export_diff(request: ExportDiffRequest):
+    try:
+        base_dir = r"c:\Users\leejo\Project\AI Agent\Spam Detector\data\reports\DIFF"
+        os.makedirs(base_dir, exist_ok=True)
+        save_path = os.path.join(base_dir, request.filename)
+        
+        # 1. (Dashboard generation is moved inside ExcelWriter)
+        
+        # 2. Create Diff DataFrame
+        def safe_str(val):
+            s = str(val).strip() if val is not None else ""
+            # Escape strings that might be interpreted as formulas
+            if s.startswith(('=', '+', '-', '@')):
+                return "'" + s
+            return s
+            
+        diff_items = []
+        for idx, d in enumerate(request.human_based_diffs):
+            llm_val = "누락"
+            if d.get("llm_is_spam") is True:
+                sem_class = d.get("llm_semantic_class", "").replace("_", " ") # "Type_A" -> "Type A"
+                if sem_class:
+                    llm_val = f"SPAM: {sem_class}"
+                else:
+                    llm_val = "SPAM"
+            elif d.get("llm_is_spam") is False:
+                llm_val = "HAM"
+            
+            m_status = d.get("match_status", "")
+            m_status_disp = m_status
+            if m_status == "FP":
+                m_status_disp = "FP (오탐)"
+            elif m_status == "FN":
+                m_status_disp = "FN (미탐)"
+                
+            diff_items.append({
+                "Row 순번": d.get("index", idx) + 1,
+                "메시지 원본": safe_str(d.get("message_full", "")),
+                "정답 (Human)": "SPAM" if d.get("human_is_spam") else "HAM",
+                "Human 분류코드": safe_str(d.get("human_code", "")),
+                "AI 판단 (LLM)": llm_val,
+                "AI 분류코드": safe_str(d.get("llm_code", "")),
+                "AI 사유": safe_str(d.get("llm_reason", "")),
+                "매칭 상태": safe_str(m_status_disp)
+            })
+        df_diff = pd.DataFrame(diff_items)
+        
+        from openpyxl.styles import PatternFill, Font, Alignment
+
+        with pd.ExcelWriter(save_path, engine='openpyxl') as writer:
+            # First write Diff table to create workbook
+            df_diff.to_excel(writer, sheet_name='Diff', index=False)
+            
+            # Now build Dashboard interactively
+            wb = writer.book
+            ws_dash = wb.create_sheet('Dashboard', 0)
+            
+            sum_data = request.summary
+            
+            # Dashboard Styles
+            title_font = Font(size=14, bold=True, color="FFFFFF")
+            title_fill = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
+            section_font = Font(size=11, bold=True, color="1F497D")
+            section_fill = PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
+            bold_font = Font(bold=True)
+            center_align = Alignment(horizontal="center", vertical="center")
+            left_align = Alignment(horizontal="left", vertical="center")
+            right_align = Alignment(horizontal="right", vertical="center")
+            
+            def write_pair(r, c, label, val):
+                c_lbl = ws_dash.cell(row=r, column=c, value=label)
+                c_lbl.font = bold_font
+                c_val = ws_dash.cell(row=r, column=c+1, value=val)
+                # Text = Center, Number = Right
+                if isinstance(val, str):
+                    c_val.alignment = center_align
+                else:
+                    c_val.alignment = right_align
+
+            # Layout: Title
+            ws_dash.merge_cells('A1:F2')
+            cell_title = ws_dash['A1']
+            cell_title.value = f"🤖 AI Spam Validator Dashboard [{request.filename}]"
+            cell_title.font = title_font
+            cell_title.fill = title_fill
+            cell_title.alignment = center_align
+
+            # Layout: 1. 핵심 성과 지표 (KPI 달성 현황)
+            ws_dash.merge_cells('A4:F4')
+            ws_dash['A4'] = "▶ 1. 핵심 성과 지표 (KPI 달성 현황)"
+            ws_dash['A4'].font = section_font
+            ws_dash['A4'].fill = section_fill
+            
+            # KPI Calculations
+            tn = sum_data.get("tn", 0)
+            fp = sum_data.get("fp", 0)
+            fpr = (fp / (fp + tn)) if (fp + tn) > 0 else 0.0
+            recall = float(sum_data.get("recall", 0) or 0)
+            agr = float(sum_data.get("agreement_rate", 0) or 0)
+            kappa = float(sum_data.get("kappa", 0) or 0)
+
+            fpr_status = "✅ Pass (목표: 1.0% 미만)" if fpr < 0.01 else "❌ Fail (과탐 주의)"
+            recall_status = "✅ Pass (목표: 95.0% 이상)" if recall >= 0.95 else "❌ Fail (방어력 부족)"
+            agr_status = "✅ Pass (목표: 90.0% 이상)" if agr >= 0.90 else "❌ Fail (기준 불일치)"
+            kappa_status = "✅ Pass (목표: 0.8 이상)" if kappa >= 0.8 else "⚠️ Warning (0.8 미만)"
+
+            write_pair(5, 1, "과탐률 (FPR) [치명적 지표]", f"{fpr*100:.2f}%")
+            write_pair(5, 4, "달성 여부", fpr_status)
+            ws_dash.cell(row=5, column=5).font = Font(bold=True, color="008000" if "Pass" in fpr_status else "C00000")
+
+            write_pair(6, 1, "스팸 방어율 (Recall)", f"{recall*100:.2f}%")
+            write_pair(6, 4, "달성 여부", recall_status)
+            ws_dash.cell(row=6, column=5).font = Font(bold=True, color="008000" if "Pass" in recall_status else "C00000")
+
+            write_pair(7, 1, "인간-AI 일치율 (Agreement)", f"{agr*100:.2f}%")
+            write_pair(7, 4, "달성 여부", agr_status)
+            ws_dash.cell(row=7, column=5).font = Font(bold=True, color="008000" if "Pass" in agr_status else "C00000")
+
+            write_pair(8, 1, "신뢰도 (Cohen's Kappa)", round(kappa, 4))
+            write_pair(8, 4, "평가", kappa_status)
+            ws_dash.cell(row=8, column=5).font = Font(bold=True, color="008000" if "Pass" in kappa_status else "D97500")
+
+            # Layout: 2. 전체 데이터 처리 요약 (Overview)
+            ws_dash.merge_cells('A10:F10')
+            ws_dash['A10'] = "▶ 2. 전체 데이터 처리 요약 (Overview)"
+            ws_dash['A10'].font = section_font
+            ws_dash['A10'].fill = section_fill
+            
+            write_pair(11, 1, "분석 기준 파일", sum_data.get("sheet_used", "N/A"))
+            write_pair(12, 1, "Human 총 레코드", sum_data.get("total_human", 0))
+            write_pair(12, 4, "AI 처리 레코드", sum_data.get("total_llm", 0))
+            write_pair(13, 1, "Human 기준 SPAM 수", sum_data.get("human_spam_count", 0))
+            write_pair(13, 4, "AI 판별 SPAM 수", sum_data.get("llm_spam_count", 0))
+            write_pair(14, 1, "매칭된 1:1 레코드 수", sum_data.get("matched", 0))
+            
+            # Layout: 3. 상세 분류 성능 지표 (Performance Metrics)
+            ws_dash.merge_cells('A16:F16')
+            ws_dash['A16'] = "▶ 3. 상세 분류 성능 지표 (Performance Metrics)"
+            ws_dash['A16'].font = section_font
+            ws_dash['A16'].fill = section_fill
+            
+            acc = sum_data.get('accuracy', 0)
+            acc_val = f"{acc*100:.2f}%" if isinstance(acc, (int, float)) else acc
+
+            write_pair(17, 1, "정확도 (Accuracy)", acc_val)
+            write_pair(17, 4, "F1 Score", round(float(sum_data.get("f1", 0) or 0), 4))
+            write_pair(18, 1, "정밀도 (Precision)", round(float(sum_data.get("precision", 0) or 0), 4))
+            write_pair(18, 4, "재현율 (Recall)", round(float(sum_data.get("recall", 0) or 0), 4))
+            
+            # Layout: 4. 오차 행렬 (Confusion Matrix)
+            ws_dash.merge_cells('A20:F20')
+            ws_dash['A20'] = "▶ 4. 오차 행렬 (Confusion Matrix)"
+            ws_dash['A20'].font = section_font
+            ws_dash['A20'].fill = section_fill
+            
+            write_pair(21, 1, "TP (정답:SPAM, AI:SPAM)", sum_data.get("tp", 0))
+            write_pair(21, 4, "TN (정답:HAM, AI:HAM)", sum_data.get("tn", 0))
+            write_pair(22, 1, "FP (정답:HAM, AI:SPAM) [오탐]", sum_data.get("fp", 0))
+            write_pair(22, 4, "FN (정답:SPAM, AI:HAM) [미탐]", sum_data.get("fn", 0))
+            ws_dash.cell(row=22, column=2).font = Font(bold=True, color="C00000")
+            ws_dash.cell(row=22, column=5).font = Font(bold=True, color="D97500")
+            
+            # Layout: 5. 잠재적 위험 (Type B) 모니터링
+            ws_dash.merge_cells('A25:F25')
+            ws_dash['A25'] = "▶ 5. 잠재적 위험 (Type B - Poisoning Risk) 모니터링"
+            ws_dash['A25'].font = section_font
+            ws_dash['A25'].fill = section_fill
+            
+            write_pair(26, 1, "Type B 전체 총계", sum_data.get("type_b_total_count", 0))
+            ws_dash.cell(row=26, column=1).font = Font(bold=True, color="1F497D")
+            
+            write_pair(27, 1, " ↳ Type B (URL)", sum_data.get("type_b_url_count", 0))
+            write_pair(27, 4, " ↳ Type B (Signature)", sum_data.get("type_b_sig_count", 0))
+            write_pair(28, 1, " ↳ Type B (URL+Sig)", sum_data.get("type_b_both_count", 0))
+            write_pair(28, 4, " ↳ Type B (기타)", sum_data.get("type_b_none_count", 0))
+            
+            # Dashboard Column Width Adjustments
+            ws_dash.column_dimensions['A'].width = 32
+            ws_dash.column_dimensions['B'].width = 15
+            ws_dash.column_dimensions['C'].width = 5
+            ws_dash.column_dimensions['D'].width = 30
+            ws_dash.column_dimensions['E'].width = 15
+
+            # ==============================
+            # Formatting Diff Sheet
+            # ==============================
+            header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+            header_font = Font(color="FFFFFF", bold=True)
+            
+            # Colors for match status
+            color_fp = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid") # Red
+            color_fn = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid") # Yellow
+            color_missing = PatternFill(start_color="E4DFEC", end_color="E4DFEC", fill_type="solid") # Purple/Grey
+            
+            # Formatting Diff
+            ws_diff = writer.sheets['Diff']
+            ws_diff.auto_filter.ref = ws_diff.dimensions
+            ws_diff.freeze_panes = "A2"
+            
+            ws_diff.column_dimensions['A'].width = 10
+            ws_diff.column_dimensions['B'].width = 80
+            ws_diff.column_dimensions['C'].width = 15
+            ws_diff.column_dimensions['D'].width = 18
+            ws_diff.column_dimensions['E'].width = 15
+            ws_diff.column_dimensions['F'].width = 18
+            ws_diff.column_dimensions['G'].width = 80
+            ws_diff.column_dimensions['H'].width = 20
+
+            for cell in ws_diff[1]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = center_align
+            
+            for row in ws_diff.iter_rows(min_row=2, max_row=ws_diff.max_row, min_col=1, max_col=8):
+                row[0].alignment = center_align   # 순번
+                row[1].alignment = left_align     # 메시지 원본 (No Wrap)
+                row[2].alignment = center_align   # 정답
+                row[3].alignment = center_align   # Human 분류코드
+                row[4].alignment = center_align   # AI 판단
+                row[5].alignment = center_align   # AI 분류코드
+                row[6].alignment = left_align     # AI 사유 (No Wrap)
+                row[7].alignment = center_align   # 매칭 상태
+
+                # Add color to match status IF it's an error (Apply to entire row)
+                status_val = str(row[7].value).upper()
+                target_fill = None
+                
+                if "FP" in status_val:
+                    target_fill = color_fp
+                elif "FN" in status_val:
+                    target_fill = color_fn
+                elif "MISSING" in status_val:
+                    target_fill = color_missing
+                    
+                if target_fill:
+                    for cell in row:
+                        cell.fill = target_fill
+        
+        logger.info(f"Diff Excel exported successfully to {save_path}")
+        return {"success": True, "path": save_path, "filename": request.filename}
+    except Exception as e:
+        logger.exception("Excel Export Error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/export/open")
+async def open_excel_file(req: OpenFileRequest):
+    try:
+        if os.path.exists(req.path) and req.path.endswith('.xlsx'):
+            os.startfile(req.path)
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=404, detail="File not found or invalid format")
+    except Exception as e:
+        logger.error(f"Failed to open file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
