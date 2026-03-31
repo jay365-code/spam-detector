@@ -136,11 +136,16 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         signals = final.get("signals", {})
         
         # content 햄 여부 파악: 실제 판정이 HAM이거나, 
-        # SPAM 판정이라도 본문이 모호/은닉되어 텍스트 자체는 HAM에 가까운 Type B 시그널이 켜진 경우
+        # SPAM 판정이라도 본문이 모호(is_vague_cta)하거나 일상적인 안부(is_personal_lure) 등 
+        # 텍스트 자체는 HAM에 가까운 Type B 시그널이 켜진 경우에만 분리 감지 대상으로 산정.
+        # (is_impersonation이나 is_garbage_obfuscation, is_normal_layout은 스팸성 텍스트를 포함하므로 제외)
         is_pure_content_ham = not c_is_spam
         is_type_b_but_ham_text = False
-        if c_is_spam and (signals.get("is_vague_cta") or signals.get("is_impersonation") or signals.get("is_normal_layout")):
-            is_type_b_but_ham_text = True
+        if c_is_spam:
+            has_ham_like_signal = signals.get("is_vague_cta", False) or signals.get("is_personal_lure", False)
+            has_spam_like_signal = signals.get("is_garbage_obfuscation", False) or signals.get("is_impersonation", False)
+            if has_ham_like_signal and not has_spam_like_signal:
+                is_type_b_but_ham_text = True
             
         if u_res:
              final["url_result"] = u_res
