@@ -451,12 +451,19 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              
         # Type_B Sub-classification
         if semantic_class == "Type_B":
-             # 본문에 있는 url은 분석은 하되, type 결정에는 input text의 url만 사용
+             # 엑셀 저장용으로 추출된 URL이 유지되는지(drop되지 않았는지) 확인
              pre_parsed = state.get("pre_parsed_url")
-             is_input_url_present = bool((pre_parsed or "").strip())
-
-             # 최종 결과가 SPAM 파생(Type_B 자체도 SPAM)이고 소스 데이터(KISA)의 URL 필드에 값이 존재하면 (URL) 서브타입 지정
-             has_url_subtype = is_input_url_present
+             extracted = final.get("message_extracted_url", "")
+             
+             is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in final.get("reason", "")
+             if is_separated:
+                 # 분홍색 메시지는 엑셀 URL 컬럼이 비어있어도 강제로 추출된 URL을 채워넣으므로 extracted 인정
+                 has_url_candidate = bool((pre_parsed or "").strip()) or bool((extracted or "").strip())
+             else:
+                 # 그 외 일반 메시지는 원래 소스의 URL 존재 여부만 따짐
+                 has_url_candidate = bool((pre_parsed or "").strip())
+             # drop_url이 True면 엑셀(URL 시트)에 저장되지 않으므로 URL 서브타입 제외
+             has_url_subtype = has_url_candidate and not final.get("drop_url", False)
              
              has_sig = bool(final.get("ibse_signature"))
              

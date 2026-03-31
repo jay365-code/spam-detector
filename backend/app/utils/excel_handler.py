@@ -87,18 +87,20 @@ class ExcelHandler:
             except Exception:
                 prob_num = 0.0
 
-            if semantic_val.startswith("Type_A"):
-                rank = 0
-            elif semantic_val.startswith("Type_B"):
-                rank = 1
-            elif "[텍스트 HAM + 악성 URL 분리 감지" in reason_val:
-                rank = 2
-            elif gubun_val.lower() == "o":
-                rank = 3
+            is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in reason_val
+            is_type_b = semantic_val.startswith("Type_B") or "[FP Sentinel Override]" in reason_val
+            is_type_a = semantic_val.startswith("Type_A")
+            is_spam = (gubun_val.lower() == "o")
+            
+            # 색상 그룹핑: 황금색(0) -> 핑크색(1) -> 투명(2/3)
+            if is_separated:
+                rank = 1 # 핑크색
+            elif is_type_a or is_type_b or is_spam:
+                rank = 0 # 황금색
             elif semantic_val.lower() == "ham":
-                rank = 4
+                rank = 2 # 투명 (HAM)
             else:
-                rank = 5
+                rank = 3 # 기타
             
             # 1순위: 메인 그룹(rank)
             # 2순위: 서브타입 명칭 알파벳 정렬 적용 (Type_B 세부분류 등)
@@ -242,17 +244,14 @@ class ExcelHandler:
 
                 cell = ws.cell(row=row_idx, column=msg_col)
                 vcenter_align = Alignment(vertical='center')
-                if gubun_val == "o":  # 일반 SPAM
-                    cell.fill = spam_fill
-                    cell.alignment = vcenter_align
-                elif is_type_b:  # Type_B (FP-Sensitive Spam): 피드백 반영 = #FFCCCC
+                if is_separated: # TEXT-HAM + URL-SPAM
+                    # 사용자 요청: 텍스트 HAM + 악성 URL 분리 감지 오버라이딩은 기존 Type B 처리 방식(FFCCCC) 유지
                     type_b_fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
                     cell.fill = type_b_fill
                     cell.alignment = vcenter_align
-                elif is_separated: # TEXT-HAM + URL-SPAM
-                    # Target fill color FFD1D1 for URL-SPAM from HAM text
-                    pink_fill = PatternFill(start_color="FFD1D1", end_color="FFD1D1", fill_type="solid")
-                    cell.fill = pink_fill
+                elif gubun_val == "o" or is_type_b:  # 일반 SPAM (Type A) & 일반 Type B
+                    # 사용자 요청: 일반 Type B는 Type A와 동일하게 황금색 강조
+                    cell.fill = spam_fill
                     cell.alignment = vcenter_align
                 else:
                     cell.alignment = vcenter_align
@@ -486,8 +485,7 @@ class ExcelHandler:
 
             gubun_col_idx = get_col_idx("구분", len(headers) + 1)
             code_col_idx = get_col_idx("분류", gubun_col_idx + 1)
-            msg_url_col_idx = get_col_idx("메시지 추출 URL", code_col_idx + 1)
-            prob_col_idx = get_col_idx("Probability", msg_url_col_idx + 1)
+            prob_col_idx = get_col_idx("Probability", code_col_idx + 1)
             semantic_col_idx = get_col_idx("Semantic Class", prob_col_idx + 1)
             learning_col_idx = get_col_idx("Learning Label", semantic_col_idx + 1)
             reason_col_idx = get_col_idx("Reason", learning_col_idx + 1)
@@ -553,14 +551,15 @@ class ExcelHandler:
                     semantic_val = result.get("semantic_class", "")
                     is_type_b = str(semantic_val).startswith("Type_B")
                     
-                    if is_type_b:
-                        # Type_B: 구분 공란, 분류 코드는 입력
+                    if is_separated:
+                        # 오버라이딩 된 경우 기존 Type B 처리 방식 (구분 공란)
                         gubun_val = ""
                         raw_val = str(result.get("classification_code", ""))
                         import re
                         match = re.search(r'\d+', raw_val)
                         code_val = match.group(0) if match else raw_val
-                    elif result.get("is_spam") is True:
+                    elif is_type_b or result.get("is_spam") is True:
+                        # 일반 Type B 및 Type A는 구분 "o"
                         gubun_val = "o"
                         raw_val = str(result.get("classification_code", ""))
                         import re
@@ -590,10 +589,6 @@ class ExcelHandler:
                     
                     ws.cell(row=row_idx, column=gubun_col_idx, value=gubun_val)
                     ws.cell(row=row_idx, column=code_col_idx, value=code_val)
-                    
-                    msg_extracted_url_val = result.get("message_extracted_url", "")
-                    ws.cell(row=row_idx, column=msg_url_col_idx, value=self._sanitize_cell_value(msg_extracted_url_val))
-                    
                     ws.cell(row=row_idx, column=prob_col_idx, value=prob_val)
                     ws.cell(row=row_idx, column=semantic_col_idx, value=semantic_val)
                     ws.cell(row=row_idx, column=learning_col_idx, value=learning_val)
@@ -624,7 +619,16 @@ class ExcelHandler:
                             
                             # Use the directly mapped input URL, not regex from message
                             url_val = ws.cell(row=row_idx, column=get_col_idx("URL", len(headers) + 1)).value
-                            urls = [url_val] if url_val else []
+                            url_val_str = str(url_val).strip() if url_val else ""
+                            
+                            is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in str(result.get("reason", ""))
+                            if is_separated and not url_val_str:
+                                # [User Request] 분홍색 메시지(URL 분리감지)는 URL 필드가 없어도 강제로 채움
+                                url_val_str = result.get("message_extracted_url", "")
+                                url_col_idx = get_col_idx("URL", len(headers) + 1)
+                                ws.cell(row=row_idx, column=url_col_idx, value=self._sanitize_cell_value(url_val_str))
+                                
+                            urls = [url_val_str] if url_val_str else []
                         
                         for url in urls:
                             # Clean URL
@@ -826,7 +830,7 @@ class ExcelHandler:
             ws.title = "육안분석(시뮬결과35_150)"
             
             # Define Headers
-            headers = ["메시지", "URL", "메시지 추출 URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Learning Label", "Reason"]
+            headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Learning Label", "Reason"]
             ws.append(headers)
             
             # Styling
@@ -895,13 +899,17 @@ class ExcelHandler:
                     semantic_class = result.get("semantic_class", "")
                     is_type_b = str(semantic_class).startswith("Type_B")
                     
-                    if is_type_b:
-                        # Type_B: 구분 공란, 분류 코드 입력
+                    reason_val = result.get("reason", "")
+                    is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in str(reason_val)
+                    
+                    if is_separated:
+                        # 오버라이딩 된 경우 기존 Type B 처리 방식 (구분 공란)
                         gubun_val = ""
                         raw_code = str(result.get("classification_code", ""))
                         match = re.search(r'\d+', raw_code)
                         code_val = match.group(0) if match else raw_code
-                    elif is_spam is True:
+                    elif is_type_b or is_spam is True:
+                        # 일반 Type B 및 Type A는 구분 "o" 통일
                         gubun_val = "o"
                         raw_code = str(result.get("classification_code", ""))
                         match = re.search(r'\d+', raw_code)
@@ -933,13 +941,16 @@ class ExcelHandler:
                         url_val = ""
                         url_len = 0
                     
-                    msg_ext_val = result.get("message_extracted_url", "")
+                    is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in str(reason_val)
+                    if is_separated and not url_val:
+                        # [User Request] 분홍색 분리감지 케이스만 수동으로 URL 컬럼에 강제 오버라이딩
+                        url_val = result.get("message_extracted_url", "")
+                        url_len = self._lenb(url_val)
                     
                     # Write Row
                     ws.append([
                         self._sanitize_cell_value(msg_val), 
                         self._sanitize_cell_value(url_val), 
-                        self._sanitize_cell_value(msg_ext_val), 
                         self._sanitize_cell_value(gubun_val), 
                         self._sanitize_cell_value(code_val), 
                         msg_len, 
@@ -954,7 +965,7 @@ class ExcelHandler:
                     # Only collect URLs from SPAM messages or extracted from HAM
                     # drop_url이 True인 경우 (위장 URL, 가비지 URL 등) 중복제거 시트에서도 완벽히 배제
                     if (result.get("is_spam") is True or result.get("malicious_url_extracted")) and not result.get("drop_url"):
-                        target_url = original_data["url"].strip() if original_data["url"] else ""
+                        target_url = url_val
                         # --- [UI vs KISA Export Separation] ---
                         # 도메인 난독화로 추출된 URL은 엑셀(UI 표시용)에는 로깅하되,
                         # KISA 전송용 URL 텍스트파일(차단기 IP 연동용)에서는 제외해야 함
