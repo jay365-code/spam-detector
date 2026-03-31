@@ -91,11 +91,11 @@ class ExcelHandler:
             except ValueError:
                 return None
                 
+        msg_col_idx = get_col_idx("메시지")
+        url_col_idx = get_col_idx("URL")
         gubun_col_idx = get_col_idx("구분")
         reason_col_idx = get_col_idx("Reason")
         semantic_col_idx = get_col_idx("Semantic Class")
-        code_col_idx = get_col_idx("분류")
-        prob_col_idx = get_col_idx("Probability")
         
         # 모든 데이터 행 읽기 (헤더 제외)
         data_rows = []
@@ -105,21 +105,21 @@ class ExcelHandler:
                 row_data.append(ws.cell(row=row_idx, column=col_idx).value)
             data_rows.append(row_data)
         
-        # 그룹핑 및 정렬 기준 키
-        def sort_key(row):
-            def safe_get(idx):
-                return str(row[idx - 1] if idx and len(row) >= idx else "").strip()
-
-            semantic_val = safe_get(semantic_col_idx)
-            reason_val = safe_get(reason_col_idx)
-            gubun_val = safe_get(gubun_col_idx)
-            code_val = safe_get(code_col_idx)
-            prob_str = safe_get(prob_col_idx)
+        # 정렬 기준 안전 변환 함수
+        def safe_get(row, idx):
+            return str(row[idx - 1] if idx and len(row) >= idx else "").strip()
             
-            try:
-                prob_num = float(prob_str.replace("%", ""))
-            except Exception:
-                prob_num = 0.0
+        # 1. 3순위 정렬: 메시지 기준 오름차순 (A -> Z가나다)
+        data_rows.sort(key=lambda r: safe_get(r, msg_col_idx))
+        
+        # 2. 2순위 정렬: URL 기준 내림차순 (Z -> A)
+        data_rows.sort(key=lambda r: safe_get(r, url_col_idx), reverse=True)
+        
+        # 3. 1순위 정렬: 배경색(메인 그룹 랭크) 기준 오름차순 (0->1->2->3)
+        def rank_key(row):
+            semantic_val = safe_get(row, semantic_col_idx)
+            reason_val = safe_get(row, reason_col_idx)
+            gubun_val = safe_get(row, gubun_col_idx)
 
             is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in reason_val
             is_type_b = semantic_val.startswith("Type_B") or "[FP Sentinel Override]" in reason_val
@@ -128,21 +128,16 @@ class ExcelHandler:
             
             # 색상 그룹핑: 황금색(0) -> 핑크색(1) -> 투명(2/3)
             if is_separated:
-                rank = 1 # 핑크색
+                return 1 # 핑크색
             elif is_type_a or is_type_b or is_spam:
-                rank = 0 # 황금색
+                return 0 # 황금색
             elif semantic_val.lower() == "ham":
-                rank = 2 # 투명 (HAM)
+                return 2 # 투명 (HAM)
             else:
-                rank = 3 # 기타
-            
-            # 1순위: 메인 그룹(rank)
-            # 2순위: 서브타입 명칭 알파벳 정렬 적용 (Type_B 세부분류 등)
-            # 3순위: 분류 코드 라벨 (도박, 대출 등 끼리 모으기)
-            # 4순위: 스팸 확률 (높은 순서대로 정렬)
-            return (rank, semantic_val, code_val, -prob_num)
+                return 3 # 기타
+
+        data_rows.sort(key=rank_key)
         
-        data_rows.sort(key=sort_key)
         
         # 정렬된 데이터로 다시 쓰기
         for i, row_data in enumerate(data_rows):
