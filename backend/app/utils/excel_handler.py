@@ -10,6 +10,40 @@ from openpyxl.utils import get_column_letter
 logger = logging.getLogger(__name__)
 
 class ExcelHandler:
+    def __init__(self):
+        self.shortener_domains = self._load_shortener_domains()
+        
+    def _load_shortener_domains(self) -> set:
+        # 기본 하드코딩된 단축 도메인 세트
+        domains = {
+            "bit.ly", "goo.gl", "tinyurl.com", "ow.ly", "t.co", 
+            "is.gd", "buff.ly", "adf.ly", "bit.do", "mcaf.ee", 
+            "me2.do", "kakaolink.com", "buly.kr", 
+            "vo.la", "url.kr", "zrr.kr", "yun.kr", "han.gl",
+            "shorter.me", "shrl.me", "link24.kr", "myip.kr",
+            "sbz.kr", "tne.kr", "dokdo.in", "uto.kr",
+            "rb.gy", "short.io", "dub.co", "bl.ink", "tiny.cc", 
+            "t.ly", "tr.ee", "reurl.kr", "abit.ly", "blow.pw", 
+            "c11.kr", "di.do", "koe.kr", "lrl.kr", "muz.so", 
+            "t2m.kr", "ouo.io", "adfoc.us",
+            "ii.ad", "vvd.bz", "gooal.kr", "ko.gl", "qrco.de", "linktr.ee",
+            "goo.su", "cogi.cc", "shorturl.at", "iii.ad"
+        }
+        
+        # 외부 클론잡 동작용 txt 파일이 존재하면 정적으로 병합 구성
+        try:
+            list_path = os.path.join(os.path.dirname(__file__), "shorteners_list.txt")
+            if os.path.exists(list_path):
+                with open(list_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip().lower()
+                        if line and not line.startswith("#"):
+                            domains.add(line)
+        except Exception as e:
+            logger.warning(f"Failed to load shorteners_list.txt: {e}")
+            
+        return domains
+
     def _lenb(self, text: str) -> int:
         """Calculate byte length for CP949 encoding (Korean standard)."""
         if not isinstance(text, str):
@@ -263,35 +297,16 @@ class ExcelHandler:
         """
         if not url: return False
         
-        # Common Shortener Domains (Korean & Global)
-        shortener_domains = [
-            # 기존 글로벌/초기등록
-            "bit.ly", "goo.gl", "tinyurl.com", "ow.ly", "t.co", 
-            "is.gd", "buff.ly", "adf.ly", "bit.do", "mcaf.ee", 
-            # 기존 한국/포털/많이쓰이는사설
-            "me2.do", "kakaolink.com", "buly.kr", 
-            "vo.la", "url.kr", "zrr.kr", "yun.kr", "han.gl",
-            "shorter.me", "shrl.me", "link24.kr", "myip.kr",
-            "sbz.kr", "tne.kr", "dokdo.in", "uto.kr",
-            # 신규 검색 추가 (글로벌/한국/수익형)
-            "rb.gy", "short.io", "dub.co", "bl.ink", "tiny.cc", 
-            "t.ly", "tr.ee", "reurl.kr", "abit.ly", "blow.pw", 
-            "c11.kr", "di.do", "koe.kr", "lrl.kr", "muz.so", 
-            "t2m.kr", "ouo.io", "adfoc.us",
-            # 최근 스팸 다발 단축 도메인 (피드백 반영, 카카오/네이버/밴드는 일반 URL로 취급)
-            "ii.ad", "vvd.bz", "gooal.kr", "ko.gl", "qrco.de", "linktr.ee"
-        ]
-        
         try:
             # Simple domain extraction for check
             # Remove protocol
             clean_url = re.sub(r'^https?://', '', url.lower())
             clean_url = re.sub(r'^www\.', '', clean_url)
             
-            for domain in shortener_domains:
-                if clean_url.startswith(domain):
-                    return True
-            return False
+            # Extract just the host part (before / or ? or :)
+            host = clean_url.split('/')[0].split('?')[0].split(':')[0]
+            
+            return host in self.shortener_domains
         except:
             return False
 
