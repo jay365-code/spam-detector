@@ -187,7 +187,8 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 if p and is_url_in_message(p, raw_msg, decoded_text):
                     valid_extracted_urls.add(p)
                     
-        for attempt in u_details.get("attempted_urls", []):
+        attempted_list = u_details.get("attempted_urls") or []
+        for attempt in attempted_list:
             if attempt and is_url_in_message(attempt, raw_msg, decoded_text):
                 clean = attempt.replace("http://", "").replace("https://", "").strip().rstrip("/")
                 if clean:
@@ -195,8 +196,11 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                     
         # 2. Content Agent가 찾은 복원 URL(난독화) 검증
         c_obfuscated = c_res.get("obfuscated_urls") if c_res else []
-        if isinstance(c_obfuscated, str): 
+        if not c_obfuscated:
+            c_obfuscated = []
+        elif isinstance(c_obfuscated, str): 
             c_obfuscated = [c_obfuscated]
+            
         for p in c_obfuscated:
             p = str(p).strip()
             if p and is_url_in_message(p, raw_msg, decoded_text):
