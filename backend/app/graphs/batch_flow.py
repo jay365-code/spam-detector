@@ -150,6 +150,9 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         # URL Agent의 판결을 적용하기 전에, 추출된 URL이 실제로 본문에 존재하는지 먼저 검증
         import urllib.parse
         import re
+        
+        fake_ips_detected = set()
+        
         def is_url_in_message(url_str, original_msg, decoded_tmp):
             test_url = url_str if "://" in url_str else "http://" + url_str
             try:
@@ -161,6 +164,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                     return False
                 # IP 주소 형태 배제 (오탐 방지)
                 if re.match(r'^\d{1,3}(\.\d{1,3}){3}$', domain_parts):
+                    fake_ips_detected.add(domain_parts)
                     return False
                 # KISA 입력 파라미터 보존
                 pre_parsed = state.get("pre_parsed_url")
@@ -198,7 +202,12 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
             if p and is_url_in_message(p, raw_msg, decoded_text):
                 valid_extracted_urls.add(p)
                 
-        # 환각으로 인해 유효 URL이 "전혀" 없다면 URL Agent의 결과(u_res)를 기각
+        # 환각이나 검열로 인해 최종적으로 남은 유효 URL이 "전혀" 없다면 URL Agent의 결과(u_res) 기각.
+        # 단, 파기하기 전에 가짜 IP로 식별되었다면 원본 URL(pre_parsed_url 등) 삭제 명령 하달
+        if fake_ips_detected and not valid_extracted_urls:
+            final["drop_url"] = True
+            final["drop_url_reason"] = "fake_ip"
+            
         # (텍스트형 스팸이 Red Group으로 오분류되는 걸 차단)
         if not valid_extracted_urls:
             u_res = {}
