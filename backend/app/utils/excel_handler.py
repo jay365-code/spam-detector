@@ -175,7 +175,6 @@ class ExcelHandler:
         msg_len_col = get_col_idx("메시지 길이")
         prob_col = get_col_idx("Probability")
         semantic_col = get_col_idx("Semantic Class")
-        learning_col = get_col_idx("Learning Label")
         reason_col = get_col_idx("Reason")
         
         # 컬럼 너비 설정
@@ -189,8 +188,6 @@ class ExcelHandler:
             ws.column_dimensions[get_column_letter(prob_col)].width = 10
         if semantic_col:
             ws.column_dimensions[get_column_letter(semantic_col)].width = 15
-        if learning_col:
-            ws.column_dimensions[get_column_letter(learning_col)].width = 15
         if reason_col:
             ws.column_dimensions[get_column_letter(reason_col)].width = 90
         
@@ -245,8 +242,6 @@ class ExcelHandler:
             # 신규 컬럼 중앙 정렬
             if semantic_col:
                 ws.cell(row=row_idx, column=semantic_col).alignment = center_align
-            if learning_col:
-                ws.cell(row=row_idx, column=learning_col).alignment = center_align
 
             # 메시지 길이 및 URL 길이 중앙 정렬
             if msg_len_col:
@@ -502,8 +497,7 @@ class ExcelHandler:
             code_col_idx = get_col_idx("분류", gubun_col_idx + 1)
             prob_col_idx = get_col_idx("Probability", code_col_idx + 1)
             semantic_col_idx = get_col_idx("Semantic Class", prob_col_idx + 1)
-            learning_col_idx = get_col_idx("Learning Label", semantic_col_idx + 1)
-            reason_col_idx = get_col_idx("Reason", learning_col_idx + 1)
+            reason_col_idx = get_col_idx("Reason", semantic_col_idx + 1)
             in_token_col_idx = get_col_idx("In_Token", reason_col_idx + 1)
             out_token_col_idx = get_col_idx("Out_Token", in_token_col_idx + 1)
 
@@ -597,7 +591,6 @@ class ExcelHandler:
                         extracted_url_code = m_ext.group(0) if m_ext else raw_ext_code
                     prob_val = result.get("spam_probability", 0.0)
                     semantic_val = result.get("semantic_class", "")
-                    learning_val = result.get("learning_label", "")
                     reason_val = result.get("reason", "")
                     in_token_val = result.get("input_tokens", 0)
                     out_token_val = result.get("output_tokens", 0)
@@ -606,7 +599,6 @@ class ExcelHandler:
                     ws.cell(row=row_idx, column=code_col_idx, value=code_val)
                     ws.cell(row=row_idx, column=prob_col_idx, value=prob_val)
                     ws.cell(row=row_idx, column=semantic_col_idx, value=semantic_val)
-                    ws.cell(row=row_idx, column=learning_col_idx, value=learning_val)
                     ws.cell(row=row_idx, column=reason_col_idx, value=reason_val)
                     ws.cell(row=row_idx, column=in_token_col_idx, value=in_token_val)
                     ws.cell(row=row_idx, column=out_token_col_idx, value=out_token_val)
@@ -845,7 +837,7 @@ class ExcelHandler:
             ws.title = "육안분석(시뮬결과35_150)"
             
             # Define Headers
-            headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Learning Label", "Reason"]
+            headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Reason"]
             ws.append(headers)
             
             # Styling
@@ -944,7 +936,6 @@ class ExcelHandler:
                     prob_val = f"{int(prob_float * 100)}%"
                     
                     semantic_val = result.get("semantic_class", "")
-                    learning_val = result.get("learning_label", "")
                     reason_val = result.get("reason", "")
                     
                     # Lengths
@@ -972,7 +963,6 @@ class ExcelHandler:
                         url_len, 
                         self._sanitize_cell_value(prob_val),
                         self._sanitize_cell_value(semantic_val),
-                        self._sanitize_cell_value(learning_val),
                         self._sanitize_cell_value(reason_val)
                     ])
                     
