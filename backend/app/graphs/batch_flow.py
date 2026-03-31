@@ -126,48 +126,67 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         # [Frontend UI Hint] 전달된 KISA 입력 URL 파라미터 보존
         final["pre_parsed_url"] = state.get("pre_parsed_url")
         
-        # 1. URL Override Logic (Chat mode와 동일한 로직)
-        # Bidirectional Override: URL 결과에 따라 Content 판정을 수정할 수 있음
+        # 1. URL Override Logic 및 Red Group(분리 감지) 조건 평가
+        # [User Request 조건]
+        # 1) content 햄 + URL 스팸
+        # 2) 전체적인 의도는 스팸(Type B) + content 햄유사(명시적 악의 없음) + url(스팸 or inconclusive)
+        
+        c_is_spam = final.get("is_spam")
+        existing_reason = final.get("reason", "")
+        signals = final.get("signals", {})
+        
+        # content 햄 여부 파악: 실제 판정이 HAM이거나, 
+        # SPAM 판정이라도 본문이 모호/은닉되어 텍스트 자체는 HAM에 가까운 Type B 시그널이 켜진 경우
+        is_pure_content_ham = not c_is_spam
+        is_type_b_but_ham_text = False
+        if c_is_spam and (signals.get("is_vague_cta") or signals.get("is_impersonation") or signals.get("is_normal_layout")):
+            is_type_b_but_ham_text = True
+            
         if u_res:
-             final["url_result"] = u_res  # Keep the data
+             final["url_result"] = u_res
              
              url_is_spam = u_res.get("is_spam")
              reason_lower = u_res.get("reason", "").lower()
              is_inconclusive = any(x in reason_lower for x in ["error", "inconclusive", "insufficient", "image only", "no url found", "no url extracted", "no url to scrape"])
-             existing_reason = final.get("reason", "")
-             content_code = final.get("classification_code")
              
-             if is_inconclusive:
-                 # Inconclusive -> Trust Content Verdict (no override)
-                 url_reason_text = u_res.get('reason', '')
-                 if 'All URLs scanned' in url_reason_text:
-                     final["reason"] = f"{existing_reason} | [URL: Inconclusive ({url_reason_text})]"
-                 else:
-                     final["reason"] = f"{existing_reason} | [URL: Suspected but Inconclusive ({url_reason_text})]"
-             elif url_is_spam:
-                 url_reason = u_res.get("reason", "Malicious URL detected")
-                 url_code = u_res.get("classification_code")
+             url_code = u_res.get("classification_code")
+             url_reason = u_res.get("reason", "")
+             
+             # Red Group (붉은색 채우기) 발동 여부 검사
+             url_not_ham = url_is_spam or is_inconclusive
+             force_red_group = False
+             
+             if is_pure_content_ham and url_is_spam:
+                 force_red_group = True
+             elif is_type_b_but_ham_text and url_not_ham:
+                 force_red_group = True
                  
-                 if final.get("is_spam") is True:
-                     # Case 1: Content(SPAM) + URL(SPAM) -> SPAM 유지, URL 코드/이유 추가
+             if force_red_group:
+                 # 붉은색 채우기 그룹 특수 처리 로직 (CNN 학습 오탐 방지)
+                 final["is_spam"] = False
+                 final["reason"] = f"{existing_reason} | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 ({url_reason[:30]})]"
+                 final["malicious_url_extracted"] = True
+                 final["url_spam_code"] = url_code
+             else:
+                 # Red Group에 해당하지 않는 경우의 기존 처리
+                 if is_inconclusive:
+                     # Inconclusive -> Trust Content Verdict
+                     if 'All URLs scanned' in url_reason:
+                         final["reason"] = f"{existing_reason} | [URL: Inconclusive ({url_reason})]"
+                     else:
+                         final["reason"] = f"{existing_reason} | [URL: Suspected but Inconclusive ({url_reason})]"
+                 elif url_is_spam:
+                     # Case 1: Content(SPAM 강성) + URL(SPAM) -> SPAM 유지, URL 코드 추가
                      final["spam_probability"] = u_res.get("spam_probability", 0.95)
                      final["reason"] = f"{existing_reason} | [URL SPAM: {url_reason}]"
                      if url_code and str(url_code) != "0":
                          final["classification_code"] = url_code
                  else:
-                     # Case 2: Content(HAM) + URL(SPAM) -> HAM 반환, 대신 [텍스트 HAM + 악성 URL] 특수 처리
-                     # [User Request] 메시지 자체(텍스트)는 HAM이므로 덮어쓰지 않고 HAM을 유지한다. (오탐 학습 방지)
-                     # 단, 엑셀/DB 저장을 위해 '악성 URL 추출됨' 특수 플래그를 넘긴다.
-                     final["is_spam"] = False
-                     final["reason"] = f"{existing_reason} | [텍스트 HAM + 악성 URL 분리 감지: {url_reason}]"
-                     final["malicious_url_extracted"] = True
-                     final["url_spam_code"] = url_code # URL 추출본 시트에 저장할 용도
-             else:
-                 # Case 3: URL(Safe) -> 만약 Content가 SPAM이었다 하더라도 Override하여 HAM 확정
-                 if final.get("is_spam"):
-                     final["is_spam"] = False
-                     final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE (Override)]"
-                     # Do NOT wipe final["classification_code"] to preserve Content Agent's original intent
+                     # Case 3: URL(Safe) -> 만약 Content가 SPAM이었다 하더라도 Override하여 HAM 확정
+                     if final.get("is_spam"):
+                         final["is_spam"] = False
+                         final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE (Override)]"
+                         # Do NOT wipe final["classification_code"] to preserve Content Agent's original intent
 
         # Ensure malicious_url_extracted is explicitly in the final dict if set
         if "malicious_url_extracted" in final and final["malicious_url_extracted"] is True:
