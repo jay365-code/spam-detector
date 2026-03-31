@@ -135,17 +135,8 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         existing_reason = final.get("reason", "")
         signals = final.get("signals", {})
         
-        # content 햄 여부 파악: 실제 판정이 HAM이거나, 
-        # SPAM 판정이라도 본문이 모호(is_vague_cta)하거나 일상적인 안부(is_personal_lure) 등 
-        # 텍스트 자체는 HAM에 가까운 Type B 시그널이 켜진 경우에만 분리 감지 대상으로 산정.
+        # content 햄 여부 파악: 실제 판정이 HAM인 경우에만 분리 감지 대상으로 산정.
         is_pure_content_ham = not c_is_spam
-        is_type_b_but_ham_text = False
-        if c_is_spam:
-            has_ham_like_signal = signals.get("is_vague_cta", False) or signals.get("is_personal_lure", False)
-            has_spam_like_signal = signals.get("is_garbage_obfuscation", False) or signals.get("is_impersonation", False)
-            if has_ham_like_signal and not has_spam_like_signal:
-                is_type_b_but_ham_text = True
-                
         # --- [NEW] 사전 AI 환각 URL 무결성 필터 ---
         # URL Agent의 판결을 적용하기 전에, 추출된 URL이 실제로 본문에 존재하는지 먼저 검증
         import urllib.parse
@@ -227,18 +218,21 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              url_reason = u_res.get("reason", "")
              
              # Red Group (붉은색 채우기) 발동 여부 검사
-             url_not_ham = url_is_spam or is_inconclusive
+             # [수정] Red Group 판정은 KISA 원본(입력 파라미터)에 URL 필드가 명시적으로 존재할 때만 발동
+             has_input_url = bool(state.get("pre_parsed_url"))
+             
              force_red_group = False
              
-             if is_pure_content_ham and url_is_spam:
+             # Case 1: 완전 정상 텍스트 + 악성 단검(URL)
+             if has_input_url and is_pure_content_ham and url_is_spam:
                  force_red_group = True
-             elif is_type_b_but_ham_text and url_not_ham:
-                 force_red_group = True
+                 
+             # Case 2: 은밀한 미끼 + 불량 URL (사용자 요청에 의해 삭제)
                  
              if force_red_group:
                  # 붉은색 채우기 그룹 특수 처리 로직 (CNN 학습 오탐 방지)
                  final["is_spam"] = False
-                 final["reason"] = f"{existing_reason} | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 ({url_reason[:30]})]"
+                 final["reason"] = f"{existing_reason} | [텍스트 HAM + 악성 URL 분리 감지: 단순 URL 스팸 강제격리 ({url_reason[:30]})]"
                  final["malicious_url_extracted"] = True
                  final["url_spam_code"] = url_code
              else:
