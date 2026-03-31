@@ -199,20 +199,56 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              final["malicious_url_extracted"] = True
 
         # Extract URL purely from text (for Excel & UI reporting)
-        extracted_from_text = ""
+        # [User Request] AI가 추측/생성한 도메인(예: un.com)을 Excel에 기록하지 않도록 방지
+        import urllib.parse
+        import re
+        def is_url_in_message(url_str, original_msg, decoded_tmp):
+            test_url = url_str if "://" in url_str else "http://" + url_str
+            try:
+                parsed = urllib.parse.urlparse(test_url)
+                domain_parts = parsed.netloc.lower().split(':')[0]
+                if domain_parts.startswith("www."):
+                    domain_parts = domain_parts[4:]
+                if not domain_parts:
+                    return False
+                # IP 주소 형태 배제 (오탐 방지)
+                if re.match(r'^\d{1,3}(\.\d{1,3}){3}$', domain_parts):
+                    return False
+                return (domain_parts in original_msg.lower()) or (domain_parts in decoded_tmp.lower())
+            except Exception:
+                return False
+
+        raw_msg = state.get("message", "")
+        decoded_text = (state.get("s1_result") or {}).get("decoded_text", "")
+        
+        valid_extracted_urls = set()
+        
+        # 1. URL Agent가 식별한 URL들
         u_details = u_res.get("details", {}) if u_res else {}
-        extracted_for_check = str(u_details.get("extracted_url") or "").strip()
-        if extracted_for_check and extracted_for_check.lower() != "none":
-            extracted_from_text = extracted_for_check
-            
+        base_ext = str(u_details.get("extracted_url") or "").strip()
+        if base_ext and base_ext.lower() != "none":
+            for p in base_ext.split(","):
+                p = p.strip()
+                if p and is_url_in_message(p, raw_msg, decoded_text):
+                    valid_extracted_urls.add(p)
+
+        # Attempted URLs에서 유효 URL 긁어오기 (ContentAgent 값에 의해 덮어씌워지는 것 방어)
+        for attempt in u_details.get("attempted_urls", []):
+            if attempt and is_url_in_message(attempt, raw_msg, decoded_text):
+                clean = attempt.replace("http://", "").replace("https://", "").strip().rstrip("/")
+                if clean:
+                    valid_extracted_urls.add(clean)
+
+        # 2. Content Agent가 찾은 복원 URL들 (난독화)
         c_obfuscated = c_res.get("obfuscated_urls") if c_res else []
-        if c_obfuscated:
-            if isinstance(c_obfuscated, list):
-                extracted_from_text = ", ".join(c_obfuscated)
-            else:
-                extracted_from_text = str(c_obfuscated)
-                
-        final["message_extracted_url"] = extracted_from_text
+        if isinstance(c_obfuscated, str): 
+            c_obfuscated = [c_obfuscated]
+        for p in c_obfuscated:
+            p = str(p).strip()
+            if p and is_url_in_message(p, raw_msg, decoded_text):
+                valid_extracted_urls.add(p)
+
+        final["message_extracted_url"] = ", ".join(sorted(list(valid_extracted_urls)))
 
         # 2. Add IBSE Info
         if i_res:
