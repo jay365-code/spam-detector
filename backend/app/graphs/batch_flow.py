@@ -138,7 +138,6 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         # content 햄 여부 파악: 실제 판정이 HAM이거나, 
         # SPAM 판정이라도 본문이 모호(is_vague_cta)하거나 일상적인 안부(is_personal_lure) 등 
         # 텍스트 자체는 HAM에 가까운 Type B 시그널이 켜진 경우에만 분리 감지 대상으로 산정.
-        # (is_impersonation이나 is_garbage_obfuscation, is_normal_layout은 스팸성 텍스트를 포함하므로 제외)
         is_pure_content_ham = not c_is_spam
         is_type_b_but_ham_text = False
         if c_is_spam:
@@ -146,6 +145,63 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
             has_spam_like_signal = signals.get("is_garbage_obfuscation", False) or signals.get("is_impersonation", False)
             if has_ham_like_signal and not has_spam_like_signal:
                 is_type_b_but_ham_text = True
+                
+        # --- [NEW] 사전 AI 환각 URL 무결성 필터 ---
+        # URL Agent의 판결을 적용하기 전에, 추출된 URL이 실제로 본문에 존재하는지 먼저 검증
+        import urllib.parse
+        import re
+        def is_url_in_message(url_str, original_msg, decoded_tmp):
+            test_url = url_str if "://" in url_str else "http://" + url_str
+            try:
+                parsed = urllib.parse.urlparse(test_url)
+                domain_parts = parsed.netloc.lower().split(':')[0]
+                if domain_parts.startswith("www."):
+                    domain_parts = domain_parts[4:]
+                if not domain_parts:
+                    return False
+                # IP 주소 형태 배제 (오탐 방지)
+                if re.match(r'^\d{1,3}(\.\d{1,3}){3}$', domain_parts):
+                    return False
+                # KISA 입력 파라미터 보존
+                pre_parsed = state.get("pre_parsed_url")
+                if pre_parsed and domain_parts in pre_parsed.lower():
+                    return True
+                return (domain_parts in original_msg.lower()) or (domain_parts in decoded_tmp.lower())
+            except Exception:
+                return False
+
+        raw_msg = state.get("message", "")
+        decoded_text = (state.get("s1_result") or {}).get("decoded_text", "")
+        valid_extracted_urls = set()
+        
+        # 1. URL Agent가 식별한 URL 검증
+        u_details = u_res.get("details", {}) if u_res else {}
+        base_ext = str(u_details.get("extracted_url") or "").strip()
+        if base_ext and base_ext.lower() != "none":
+            for p in base_ext.split(","):
+                p = p.strip()
+                if p and is_url_in_message(p, raw_msg, decoded_text):
+                    valid_extracted_urls.add(p)
+                    
+        for attempt in u_details.get("attempted_urls", []):
+            if attempt and is_url_in_message(attempt, raw_msg, decoded_text):
+                clean = attempt.replace("http://", "").replace("https://", "").strip().rstrip("/")
+                if clean:
+                    valid_extracted_urls.add(clean)
+                    
+        # 2. Content Agent가 찾은 복원 URL(난독화) 검증
+        c_obfuscated = c_res.get("obfuscated_urls") if c_res else []
+        if isinstance(c_obfuscated, str): 
+            c_obfuscated = [c_obfuscated]
+        for p in c_obfuscated:
+            p = str(p).strip()
+            if p and is_url_in_message(p, raw_msg, decoded_text):
+                valid_extracted_urls.add(p)
+                
+        # 환각으로 인해 유효 URL이 "전혀" 없다면 URL Agent의 결과(u_res)를 기각
+        # (텍스트형 스팸이 Red Group으로 오분류되는 걸 차단)
+        if not valid_extracted_urls:
+            u_res = {}
             
         if u_res:
              final["url_result"] = u_res
@@ -197,56 +253,6 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         if "malicious_url_extracted" in final and final["malicious_url_extracted"] is True:
              # Ensure the value is properly returned
              final["malicious_url_extracted"] = True
-
-        # Extract URL purely from text (for Excel & UI reporting)
-        # [User Request] AI가 추측/생성한 도메인(예: un.com)을 Excel에 기록하지 않도록 방지
-        import urllib.parse
-        import re
-        def is_url_in_message(url_str, original_msg, decoded_tmp):
-            test_url = url_str if "://" in url_str else "http://" + url_str
-            try:
-                parsed = urllib.parse.urlparse(test_url)
-                domain_parts = parsed.netloc.lower().split(':')[0]
-                if domain_parts.startswith("www."):
-                    domain_parts = domain_parts[4:]
-                if not domain_parts:
-                    return False
-                # IP 주소 형태 배제 (오탐 방지)
-                if re.match(r'^\d{1,3}(\.\d{1,3}){3}$', domain_parts):
-                    return False
-                return (domain_parts in original_msg.lower()) or (domain_parts in decoded_tmp.lower())
-            except Exception:
-                return False
-
-        raw_msg = state.get("message", "")
-        decoded_text = (state.get("s1_result") or {}).get("decoded_text", "")
-        
-        valid_extracted_urls = set()
-        
-        # 1. URL Agent가 식별한 URL들
-        u_details = u_res.get("details", {}) if u_res else {}
-        base_ext = str(u_details.get("extracted_url") or "").strip()
-        if base_ext and base_ext.lower() != "none":
-            for p in base_ext.split(","):
-                p = p.strip()
-                if p and is_url_in_message(p, raw_msg, decoded_text):
-                    valid_extracted_urls.add(p)
-
-        # Attempted URLs에서 유효 URL 긁어오기 (ContentAgent 값에 의해 덮어씌워지는 것 방어)
-        for attempt in u_details.get("attempted_urls", []):
-            if attempt and is_url_in_message(attempt, raw_msg, decoded_text):
-                clean = attempt.replace("http://", "").replace("https://", "").strip().rstrip("/")
-                if clean:
-                    valid_extracted_urls.add(clean)
-
-        # 2. Content Agent가 찾은 복원 URL들 (난독화)
-        c_obfuscated = c_res.get("obfuscated_urls") if c_res else []
-        if isinstance(c_obfuscated, str): 
-            c_obfuscated = [c_obfuscated]
-        for p in c_obfuscated:
-            p = str(p).strip()
-            if p and is_url_in_message(p, raw_msg, decoded_text):
-                valid_extracted_urls.add(p)
 
         final["message_extracted_url"] = ", ".join(sorted(list(valid_extracted_urls)))
 
