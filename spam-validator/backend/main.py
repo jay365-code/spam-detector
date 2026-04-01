@@ -395,10 +395,15 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
             "match_status": match_status
         })
 
-    # Generate Type B List
+    # Generate Red Group List (순수 URL 분리 오탐 방지 군)
     type_b_items = []
 
-    type_b_df = df_l[(df_l['semantic_class'].str.startswith("Type_B", na=False)) & (df_l['is_spam'] == False)]
+    # Red Group: 텍스트는 HAM, URL만 악성인 특수 케이스
+    mask_red_group = (
+        df_l['semantic_class'].str.startswith("Type_B", na=False) & 
+        (df_l['reason'].str.contains(r'악성 URL 탐지|텍스트 HAM', na=False, regex=True))
+    )
+    type_b_df = df_l[mask_red_group]
     for _, row in type_b_df.iterrows():
         # Get URL if it exists
         extracted_url = str(row['URL']) if 'URL' in row and pd.notna(row['URL']) else ""
@@ -427,7 +432,7 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
 
     # Generate Type A List
     type_a_items = []
-    type_a_df = df_l[df_l['is_spam'] == True]
+    type_a_df = df_l[(df_l['is_spam'] == True) & (~mask_red_group)]
     for _, row in type_a_df.iterrows():
         type_a_items.append({
             "message_preview": str(row['메시지'])[:80] + "...",
@@ -508,14 +513,22 @@ async def export_diff(request: ExportDiffRequest):
             
         diff_items = []
         for idx, d in enumerate(request.human_based_diffs):
+            is_llm_spam = d.get("llm_is_spam")
+            llm_reason = str(d.get("llm_reason", ""))
+            
+            # 순수 Red Group 조건: 텍스트는 정상인데 URL 때문에 Type_B 로 넘어온 경우
+            is_red_group = is_llm_spam is True and str(d.get("llm_semantic_class", "")).startswith("Type_B") and ("악성 URL 탐지" in llm_reason or "텍스트 HAM" in llm_reason)
+            
             llm_val = "누락"
-            if d.get("llm_is_spam") is True:
+            if is_red_group:
+                llm_val = ""  # Red Group (URL 단독 악성)은 엑셀 'AI 판단' 컬럼을 빈칸 처리
+            elif is_llm_spam is True:
                 sem_class = d.get("llm_semantic_class", "").replace("_", " ") # "Type_A" -> "Type A"
                 if sem_class:
                     llm_val = f"SPAM: {sem_class}"
                 else:
                     llm_val = "SPAM"
-            elif d.get("llm_is_spam") is False:
+            elif is_llm_spam is False:
                 llm_val = "HAM"
             
             m_status = d.get("match_status", "")
