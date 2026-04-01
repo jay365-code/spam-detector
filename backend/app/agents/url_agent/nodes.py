@@ -203,12 +203,17 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
         - 증거가 없다면 무조건 HAM 유지: 스크린샷이 뉴스 기사, 언론사, 유튜브, 정치 캠페인, 일반 쇼핑몰, 빈 페이지, 404 에러 화면 등 명시적인 불법 스팸 텍스트/이미지가 없는 정상 혹은 판단 불가(Inconclusive) 뷰라면, 그것이 조잡해 보이거나 SMS 맥락과 어긋나더라도 무조건 **HAM** (또는 Content Agent 판단 유지) 처리하십시오.
         - 환각(Hallucination) 및 우회(Evasion) 가설 엄격 통제: "이 정상적인 뉴스 페이지는 차단을 피하기 위한 위장용 미끼일 것이다", "이 소규모 쇼핑몰은 사업자 번호가 안 보이니 사기일 것이다"라는 일체의 주관적인 추리를 절대로 금지합니다. 물리적 증거가 없으면 무조건 HAM입니다.
 
+        **[안전성 확정 (CONFIRMED SAFE) 기준]**
+        "is_confirmed_safe" 필드는 대상 사이트가 확실하게 신뢰할 수 있는 정상적인 사이트임이 100% 입증될 때만 true로 설정하십시오. (대규모 카카오톡 채널, 네이버/유튜브 등 대형 포털, 주요 언론사 기사, 공식 대기업 페이지 등)
+        가입/투자 유도만 있거나, 실체가 불분명한 랜딩 페이지, 빈 페이지, 404 에러 등 "스팸 증거도 없지만 안전하다는 증거도 없는" 상태라면 is_spam=false, is_confirmed_safe=false 로 두어야 합니다.
+
         분류 코드 (SPAM인 경우에만 아래 목록에서 하나 사용):
 {code_list_str}
         
         Response (JSON):
         {{
             "is_spam": boolean,
+            "is_confirmed_safe": boolean,
             "classification_code": "명확한 스팸 코드 문자열 (HAM/Inconclusive인 경우 null)",
             "spam_probability": float (0.0-1.0),
             "reason": "시각적 콘텐츠에서 발견된 팩트 기반의 한국어 설명 (증거 유무를 판단 근거로 명확히 서술)"
@@ -1024,12 +1029,17 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     **[카카오톡 채널 특수 룰]**
     - 대상 페이지가 카카오톡 채널(pf.kakao.com) 구조인 경우: 페이지 내에 명시된 친구 수가 1000명 이상 등 대규모 채널임이 파악되면, 내용에 일부 스팸 키워드가 포함됐더라도 공식 비즈니스로 간주하여 무조건 HAM으로 방어하십시오. 반대로 친구 수가 비정상적으로 적고(100명 이하수준) 주식/코인/도박 리딩방 참여를 유도하는 텍스트만 있다면 바로 SPAM 처리하십시오.
 
+    **[안전성 확정 (CONFIRMED SAFE) 기준]**
+    "is_confirmed_safe" 필드는 대상 웹페이지가 확실하게 신뢰할 수 있는 정상적인 사이트임이 100% 입증될 때만 true로 설정하십시오. (예: 대규모 구독자를 보유한 공식 카카오톡 채널, 네이버/유튜브 등 대형 포털, 주요 언론사 기사, 공식 대기업 페이지 등)
+    단지 불법적인 단어가 없어서 HAM으로 판단될 뿐(단순 가입 유도 페이지, 연락처만 있는 빈 페이지, 404 에러 등) "안전하다는 확고한 증거도 없는" 상태라면 is_spam=false, is_confirmed_safe=false 로 설정하여 텍스트 분석부의 원본 판단을 존중하도록 하십시오.
+
     [분류 코드 (SPAM인 경우에만 아래 목록에서 하나 사용)]:
 {code_list_str}
     
     Response (JSON):
     {{
         "is_spam": boolean,
+        "is_confirmed_safe": boolean,
         "classification_code": "명확한 스팸 코드 문자열 (HAM/Inconclusive인 경우 null)",
         "spam_probability": float (0.0-1.0),
         "reason": "웹 페이지 텍스트(물리적 증거)에 불법 콘텐츠가 존재하는지 여부를 중심으로 서술 (환각 및 우회 추론 금지, 증거 기반 서술)"
@@ -1149,6 +1159,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         result_json = json.loads(content.strip())
         
         is_spam = result_json.get("is_spam")
+        is_confirmed_safe = result_json.get("is_confirmed_safe", False)
         prob = result_json.get("spam_probability", 0.0)
         reason = result_json.get("reason", "") + fallback_text
         if fallback_model and reason:
@@ -1178,6 +1189,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                 
                 return {
                     "is_spam": is_spam,
+                    "is_confirmed_safe": vision_result.get("is_confirmed_safe", False),
                     "spam_probability": vision_result.get("spam_probability", 0.0),
                     "classification_code": vision_result.get("classification_code"),
                     "reason": vision_result.get("reason"),
@@ -1194,6 +1206,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         # HAM/Inconclusive면 다음 URL 확인 (is_final=False)
         return {
             "is_spam": is_spam,
+            "is_confirmed_safe": is_confirmed_safe,
             "spam_probability": prob,
             "classification_code": classification_code,
             "reason": reason,

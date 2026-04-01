@@ -250,11 +250,17 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                      if url_code and str(url_code) != "0":
                          final["classification_code"] = url_code
                  else:
-                     # Case 3: URL(Safe) -> 만약 Content가 SPAM이었다 하더라도 Override하여 HAM 확정
-                     if final.get("is_spam"):
-                         final["is_spam"] = False
-                         final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE (Override)]"
-                         # Do NOT wipe final["classification_code"] to preserve Content Agent's original intent
+                     # Case 3: URL(Safe) -> 명백히 안전한 사이트(CONFIRMED SAFE)인 경우에만 기존 SPAM 판정을 Override하여 HAM 확정
+                     is_confirmed_safe = u_res.get("is_confirmed_safe", False)
+                     if is_confirmed_safe:
+                         if final.get("is_spam"):
+                             final["is_spam"] = False
+                             final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE (Override)]"
+                             # Do NOT wipe final["classification_code"] to preserve Content Agent's original intent
+                     else:
+                         # URL에 스팸 증거가 없어 HAM 판정되었으나, 명백히 안전하다는 증거(대형포털 등)도 없는 상태 (가입 유도, 빈 페이지 등)
+                         # -> 기존 Content Agent 결과(SPAM)를 존중하여 덮어쓰지 않음
+                         final["reason"] = f"{existing_reason} | [URL 분석: 무혐의/증거불충분 상태이므로 원본(Content) 판단 유지]"
 
         # Ensure malicious_url_extracted is explicitly in the final dict if set
         if "malicious_url_extracted" in final and final["malicious_url_extracted"] is True:
