@@ -770,13 +770,13 @@ export default function ValidatorPage() {
                                         <div>
                                             <p className="text-xs font-bold text-slate-400 uppercase">Total AI SPAM</p>
                                             <p className="text-2xl font-black text-rose-600 leading-none">
-                                                {(data.summary.llm_spam_count + data.summary.type_b_total_count).toLocaleString()} 
+                                                {(data.summary.llm_spam_count).toLocaleString()} 
                                             </p>
                                         </div>
                                         <div className="text-right">
                                             <p className="text-xs font-bold text-slate-400 uppercase">Spam Rate</p>
                                             <p className="text-lg font-bold text-slate-700">
-                                                {(((data.summary.llm_spam_count + data.summary.type_b_total_count) / data.summary.total_llm) * 100).toFixed(1)}%
+                                                {((data.summary.llm_spam_count / data.summary.total_llm) * 100).toFixed(1)}%
                                             </p>
                                         </div>
                                     </div>
@@ -787,7 +787,7 @@ export default function ValidatorPage() {
                                          >
                                             <div className="flex items-center gap-2">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-violet-500 group-hover:animate-ping"></div>
-                                                <span className="text-xs font-bold text-violet-800">일반 스팸 (Type A)</span>
+                                                <span className="text-xs font-bold text-violet-800">스팸 (차단 대상)</span>
                                             </div>
                                             <div className="flex items-center gap-1">
                                                 <span className="text-sm font-bold text-violet-900">{data.summary.llm_spam_count.toLocaleString()}건</span>
@@ -800,7 +800,7 @@ export default function ValidatorPage() {
                                          >
                                             <div className="flex items-center gap-2">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-rose-500 group-hover:animate-ping"></div>
-                                                <span className="text-xs font-bold text-rose-800">학습 보호용 (Type B)</span>
+                                                <span className="text-xs font-bold text-rose-800">Red Group (학습 보호)</span>
                                             </div>
                                             <div className="flex items-center gap-1">
                                                 <span className="text-sm font-bold text-rose-900">{data.summary.type_b_total_count.toLocaleString()}건</span>
@@ -1652,9 +1652,9 @@ export default function ValidatorPage() {
                             <div>
                                 <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                                     <Database className="text-rose-600" />
-                                    학습 보호용 데이터 (Type B)
+                                    Red Group (학습 보호 항목)
                                 </h3>
-                                <p className="text-xs text-slate-500 mt-1">스팸이 확실하지만, 모델 학습의 안전성을 위해 보수적으로 <strong>Type B (FP Sentinel) 처리된 건</strong>들입니다.</p>
+                                <p className="text-xs text-slate-500 mt-1">엑셀에서 'o' 마킹 없이 공란 처리되는 <strong>분리 감지(Type B)</strong> 항목들입니다.</p>
                             </div>
                             <button onClick={() => setIsTypeBModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-lg transition-colors">
                                 <X size={20} className="text-slate-500" />
@@ -1840,9 +1840,9 @@ export default function ValidatorPage() {
                             <div>
                                 <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                                     <div className="w-2 h-2 rounded-full bg-violet-600"></div>
-                                    일반 스팸 데이터 (Type A)
+                                    차단 스팸 데이터 ('o' 표시 항목)
                                 </h3>
-                                <p className="text-xs text-slate-500 mt-1">AI 모델이 <strong>명확한 스팸</strong>으로 판정한 순수 일반 스팸 건들입니다.</p>
+                                <p className="text-xs text-slate-500 mt-1">엑셀에서 정상적으로 'o' 구분을 받은 <strong>차단 대상 스팸</strong> 항목들입니다.</p>
                             </div>
                             <button onClick={() => setIsTypeAModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-lg transition-colors">
                                 <X size={20} className="text-slate-500" />

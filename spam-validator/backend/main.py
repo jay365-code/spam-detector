@@ -369,16 +369,16 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
             match_status = "MATCH" if row['is_spam_human'] == row['is_spam_llm'] else ("FN" if row['is_spam_human'] else "FP")
             
         # Get URL & SIGNATURE
+        # Get URL & SIGNATURE
         llm_url = ""
         llm_signature = ""
-        llm_message_extracted_url = ""
+        
         if not is_missing_in_llm:
+            llm_url = str(row.get('URL_llm', '')) if 'URL_llm' in row and pd.notna(row['URL_llm']) else ""
+            norm_msg = normalize_text(str(row['메시지_human']))
+            llm_signature = signature_map.get(norm_msg, "")
+            
             is_llm_spam = bool(row.get('is_spam_llm', False))
-            if is_llm_spam:
-                llm_url = str(row.get('URL_llm', '')) if 'URL_llm' in row and pd.notna(row['URL_llm']) else ""
-                llm_message_extracted_url = str(row.get('메시지 추출 URL_llm', '')) if '메시지 추출 URL_llm' in row and pd.notna(row['메시지 추출 URL_llm']) else ""
-                norm_msg = normalize_text(str(row['메시지_human']))
-                llm_signature = signature_map.get(norm_msg, "")
             
         human_based_diffs.append({
             "index": int(row['original_index_human']),
@@ -391,7 +391,6 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
             "llm_code": str(row.get('code_llm', '')) if not is_missing_in_llm and is_llm_spam else "",
             "llm_reason": str(row.get('reason_llm', '')) if not is_missing_in_llm else "",
             "llm_url": llm_url,
-            "llm_message_extracted_url": llm_message_extracted_url,
             "llm_signature": llm_signature,
             "match_status": match_status
         })
@@ -399,7 +398,7 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
     # Generate Type B List
     type_b_items = []
 
-    type_b_df = df_l[df_l['semantic_class'].str.startswith("Type_B", na=False)]
+    type_b_df = df_l[(df_l['semantic_class'].str.startswith("Type_B", na=False)) & (df_l['is_spam'] == False)]
     for _, row in type_b_df.iterrows():
         # Get URL if it exists
         extracted_url = str(row['URL']) if 'URL' in row and pd.notna(row['URL']) else ""
@@ -420,15 +419,15 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
         })
 
     # 자동 요약 생성
-    type_b_url_count = len(df_l[df_l['semantic_class'] == "Type_B (URL)"])
-    type_b_sig_count = len(df_l[df_l['semantic_class'] == "Type_B (SIGNATURE)"])
-    type_b_both_count = len(df_l[df_l['semantic_class'] == "Type_B (URL, SIGNATURE)"])
-    type_b_none_count = len(df_l[df_l['semantic_class'] == "Type_B (NONE)"])
-    type_b_total_count = len(df_l[df_l['semantic_class'].str.startswith("Type_B")])
+    type_b_url_count = len(type_b_df[type_b_df['semantic_class'] == "Type_B (URL)"])
+    type_b_sig_count = len(type_b_df[type_b_df['semantic_class'] == "Type_B (SIGNATURE)"])
+    type_b_both_count = len(type_b_df[type_b_df['semantic_class'] == "Type_B (URL, SIGNATURE)"])
+    type_b_none_count = len(type_b_df[type_b_df['semantic_class'] == "Type_B (NONE)"])
+    type_b_total_count = len(type_b_df)
 
     # Generate Type A List
     type_a_items = []
-    type_a_df = df_l[(df_l['is_spam'] == True) & (~df_l['semantic_class'].str.startswith("Type_B", na=False))]
+    type_a_df = df_l[df_l['is_spam'] == True]
     for _, row in type_a_df.iterrows():
         type_a_items.append({
             "message_preview": str(row['메시지'])[:80] + "...",
@@ -540,7 +539,6 @@ async def export_diff(request: ExportDiffRequest):
                 "AI 판단 (LLM)": llm_val,
                 "AI 분류코드": safe_str(d.get("llm_code", "")),
                 "AI 제출용 URL (입력 URL 기준)": llm_url_for_excel,
-                "AI 자체 추출본 (메시지 본문 기준)": safe_str(d.get("llm_message_extracted_url", "")),
                 "AI 추출 SIGNATURE": safe_str(d.get("llm_signature", "")),
                 "AI 사유": safe_str(d.get("llm_reason", "")),
                 "매칭 상태": safe_str(m_status_disp)
@@ -703,28 +701,32 @@ async def export_diff(request: ExportDiffRequest):
             ws_diff.column_dimensions['B'].width = 80
             ws_diff.column_dimensions['C'].width = 15
             ws_diff.column_dimensions['D'].width = 18
-            ws_diff.column_dimensions['E'].width = 15
+            ws_diff.column_dimensions['E'].width = 30
             ws_diff.column_dimensions['F'].width = 18
-            ws_diff.column_dimensions['G'].width = 80
-            ws_diff.column_dimensions['H'].width = 20
+            ws_diff.column_dimensions['G'].width = 40
+            ws_diff.column_dimensions['H'].width = 40
+            ws_diff.column_dimensions['I'].width = 80
+            ws_diff.column_dimensions['J'].width = 20
 
             for cell in ws_diff[1]:
                 cell.fill = header_fill
                 cell.font = header_font
                 cell.alignment = center_align
             
-            for row in ws_diff.iter_rows(min_row=2, max_row=ws_diff.max_row, min_col=1, max_col=8):
+            for row in ws_diff.iter_rows(min_row=2, max_row=ws_diff.max_row, min_col=1, max_col=10):
                 row[0].alignment = center_align   # 순번
                 row[1].alignment = left_align     # 메시지 원본 (No Wrap)
                 row[2].alignment = center_align   # 정답
                 row[3].alignment = center_align   # Human 분류코드
                 row[4].alignment = center_align   # AI 판단
                 row[5].alignment = center_align   # AI 분류코드
-                row[6].alignment = left_align     # AI 사유 (No Wrap)
-                row[7].alignment = center_align   # 매칭 상태
+                row[6].alignment = left_align     # AI 제출용 URL
+                row[7].alignment = left_align     # AI 추출 SIGNATURE
+                row[8].alignment = left_align     # AI 사유
+                row[9].alignment = center_align   # 매칭 상태
 
                 # Add color to match status IF it's an error (Apply to entire row)
-                status_val = str(row[7].value).upper()
+                status_val = str(row[9].value).upper()
                 target_fill = None
                 
                 if "FP" in status_val:
