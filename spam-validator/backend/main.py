@@ -237,17 +237,10 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
     )
     
     # ----------------------------------------------------
-    # Type B (FP Sentinel Override - 학습 보호) 처리:
-    # 1. Human이 SPAM (True) 이고 AI가 Type B인 경우 -> AI도 SPAM (True) 으로 간주 (뒷단 검출 예정이므로 FN 제외)
-    # 2. Human이 HAM (False) 이고 AI가 Type B인 경우 -> AI도 HAM (False) 으로 간주 (FP로 잡히지 않도록)
+    # Type B (FP Sentinel) 강제 덮어쓰기 로직 제거됨 (은닉 해제)
+    # - 수작업자가 HAM으로 넘긴 교묘한 스미싱을 AI가 Type_B로 잘 끄집어냈을 때,
+    # - 엑셀/대시보드에서 그걸 덮어쓰지(Match 위장) 않고 정직하게 FP(오탐) 목록으로 노출시켜 투명한 디버깅이 가능하게 함.
     # ----------------------------------------------------
-    type_b_mask = merged_all['reason_llm'].astype(str).str.contains(r'\[FP Sentinel Override\]', case=False, na=False) | \
-                  merged_all['semantic_class_llm'].astype(str).str.contains(r'Type_B', case=False, na=False)
-    
-    # Human이 SPAM인 케이스
-    merged_all.loc[type_b_mask & (merged_all['is_spam_human'] == True), 'is_spam_llm'] = True
-    # Human이 HAM인 케이스
-    merged_all.loc[type_b_mask & (merged_all['is_spam_human'] == False), 'is_spam_llm'] = False
 
 
     # Split into Matched / Missing
