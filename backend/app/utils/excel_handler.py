@@ -13,6 +13,47 @@ class ExcelHandler:
     def __init__(self):
         self.shortener_domains = self._load_shortener_domains()
         
+    def create_template_workbook(self, output_path: str):
+        """
+        KISA 및 TRAP 데이터를 저장할 엑셀 기본 구조(13개 시트)를 생성하여 저장합니다.
+        """
+        wb = Workbook()
+        
+        sheet_names = [
+            "시뮬결과전체", "육안분석(시뮬결과35_150)", "URL중복 제거", "문자문장차단등록",
+            "문자열중복제거", "문장중복제거", 
+            "TRAP.시뮬결과전체", "TRAP.육안분석(시뮬결과35_150)", "TRAP.중간작업", 
+            "TRAP.URL중복 제거", "TRAP.문자문장차단등록",
+            "TRAP.문자열 중복제거", "TRAP.문장 중복제거", "금융.SPAM"
+        ]
+        
+        # 0번 시트 이름 변경
+        ws = wb.active
+        ws.title = sheet_names[0]
+        
+        # 나머지 생성
+        for name in sheet_names[1:]:
+            wb.create_sheet(name)
+            
+        # 데이터가 기록될 주요 시트들에 헤더 적용
+        headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Reason"]
+        header_font = Font(bold=True)
+        header_align = Alignment(horizontal='center', vertical='center')
+        header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+        
+        for name in ["육안분석(시뮬결과35_150)", "TRAP.육안분석(시뮬결과35_150)"]:
+            ws_target = wb[name]
+            ws_target.append(headers)
+            for cell in ws_target[1]:
+                cell.font = header_font
+                cell.alignment = header_align
+                cell.fill = header_fill
+                
+        # 자동 저장
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        wb.save(output_path)
+        return True
+        
     def _load_shortener_domains(self) -> set:
         # 기본 하드코딩된 단축 도메인 세트
         domains = {
@@ -300,16 +341,16 @@ class ExcelHandler:
         except:
             return False
 
-    def _create_dedup_sheet(self, wb: Workbook, unique_urls: dict, unique_short_urls: dict = None):
+    def _create_dedup_sheet(self, wb: Workbook, unique_urls: dict, unique_short_urls: dict = None, sheet_name: str = "URL중복 제거"):
         """
-        Create 'URL중복 제거' sheet with unique non-short URLs and short URLs.
+        Create 'URL중복 제거' (or 'TRAP.URL중복 제거') sheet with unique non-short URLs and short URLs.
         Columns A-C: URL(중복제거), 길이, 분류
         Columns T-V: URL(단축URL), 길이, 분류
         """
-        if "URL중복 제거" in wb.sheetnames:
-            ws = wb["URL중복 제거"]
+        if sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
         else:
-            ws = wb.create_sheet("URL중복 제거")
+            ws = wb.create_sheet(sheet_name)
             
         # Headers
         headers = ["URL(중복제거)", "길이", "분류"]
@@ -370,15 +411,15 @@ class ExcelHandler:
                 
                 row_num += 1
 
-    def _create_blocklist_sheet(self, wb: Workbook, blocklist_data: list):
+    def _create_blocklist_sheet(self, wb: Workbook, blocklist_data: list, sheet_name: str = "문자문장차단등록"):
         """
-        Create '문자문장차단등록' sheet for extracted signatures.
+        Create '문자문장차단등록' (or 'TRAP.문자문장차단등록') sheet for extracted signatures.
         Columns: 메시지, 문자열, 길이, 문장열, 길이, 분류
         """
-        if "문자문장차단등록" in wb.sheetnames:
-             ws = wb["문자문장차단등록"]
+        if sheet_name in wb.sheetnames:
+             ws = wb[sheet_name]
         else:
-             ws = wb.create_sheet("문자문장차단등록")
+             ws = wb.create_sheet(sheet_name)
         
         # Headers
         headers = ["메시지", "문자열", "길이", "문장열", "길이", "분류"]
@@ -735,42 +776,46 @@ class ExcelHandler:
             logger.error(f"Error processing Excel: {e}")
             raise e
 
-    def process_kisa_txt(self, file_path: str, output_dir: str, processing_function, progress_callback=None, batch_size: int = 1, original_filename: str = None, manager=None, client_id: str = None):
+    def process_kisa_txt(self, file_path: str, output_dir: str, processing_function, progress_callback=None, batch_size: int = 1, original_filename: str = None, manager=None, client_id: str = None, is_trap: bool = False, override_output_path: str = None):
         """
         Process KISA format TXT file: [Body] <TAB> [URL]
         """
         try:
-            # 1. Parse Input Filename to determine Output Filename
-            # kisa_20260103_A_result_hamMsg_url.txt -> MMSC스팸추출_20260103_A.xlsx
-            input_filename = original_filename if original_filename else os.path.basename(file_path)
-            
-            # Try to extract 'yyyymmdd_A' pattern
-            # Regex captures: kisa_(20260101_A)_result...
-            match = re.search(r'kisa_(\d{8}_[A-Za-z0-9]+)', input_filename)
-            
-            if match:
-                extracted_part = match.group(1)
+            if override_output_path:
+                output_path = override_output_path
+                output_filename = os.path.basename(output_path)
             else:
-                # Fallback: Just date
-                date_match = re.search(r'\d{8}', input_filename)
-                if date_match:
-                    extracted_part = date_match.group(0)
+                # 1. Parse Input Filename to determine Output Filename
+                # kisa_20260103_A_result_hamMsg_url.txt -> MMSC스팸추출_20260103_A.xlsx
+                input_filename = original_filename if original_filename else os.path.basename(file_path)
+                
+                # Try to extract 'yyyymmdd_A' pattern
+                match = re.search(r'(?:kisa_|trap_)(\d{8}_[A-Za-z0-9]+)', input_filename)
+                
+                if match:
+                    extracted_part = match.group(1)
                 else:
-                    extracted_part = datetime.now().strftime("%Y%m%d")
-            
-            base_filename = f"MMSC스팸추출_{extracted_part}"
-            ext = ".xlsx"
-            output_filename = f"{base_filename}{ext}"
-            output_path = os.path.join(output_dir, output_filename)
-            
-            # Check for duplicates/locks and increment counter
-            counter = 1
-            while os.path.exists(output_path):
-                output_filename = f"{base_filename} ({counter}){ext}"
+                    # Fallback: Just date
+                    date_match = re.search(r'\d{8}', input_filename)
+                    if date_match:
+                        extracted_part = date_match.group(0)
+                    else:
+                        extracted_part = datetime.now().strftime("%Y%m%d")
+                
+                base_filename = f"MMSC스팸추출_{extracted_part}"
+                ext = ".xlsx"
+                output_filename = f"{base_filename}{ext}"
                 output_path = os.path.join(output_dir, output_filename)
-                counter += 1
-            
-            os.makedirs(output_dir, exist_ok=True)
+                
+                # Check for duplicates/locks and increment counter
+                counter = 1
+                while os.path.exists(output_path):
+                    output_filename = f"{base_filename} ({counter}){ext}"
+                    output_path = os.path.join(output_dir, output_filename)
+                    counter += 1
+                
+                os.makedirs(output_dir, exist_ok=True)
+                
             # 2. Read Text File with Encoding Detection (UTF-8 prior to CP949)
             raw_data = b""
             try:
@@ -826,24 +871,32 @@ class ExcelHandler:
             effective_batch_size = min(2000, total_rows) if total_rows > 0 else 1
             logger.info(f"Processing {total_rows} rows from KISA TXT (Batch Size: {effective_batch_size})...")
 
-            # 3. Create Excel & Setup Styles
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "육안분석(시뮬결과35_150)"
+            # 3. Load or Create Template Excel & Setup target sheet
+            if os.path.exists(output_path):
+                wb = load_workbook(output_path)
+            else:
+                self.create_template_workbook(output_path)
+                wb = load_workbook(output_path)
+                
+            target_sheet_name = "TRAP.육안분석(시뮬결과35_150)" if is_trap else "육안분석(시뮬결과35_150)"
+            if target_sheet_name not in wb.sheetnames:
+                wb.create_sheet(target_sheet_name)
+            ws = wb[target_sheet_name]
             
-            # Define Headers
-            headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Reason"]
-            ws.append(headers)
-            
-            # Styling
-            header_font = Font(bold=True)
-            header_align = Alignment(horizontal='center', vertical='center')
-            header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid") # Light Grey
-            
-            for cell in ws[1]:
-                cell.font = header_font
-                cell.alignment = header_align
-                cell.fill = header_fill
+            # 헤더는 템플릿 생성 시 이미 적용되었거나, 없으면 나중에 _apply_formatting 시 추가될 수 있지만,
+            # 안전하게 기존 1행이 비어 있을 때만 추가합니다.
+            if ws.max_row <= 1:
+                headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Reason"]
+                if not ws.cell(row=1, column=1).value:
+                    for c_idx, h_val in enumerate(headers, start=1):
+                        ws.cell(row=1, column=c_idx, value=h_val)
+                    header_font = Font(bold=True)
+                    header_align = Alignment(horizontal='center', vertical='center')
+                    header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+                    for cell in ws[1]:
+                        cell.font = header_font
+                        cell.alignment = header_align
+                        cell.fill = header_fill
 
             # 4. Batch Processing
             batch_buffer = []
@@ -865,11 +918,14 @@ class ExcelHandler:
                 pre_parsed_urls = [item.get("url", "") for item in batch_buffer]
                 
                 try:
-                    # Pass start_index, pre_parsed_urls (KISA TXT) to processing_function
-                    results = processing_function(messages, start_index=start_idx, total_count=total_rows, pre_parsed_urls=pre_parsed_urls)
+                    # Pass start_index, pre_parsed_urls (KISA TXT), and is_trap to processing_function
+                    results = processing_function(messages, start_index=start_idx, total_count=total_rows, pre_parsed_urls=pre_parsed_urls, is_trap=is_trap)
                 except TypeError:
-                    # Fallback: 이전 시그니처 호환 (Excel 등 pre_parsed_urls 미지원)
-                    results = processing_function(messages, start_index=start_idx, total_count=total_rows)
+                    # Fallback: 이전 시그니처 호환 (Excel 등 pre_parsed_urls 미지원 시에도 억지로라도 is_trap을 보내볼 수 있지만 안전하게 fallback은 무시)
+                    try:
+                        results = processing_function(messages, start_index=start_idx, total_count=total_rows, is_trap=is_trap)
+                    except TypeError:
+                        results = processing_function(messages, start_index=start_idx, total_count=total_rows)
                 except Exception as e:
                     from ..main import CancellationException
                     if isinstance(e, CancellationException):
@@ -888,7 +944,8 @@ class ExcelHandler:
                                 "total": total_rows,
                                 "message": batch_buffer[i]["message"],
                                 "excel_row_number": start_idx + i + 2,
-                                "result": result
+                                "result": result,
+                                "is_trap": is_trap
                             })
                         continue
 
@@ -1008,22 +1065,30 @@ class ExcelHandler:
                                      }
 
 
-                    # --- IBSE Collection Logic ---
-                    if result.get("ibse_signature"):
-                        # User requested "메시지-공백제거" AND "문자열-공백제거"
-                        # "문자열에 공백 제거(추출된 signature에는 공백 제거한 문자욜 저장)"
-                        
+                    # --- IBSE / 문자열·문장열 Collection Logic ---
+                    # 1) AI가 명시적으로 ibse_signature를 추출했거나,
+                    # 2) "URL이 없는 스팸메시지"이면 문장 자체를 서명으로 채택해 중복 제거 시트로 넘김
+                    
+                    is_url_less_spam = (result.get("is_spam") is True or is_type_b) and (not url_val)
+                    
+                    if result.get("ibse_signature") or is_url_less_spam:
                         clean_msg = re.sub(r'[ \t\r\n\f\v]+', '', msg_val)
-                        clean_sig = str(result.get("ibse_signature")).replace(" ", "").replace("\n", "").replace("\r", "")
                         
                         raw_ibse_code = str(result.get("classification_code", ""))
                         m_ibse = re.search(r'\d+', raw_ibse_code)
                         ibse_code = m_ibse.group(0) if m_ibse else raw_ibse_code
                         
+                        if result.get("ibse_signature"):
+                            clean_sig = str(result.get("ibse_signature")).replace(" ", "").replace("\n", "").replace("\r", "")
+                            sig_len = result.get("ibse_len", self._lenb(clean_sig))
+                        else:
+                            clean_sig = clean_msg  # URL 없는 스팸 본문 전체를 시그니처로 사용
+                            sig_len = self._lenb(clean_sig)
+                        
                         blocklist_data.append({
                             "msg": clean_msg, 
                             "sig": clean_sig, # whitespace removed signature
-                            "len": result.get("ibse_len", 0),
+                            "len": sig_len,
                             "code": ibse_code
                         })
 
@@ -1034,7 +1099,8 @@ class ExcelHandler:
                             "total": total_rows,
                             "message": msg_val,
                             "excel_row_number": start_idx + i + 2,  # +2 for header row
-                            "result": result
+                            "result": result,
+                            "is_trap": is_trap
                         })
 
                 try:
@@ -1062,14 +1128,82 @@ class ExcelHandler:
             self._apply_formatting(ws, headers)
             
             # 5. Create Dedup Sheet
-            self._create_dedup_sheet(wb, unique_urls, unique_short_urls)
+            dedup_sheet_name = "TRAP.URL중복 제거" if is_trap else "URL중복 제거"
+            self._create_dedup_sheet(wb, unique_urls, unique_short_urls, sheet_name=dedup_sheet_name)
             
             # 6. Create Blocklist Sheet
-            self._create_blocklist_sheet(wb, blocklist_data)
+            blocklist_sheet_name = "TRAP.문자문장차단등록" if is_trap else "문자문장차단등록"
+            self._create_blocklist_sheet(wb, blocklist_data, sheet_name=blocklist_sheet_name)
+            
+            # 7. Update Summary Table on "TRAP.문장 중복제거" 
+            url_cnt = len(unique_urls) + len(unique_short_urls)
+            str_cnt = sum(1 for item in blocklist_data if item['len'] <= 20)
+            sen_cnt = sum(1 for item in blocklist_data if item['len'] > 20)
+            self._update_summary_table(wb, is_trap, output_filename, total_rows, url_cnt, str_cnt, sen_cnt)
                 
             wb.save(output_path)
-            return {"output_path": output_path, "filename": output_filename, "total_rows": total_rows}
+            # return the actual path used so we can reuse it
+            return {"success": True, "output_path": output_path, "filename": output_filename, "total_rows": total_rows}
 
         except Exception as e:
             logger.error(f"Error processing KISA TXT: {e}")
             raise e
+
+    def _update_summary_table(self, wb: Workbook, is_trap: bool, filename: str, spam_cnt: int, url_cnt: int, str_cnt: int, sen_cnt: int):
+        """
+        Updates the summary statistics table on 'TRAP.문장 중복제거' sheet.
+        """
+        target_sheet = "TRAP.문장 중복제거"
+        if target_sheet not in wb.sheetnames:
+            ws = wb.create_sheet(target_sheet)
+        else:
+            ws = wb[target_sheet]
+            
+        # 헤더가 비어있으면 초기 뼈대 세팅
+        if not ws["E2"].value:
+            # 1) 헤더 및 날짜명칭
+            match = re.search(r'(\d{4})(\d{2})(\d{2})_([A-Za-z0-9]+)', filename)
+            if match:
+                m, d, group = match.group(2), match.group(3), match.group(4)
+                # 요일은 생략하거나 표시. 간단히 MM월 DD일_A 등으로.
+                date_str = f"● {m}월 {d}일_{group}"
+            else:
+                date_str = "● 요약"
+            
+            ws["E1"] = date_str
+            ws["E1"].font = Font(bold=True)
+            
+            headers = ["구분", "스팸태깅", "URL", "문자열", "문장"]
+            for col_idx, h in enumerate(headers, start=5): # E=5
+                cell = ws.cell(row=2, column=col_idx, value=h)
+                cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                cell.fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+            
+            ws["E3"] = "SPAM"
+            ws["E4"] = "TRAP"
+            ws["E3"].font = Font(bold=True)
+            ws["E4"].font = Font(bold=True)
+            ws["E3"].fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+            ws["E4"].fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+            ws["E3"].alignment = Alignment(horizontal='center', vertical='center')
+            ws["E4"].alignment = Alignment(horizontal='center', vertical='center')
+            
+            # 셀 초기화 (빈값은 '-'로 표시되게 하거나 그냥 '-' 문자 입력)
+            for r in [3, 4]:
+                for c in range(6, 10):
+                    ws.cell(row=r, column=c, value="-").alignment = Alignment(horizontal='right')
+        
+        # 데이터 업데이트 (SPAM 이면 3행, TRAP 이면 4행)
+        row_idx = 4 if is_trap else 3
+        ws.cell(row=row_idx, column=6, value=spam_cnt if spam_cnt else "-").alignment = Alignment(horizontal='right')
+        ws.cell(row=row_idx, column=7, value=url_cnt if url_cnt else "-").alignment = Alignment(horizontal='right')
+        ws.cell(row=row_idx, column=8, value=str_cnt if str_cnt else "-").alignment = Alignment(horizontal='right')
+        ws.cell(row=row_idx, column=9, value=sen_cnt if sen_cnt else "-").alignment = Alignment(horizontal='right')
+        
+        # 너비 조정
+        ws.column_dimensions['E'].width = 15
+        ws.column_dimensions['F'].width = 15
+        ws.column_dimensions['G'].width = 15
+        ws.column_dimensions['H'].width = 15
+        ws.column_dimensions['I'].width = 15

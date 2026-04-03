@@ -719,7 +719,7 @@ Step 6. [암묵적 도메인 (Covert Domain) 추론 및 추출]
 
 Step 7. 최종 판정 (label 확정):
    - Guide 기준에 따라 완벽한 정상문자면 HAM. 
-   - Guide 기준 SPAM 사유에 해당하면 무조건 SPAM. SPAM일 경우 spam_code (0, 1, 2, 3 중 택1)를 반드시 Guide의 4항(스팸의 종류) 기준에 맞게 지정하라.
+   - Guide 기준 SPAM 사유에 해당하면 무조건 SPAM. SPAM일 경우 spam_code (0, 1, 2, 3 중 택1)를 반드시 Guide의 3항(분류 코드 선택) 기준에 맞게 지정하라.
 
 [OUTPUT — JSON ONLY]
 {{

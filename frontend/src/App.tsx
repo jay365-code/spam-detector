@@ -102,6 +102,7 @@ const formatMessageWithLinks = (text: string) => {
 function App() {
   const [clientId] = useState(() => 'client-' + Math.random().toString(36).substr(2, 9));
   const [logs, setLogs] = useState<any[]>([]);
+  const [reportTab, setReportTab] = useState<'MAIN' | 'TRAP' | 'ALL'>('MAIN');
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadFilename, setDownloadFilename] = useState<string | null>(null);
 
@@ -143,9 +144,9 @@ function App() {
   ];
 
   const CATEGORY_CODE_MAP: Record<string, string> = {
-    '도박 / 게임': '3', '성인 / 유흥': '1', '유흥업소': '1', '통신 / 휴대폰 스팸': '0',
+    '도박 / 게임': '2', '성인 / 유흥': '1', '유흥업소': '1', '통신 / 휴대폰 스팸': '0',
     '대리운전': '0', '불법 의약품': '1', '금융 / 대출 사기': '3',
-    '구인 / 부업 (불법·어뷰즈)': '0', '나이트클럽': '1', '주식 리딩 / 사기': '2',
+    '구인 / 부업 (불법·어뷰즈)': '2', '나이트클럽': '1', '주식 리딩 / 사기': '2',
     '로또 사기': '2', '피싱 / 스미싱': '2',
   };
 
@@ -556,6 +557,7 @@ function App() {
               excel_row_number: data.index + 2, // [Fix] Store Excel Row Number (Index + Header + 1-based)
               message: data.message,
               result: data.result,
+              is_trap: data.is_trap,
               timestamp: new Date()
             };
 
@@ -765,9 +767,12 @@ function App() {
 
   // [New] Filter & Count Logic
   // Filter out completely undefined/null items from sparse arrays safely
-  const validLogs = logs.map((log, originalIdx) => ({ log, originalIdx })).filter(item => item.log != null);
-  console.log("DEBUG: All logs:", logs);
-  console.log("DEBUG: Valid logs:", validLogs);
+  const hasTrapData = logs.some(log => log?.is_trap);
+  const baseValidLogs = logs.map((log, originalIdx) => ({ log, originalIdx })).filter(item => item.log != null);
+  const validLogs = baseValidLogs.filter(item => reportTab === 'TRAP' ? item.log.is_trap : !item.log.is_trap);
+  
+  console.log("DEBUG: All logs size:", logs.length);
+  console.log("DEBUG: Valid logs size for tab", reportTab, ":", validLogs.length);
   
   const allCount = validLogs.length;
   const spamCount = validLogs.filter(({ log }) => log?.result?.is_spam && !log?.result?.semantic_class?.startsWith('Type_B')).length;
@@ -914,6 +919,24 @@ function App() {
                 </span>
               )}
             </div>
+
+            {/* Main/TRAP Tabs */}
+            {hasTrapData && (
+              <div className="flex items-center bg-slate-900 p-1 rounded-lg ml-4 border border-slate-700">
+                <button
+                  onClick={() => setReportTab('MAIN')}
+                  className={`px-3 py-1 rounded text-xs font-bold transition-colors ${reportTab === 'MAIN' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-slate-300'}`}
+                >
+                  kisa_xxx.txt
+                </button>
+                <button
+                  onClick={() => setReportTab('TRAP')}
+                  className={`px-3 py-1 rounded text-xs font-bold transition-colors ${reportTab === 'TRAP' ? 'bg-slate-700 text-purple-400 shadow' : 'text-slate-400 hover:text-purple-300'}`}
+                >
+                  trap_xxx.txt
+                </button>
+              </div>
+            )}
 
             {/* Filter Buttons */}
             <div className="flex items-center bg-slate-900/50 rounded-lg p-1 border border-slate-700 ml-4">

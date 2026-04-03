@@ -12,8 +12,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({ clientId, onUploadStart,
     const [isDragOver, setIsDragOver] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [uploadStatus, setUploadStatus] = useState<'idle' | 'selected' | 'uploading' | 'success' | 'error' | 'cancelled'>('idle');
-    const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [fileName, setFileName] = useState<string | null>(null);
+    const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+    const [fileNames, setFileNames] = useState<string>("");
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -26,30 +26,46 @@ export const FileUpload: React.FC<FileUploadProps> = ({ clientId, onUploadStart,
         setIsDragOver(false);
     }, []);
 
-    const processFile = useCallback((file: File) => {
-        if (!file) return;
+    const processFiles = useCallback((files: FileList | File[]) => {
+        if (!files || files.length === 0) return;
         const validExtensions = ['.xlsx', '.txt'];
-        const isValid = validExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
+        const validFiles = Array.from(files).filter(file => 
+            validExtensions.some(ext => file.name.toLowerCase().endsWith(ext))
+        );
 
-        if (!isValid) {
-            alert("Please upload an Excel file (.xlsx) or Text file (.txt)");
+        if (validFiles.length === 0) {
+            alert("Please upload Excel (.xlsx) or Text (.txt) files");
             return;
         }
-        setSelectedFile(file);
-        setFileName(file.name);
+        
+        setSelectedFiles(prev => {
+            const existingNames = new Set(prev.map(f => f.name));
+            const newFiles = validFiles.filter(f => !existingNames.has(f.name));
+            const combined = [...prev, ...newFiles];
+            setFileNames(combined.map(f => f.name).join(', '));
+            return combined;
+        });
+        
         setUploadStatus('selected');
         onFileSelect?.();
+        
+        // input value 초기화하여 같은 파일을 지웠다가 다시 선택할 수 있도록 함
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
     }, [onFileSelect]);
 
     const handleStartUpload = async () => {
-        if (!selectedFile) return;
+        if (selectedFiles.length === 0) return;
 
         setIsUploading(true);
         setUploadStatus('uploading');
         onUploadStart();
 
         const formData = new FormData();
-        formData.append('file', selectedFile);
+        selectedFiles.forEach(file => {
+            formData.append('files', file); // files[] is usually matched by List[UploadFile] using form keys
+        });
         formData.append('client_id', clientId);
 
         try {
@@ -83,15 +99,14 @@ export const FileUpload: React.FC<FileUploadProps> = ({ clientId, onUploadStart,
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setIsDragOver(false);
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            processFile(files[0]);
+        if (e.dataTransfer.files.length > 0) {
+            processFiles(e.dataTransfer.files);
         }
-    }, [processFile]);
+    }, [processFiles]);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
-            processFile(e.target.files[0]);
+            processFiles(e.target.files);
         }
     };
 
@@ -112,9 +127,10 @@ export const FileUpload: React.FC<FileUploadProps> = ({ clientId, onUploadStart,
                 ref={fileInputRef}
                 type="file"
                 accept=".xlsx,.txt"
+                multiple
                 onChange={handleFileSelect}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-                disabled={isUploading || uploadStatus === 'selected'}
+                disabled={isUploading}
             />
 
             <div className="flex items-center justify-center gap-4 text-slate-300 py-2 min-h-[60px]">
@@ -130,27 +146,57 @@ export const FileUpload: React.FC<FileUploadProps> = ({ clientId, onUploadStart,
                 )}
 
                 {uploadStatus === 'selected' && (
-                    <div className="flex items-center gap-4 z-30 w-full justify-between px-4">
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div className="p-2 bg-green-500/20 rounded-full flex-shrink-0">
-                                <FileSpreadsheet className="w-5 h-5 text-green-400" />
-                            </div>
-                            <div className="min-w-0">
-                                <p className="text-sm font-medium text-white truncate max-w-[200px]" title={fileName || ''}>{fileName}</p>
-                                <p className="text-xs text-slate-400">Ready to analyze</p>
-                            </div>
+                    <div className="flex flex-col gap-2 z-30 w-full px-4 py-2 pointer-events-auto">
+                        <div className="max-h-32 overflow-y-auto pr-1">
+                            {selectedFiles.map((file, idx) => (
+                                <div key={idx} className="flex items-center justify-between bg-slate-800/80 p-2 mb-1.5 rounded border border-slate-700 hover:border-slate-600 transition-colors">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className="p-1 bg-green-500/20 rounded">
+                                            <FileSpreadsheet className="w-4 h-4 text-green-400" />
+                                        </div>
+                                        <p className="text-sm font-medium text-white truncate max-w-[300px]" title={file.name}>
+                                            {file.name}
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            const newFiles = selectedFiles.filter((_, i) => i !== idx);
+                                            setSelectedFiles(newFiles);
+                                            setFileNames(newFiles.map(f => f.name).join(', '));
+                                            if (newFiles.length === 0) setUploadStatus('idle');
+                                        }}
+                                        className="p-1 hover:bg-red-500/20 rounded text-slate-400 hover:text-red-400 transition-colors"
+                                        title="Remove file"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            ))}
                         </div>
-                        <div className="flex gap-2">
+
+                        <div className="flex gap-2 justify-end mt-1">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    fileInputRef.current?.click();
+                                }}
+                                className="px-3 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded text-slate-200 border border-slate-600 z-30"
+                            >
+                                + Add More
+                            </button>
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     setUploadStatus('idle');
-                                    setSelectedFile(null);
-                                    setFileName(null);
+                                    setSelectedFiles([]);
+                                    setFileNames("");
                                 }}
-                                className="px-3 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded text-slate-200"
+                                className="px-3 py-1.5 text-xs bg-slate-700 hover:bg-slate-600 rounded text-slate-200 z-30"
                             >
-                                Cancel
+                                Clear All
                             </button>
                             <button
                                 onClick={(e) => {
@@ -159,7 +205,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ clientId, onUploadStart,
                                 }}
                                 className="px-4 py-1.5 text-xs bg-blue-500 hover:bg-blue-600 rounded text-white font-semibold shadow-lg shadow-blue-500/20 animate-pulse"
                             >
-                                Start Analysis
+                                Start Analysis ({selectedFiles.length})
                             </button>
                         </div>
                     </div>
@@ -168,7 +214,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ clientId, onUploadStart,
                 {uploadStatus === 'uploading' && (
                     <div className="flex items-center gap-3 animate-pulse">
                         <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
-                        <span className="text-sm text-blue-300 font-medium">Processing {fileName}...</span>
+                        <span className="text-sm text-blue-300 font-medium">Processing {fileNames}...</span>
                     </div>
                 )}
 
@@ -180,8 +226,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({ clientId, onUploadStart,
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setUploadStatus('idle');
-                                setFileName(null);
-                                setSelectedFile(null);
+                                setFileNames("");
+                                setSelectedFiles([]);
                                 onFileSelect?.();
                                 if (fileInputRef.current) {
                                     fileInputRef.current.value = '';
@@ -203,8 +249,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({ clientId, onUploadStart,
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setUploadStatus('idle');
-                                setSelectedFile(null);
-                                setFileName(null);
+                                setSelectedFiles([]);
+                                setFileNames("");
                                 onFileSelect?.();
                             }}
                             className="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded text-white z-30"

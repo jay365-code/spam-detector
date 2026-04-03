@@ -1169,8 +1169,8 @@ def has_potential_url(message: str) -> bool:
     return False
 
 @app.post("/upload")
-async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
-    logger.info(f"DEBUG: Receive file upload request from Client {client_id}: {file.filename}")
+async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File(...)):
+    logger.info(f"DEBUG: Receive file upload request from Client {client_id}: {[f.filename for f in files]}")
     
     # [Safe Cleanup] Zombie process killing via 'taskkill' removed.
     # New architecture uses localized PlaywrightManager with auto-cleanup (finally block).
@@ -1182,18 +1182,50 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
         # Clear any previous cancellation flags
         manager.clear_cancellation(client_id)
         
-        # Save uploaded file
-        file_id = str(uuid.uuid4())
-        file_ext = os.path.splitext(file.filename)[1]
-        input_path = os.path.join(UPLOAD_DIR, f"{file_id}{file_ext}")
+        # Group and determine files
+        kisa_file = None
+        trap_file = None
+        excel_files = []
         
+        for f in files:
+            name_lower = f.filename.lower()
+            if "trap" in name_lower and name_lower.endswith('.txt'):
+                trap_file = f
+            elif name_lower.endswith('.txt'):
+                # General txt or explicit kisa
+                kisa_file = f
+            elif name_lower.endswith('.xlsx'):
+                excel_files.append(f)
+        
+        # If no explicit kisa_file but multiple TXT, fallback
+        if not trap_file and not kisa_file and not excel_files:
+            raise HTTPException(status_code=400, detail="No suitable files uploaded")
+
+        # 1. Base Output Naming (Based on Kisa file or first file)
+        base_file = kisa_file or trap_file or (excel_files[0] if excel_files else files[0])
+        original_name = os.path.splitext(base_file.filename)[0]
+        
+        # Check if it looks like kisa_YYYYMMDD_A...
+        import re
+        from datetime import datetime
+        match = re.search(r'(?:kisa_|trap_)(\d{8}_[A-Za-z0-9]+)', original_name, re.IGNORECASE)
+        if match:
+            extracted_part = match.group(1)
+        else:
+            date_match = re.search(r'\d{8}', original_name)
+            extracted_part = date_match.group(0) if date_match else datetime.now().strftime("%Y%m%d")
+            
+        base_filename = f"MMSC스팸추출_{extracted_part}"
         llm_model = os.getenv("LLM_MODEL", "gpt-5-mini")
-        original_name = os.path.splitext(file.filename)[0]
-        output_filename = f"{original_name}_{llm_model}{file_ext}"
-        output_path = os.path.join(OUTPUT_DIR, output_filename)
+        final_filename = f"{base_filename}_{llm_model}.xlsx"
+        output_path = os.path.join(OUTPUT_DIR, final_filename)
         
-        with open(input_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        # Handle duplicate output names
+        counter = 1
+        while os.path.exists(output_path):
+            final_filename = f"{base_filename}_{llm_model} ({counter}).xlsx"
+            output_path = os.path.join(OUTPUT_DIR, final_filename)
+            counter += 1
             
         # Define Progress Callback (Thread-safe)
         loop = asyncio.get_running_loop()
@@ -1204,7 +1236,7 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
             )
 
         # Wrapper for process_message to inject HITL logic (Batch Compatible)
-        def process_message_with_hitl(messages: list, start_index: int = 0, total_count: int = 0, pre_parsed_urls: list = None) -> list:
+        def process_message_with_hitl(messages: list, start_index: int = 0, total_count: int = 0, pre_parsed_urls: list = None, is_trap: bool = False) -> list:
             """
             Processes a batch of messages.
             1. Rule Filter (Stage 1) - Individual
@@ -1412,7 +1444,8 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                                         "status": "done",
                                         "result": ws_res,
                                         "current": start_index + completed_count, # Monotonic progress
-                                        "total": total_count # Total rows in file
+                                        "total": total_count, # Total rows in file
+                                        "is_trap": is_trap
                                     }, client_id), loop
                                 )
                             except Exception as ws_ex:
@@ -1434,7 +1467,8 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                                 "status": "started",
                                 "result": None,
                                 "current": start_index,
-                                "total": total_count
+                                "total": total_count,
+                                "is_trap": is_trap
                             }, client_id), loop
                         )
                     except Exception as ws_ex:
@@ -1520,9 +1554,9 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
                 
                 if result.get("classification_code") == "30":
                     if spam_prob >= 0.9:
-                        logger.info(f"[HITL Override] Probability {spam_prob} >= 0.9. Marking as SPAM-1 without user check.")
+                        logger.info(f"[HITL Override] Probability {spam_prob} >= 0.9. Marking as SPAM-2 without user check.")
                         result["is_spam"] = True
-                        result["classification_code"] = "1" # Default to General/Illegal Spam
+                        result["classification_code"] = "2" # Default to Catch-all/Gambling/Other Spam
                         result["reason"] += " [Auto-Confirmed due to High Probability]"
                     else:
                         logger.info(f"[HITL] Non-blocking Notification: {msg[:20]}...")
@@ -1557,39 +1591,73 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
         
         # Determine Batch Size
         batch_size_env = int(os.getenv("LLM_BATCH_SIZE", 10))
+        batch_chunk_size = 1000 
         
         total_rows = 0
         
-        if file_ext.lower() == '.txt':
-            # Process TXT
-            # [Optimization] Pass a large batch_chunk_size (e.g. 1000) to ExcelHandler
-            # so it feeds many items to process_message_with_hitl at once.
-            # Then process_message_with_hitl uses Semaphore(LLM_BATCH_SIZE) to throttle concurrency.
-            # This enables "Sliding Window" instead of blocking after every 10 items.
-            batch_chunk_size = 1000 
-            
-            result = await loop.run_in_executor(
-                None, 
-                lambda: excel_handler.process_kisa_txt(
-                    input_path, OUTPUT_DIR, process_message_with_hitl, progress_callback, 
-                    batch_size=batch_chunk_size, original_filename=file.filename,
-                    manager=manager, client_id=client_id
+        # If Excel file uploaded (Legacy logic bypass)
+        if excel_files:
+            for ex_file in excel_files:
+                file_id = str(uuid.uuid4())
+                file_ext = os.path.splitext(ex_file.filename)[1]
+                input_path = os.path.join(UPLOAD_DIR, f"{file_id}{file_ext}")
+                with open(input_path, "wb") as buffer:
+                    shutil.copyfileobj(ex_file.file, buffer)
+                    
+                result = await loop.run_in_executor(
+                    None, 
+                    lambda path=input_path: excel_handler.process_file(path, output_path, process_message_with_hitl, progress_callback, batch_size=batch_chunk_size)
                 )
-            )
-            if isinstance(result, dict):
-                if "filename" in result:
-                    output_filename = result["filename"]
-                if "total_rows" in result:
-                    total_rows = result["total_rows"]
+                if isinstance(result, dict) and "total_rows" in result:
+                    total_rows += result["total_rows"]
+            output_filename = final_filename
+            
         else:
-            # Process Excel
-            batch_chunk_size = 1000
-            result = await loop.run_in_executor(
-                None, 
-                lambda: excel_handler.process_file(input_path, output_path, process_message_with_hitl, progress_callback, batch_size=batch_chunk_size)
-            )
-            if isinstance(result, dict) and "total_rows" in result:
-                total_rows = result["total_rows"]
+            # It's KISA/TRAP txt files.
+            # a. Create template 
+            await loop.run_in_executor(None, excel_handler.create_template_workbook, output_path)
+            
+            # b. Process KISA
+            if kisa_file:
+                file_id = str(uuid.uuid4())
+                input_path = os.path.join(UPLOAD_DIR, f"{file_id}.txt")
+                with open(input_path, "wb") as buffer:
+                    shutil.copyfileobj(kisa_file.file, buffer)
+                
+                logger.info(f"Processing KISA component from {kisa_file.filename}")
+                result = await loop.run_in_executor(
+                    None, 
+                    lambda path=input_path, fname=kisa_file.filename: excel_handler.process_kisa_txt(
+                        path, OUTPUT_DIR, process_message_with_hitl, progress_callback, 
+                        batch_size=batch_chunk_size, original_filename=fname,
+                        manager=manager, client_id=client_id, is_trap=False, override_output_path=output_path
+                    )
+                )
+                if isinstance(result, dict):
+                    if "total_rows" in result:
+                        total_rows += result["total_rows"]
+
+            # c. Process TRAP
+            if trap_file:
+                file_id = str(uuid.uuid4())
+                input_path = os.path.join(UPLOAD_DIR, f"{file_id}.txt")
+                with open(input_path, "wb") as buffer:
+                    shutil.copyfileobj(trap_file.file, buffer)
+                    
+                logger.info(f"Processing TRAP component from {trap_file.filename}")
+                result = await loop.run_in_executor(
+                    None, 
+                    lambda path=input_path, fname=trap_file.filename: excel_handler.process_kisa_txt(
+                        path, OUTPUT_DIR, process_message_with_hitl, progress_callback, 
+                        batch_size=batch_chunk_size, original_filename=fname,
+                        manager=manager, client_id=client_id, is_trap=True, override_output_path=output_path
+                    )
+                )
+                if isinstance(result, dict):
+                    if "total_rows" in result:
+                        total_rows += result["total_rows"]
+                        
+            output_filename = final_filename
         
         # [Proactive Rotation] 대량 배치 완료 시 예방적 로테이션 (사용자 요청 반영)
         # 500개 이상의 배치 처리가 오류 없이(또는 복구되며) 모두 끝난 직후, 
@@ -1600,7 +1668,8 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
             logger.info(f"[Batch Complete] Processed {total_rows} items. Proactively rotating {provider} key to prevent RPD exhaustion.")
             key_manager.rotate_key(provider)
             
-        return {"id": file_id, "filename": output_filename, "message": "Processing complete", "total_processed": total_rows}
+        # File ID reference can be anything, picking final_filename base for UI
+        return {"id": final_filename, "filename": output_filename, "message": "Processing complete", "total_processed": total_rows}
     
     except CancellationException as e:
         logger.info(f"Processing cancelled: {e}")
@@ -1613,7 +1682,7 @@ async def upload_file(client_id: str = Form(...), file: UploadFile = File(...)):
             logger.warning(f"Failed to send cancellation confirmation: {ws_error}")
             
         # Safe variable access
-        safe_file_id = locals().get('file_id', 'unknown')
+        safe_file_id = locals().get('final_filename', 'unknown')
         safe_filename = locals().get('output_filename', None)
         
         return {
