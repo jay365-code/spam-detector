@@ -105,6 +105,8 @@ function App() {
   const [reportTab, setReportTab] = useState<'MAIN' | 'TRAP' | 'ALL'>('MAIN');
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadFilename, setDownloadFilename] = useState<string | null>(null);
+  const [kisaFilename, setKisaFilename] = useState<string>('MAIN');
+  const [trapFilename, setTrapFilename] = useState<string>('TRAP');
 
   // Cancellation State
   const [isCancelling, setIsCancelling] = useState(false);
@@ -340,6 +342,8 @@ function App() {
           timestamp: l.timestamp ? new Date(l.timestamp) : new Date()
         })));
         setDownloadFilename(data.source_filename);
+        if (data.kisa_filename) setKisaFilename(data.kisa_filename);
+        if (data.trap_filename) setTrapFilename(data.trap_filename);
         if (data.source_filename) {
           setDownloadUrl(`http://localhost:8000/download/${encodeURIComponent(data.source_filename)}`);
         }
@@ -443,6 +447,8 @@ function App() {
         const reportData = {
           report_name: handle.name.replace(".json", ""),
           source_filename: downloadFilename || '',
+          kisa_filename: kisaFilename,
+          trap_filename: trapFilename,
           timestamp: new Date().toISOString(),
           logs: logs
         };
@@ -460,6 +466,8 @@ function App() {
         const reportData = {
           report_name: finalName.replace(".json", ""),
           source_filename: downloadFilename || '',
+          kisa_filename: kisaFilename,
+          trap_filename: trapFilename,
           timestamp: new Date().toISOString(),
           logs: logs
         };
@@ -687,6 +695,8 @@ function App() {
     setEndTime(null); // Reset End Time
     setDownloadUrl(null);
     setDownloadFilename(null);
+    setKisaFilename('MAIN');
+    setTrapFilename('TRAP');
     setHitlRequest(null);
     setActiveReportName(null); // 분석 시작 시 보고서 모드 해제
     setActiveReportFileName(null);
@@ -695,10 +705,12 @@ function App() {
     setCancellationMessage('');
   };
 
-  const handleUploadComplete = (filename: string) => {
+  const handleUploadComplete = (filename: string, kisaName?: string, trapName?: string) => {
     setIsProcessing(false);
     setEndTime(Date.now()); // Capture Finish Time
     setDownloadFilename(filename);
+    if (kisaName) setKisaFilename(kisaName);
+    if (trapName) setTrapFilename(trapName);
     setDownloadUrl(`http://localhost:8000/download/${encodeURIComponent(filename)}`);
   };
 
@@ -920,18 +932,20 @@ function App() {
 
             {/* Main/TRAP Tabs */}
             {hasTrapData && (
-              <div className="flex items-center bg-slate-900 p-1 rounded-lg ml-4 border border-slate-700">
+              <div className="flex items-center bg-slate-900 p-1 rounded-lg ml-4 border border-slate-700 max-w-[400px]">
                 <button
                   onClick={() => setReportTab('MAIN')}
-                  className={`px-3 py-1 rounded text-xs font-bold transition-colors ${reportTab === 'MAIN' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-slate-300'}`}
+                  className={`px-3 py-1 rounded text-xs font-bold transition-colors truncate max-w-[180px] ${reportTab === 'MAIN' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-slate-300'}`}
+                  title={kisaFilename}
                 >
-                  kisa_xxx.txt
+                  {kisaFilename}
                 </button>
                 <button
                   onClick={() => setReportTab('TRAP')}
-                  className={`px-3 py-1 rounded text-xs font-bold transition-colors ${reportTab === 'TRAP' ? 'bg-slate-700 text-purple-400 shadow' : 'text-slate-400 hover:text-purple-300'}`}
+                  className={`px-3 py-1 rounded text-xs font-bold transition-colors truncate max-w-[180px] ${reportTab === 'TRAP' ? 'bg-slate-700 text-purple-400 shadow' : 'text-slate-400 hover:text-purple-300'}`}
+                  title={trapFilename}
                 >
-                  trap_xxx.txt
+                  {trapFilename}
                 </button>
               </div>
             )}

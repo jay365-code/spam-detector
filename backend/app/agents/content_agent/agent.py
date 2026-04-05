@@ -161,7 +161,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             return self._full_guide_cache
             
         try:
-            guide_path = os.path.join(os.path.dirname(__file__), "../../../data/spam_guide_20260326.md")
+            guide_path = os.path.join(os.path.dirname(__file__), "../../../data/spam_guide.md")
             logger.info(f"    [Info] Try loading Spam Guide from: {guide_path}")
             with open(guide_path, "r", encoding="utf-8") as f:
                 spam_guide_content = f.read()
@@ -170,14 +170,14 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         except Exception as e:
             try: 
                 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
-                guide_path = os.path.join(base_dir, "data/spam_guide_20260326.md")
+                guide_path = os.path.join(base_dir, "data/spam_guide.md")
                 logger.info(f"    [Info] Try loading Spam Guide from fallback: {guide_path}")
                 with open(guide_path, "r", encoding="utf-8") as f:
                     spam_guide_content = f.read()
                     self._full_guide_cache = spam_guide_content
                     return self._full_guide_cache
             except Exception as e2:
-                logger.error(f"    [Error] Failed to load spam_guide_20230724.md: {e2}")
+                logger.error(f"    [Error] Failed to load spam_guide.md: {e2}")
                 return "스팸 판단 기준: 도박, 성인, 사기, 불법 대출 의도가 명확하면 SPAM, 그렇지 않으면 HAM."
 
     def _get_cached_client(self, provider: str, api_key: str, model_name: str):

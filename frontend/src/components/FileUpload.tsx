@@ -4,7 +4,7 @@ import { UploadCloud, FileSpreadsheet, Loader2, CheckCircle } from 'lucide-react
 interface FileUploadProps {
     clientId: string;
     onUploadStart: () => void;
-    onUploadComplete: (filename: string) => void;
+    onUploadComplete: (filename: string, kisaFilename?: string, trapFilename?: string) => void;
     onFileSelect?: () => void;
 }
 
@@ -85,7 +85,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ clientId, onUploadStart,
                 // onUploadComplete 호출 안 함 → 기존 결과(로그) 유지
             } else {
                 setUploadStatus('success');
-                onUploadComplete(data.filename);
+                onUploadComplete(data.filename, data.kisa_filename, data.trap_filename);
             }
 
         } catch (error) {

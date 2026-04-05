@@ -4,7 +4,7 @@ import os
 import re
 from datetime import datetime
 from openpyxl import load_workbook, Workbook
-from openpyxl.styles import Font, Alignment, PatternFill
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ class ExcelHandler:
             
         # 데이터가 기록될 주요 시트들에 헤더 적용
         headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Reason", "Red Group"]
-        header_font = Font(bold=True)
+        header_font = Font(bold=True, size=10)
         header_align = Alignment(horizontal='center', vertical='center')
         header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
         
@@ -233,7 +233,7 @@ class ExcelHandler:
         from openpyxl.styles import Border, Side, Font
         # 폰트 스타일 정의
         base_font = Font(size=10)
-        msg_font = Font(size=10.5)
+        msg_font = Font(size=10)
         
         # 강조 (Gold, Accent 4, Lighter 80%) = FFF2CC
         spam_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
@@ -243,7 +243,7 @@ class ExcelHandler:
         box_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
         
         # 헤더(1행) 폰트 적용 (10.5) 및 테두리 적용
-        header_font = Font(size=10.5, bold=True)
+        header_font = Font(size=10, bold=True)
         for col_idx in range(1, ws.max_column + 1):
             header_cell = ws.cell(row=1, column=col_idx)
             header_cell.font = header_font
@@ -360,9 +360,9 @@ class ExcelHandler:
         ws.append(headers)
         
         # Style Definition
-        header_font = Font(bold=True, size=10.5)
+        header_font = Font(bold=True, size=10)
         base_font = Font(size=10)
-        msg_font = Font(size=10.5)
+        msg_font = Font(size=10)
         header_align = Alignment(horizontal='center', vertical='center')
         header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid") # Light Grey
         
@@ -383,7 +383,9 @@ class ExcelHandler:
             
         # Write Data (Normal URLs)
         row_num = 2
-        for url, info in unique_urls.items():
+        # URL의 경우에도 길이가 작은 순서로 정렬
+        sorted_urls = sorted(unique_urls.items(), key=lambda x: (x[1]['len'], str(x[0])))
+        for url, info in sorted_urls:
             ws.cell(row=row_num, column=1, value=self._sanitize_cell_value(url)).font = msg_font
             ws.cell(row=row_num, column=2, value=info['len']).font = base_font
             ws.cell(row=row_num, column=3, value=self._sanitize_cell_value(info['code'])).font = base_font
@@ -399,7 +401,9 @@ class ExcelHandler:
         # Write Data (Short URLs)
         if unique_short_urls:
             row_num = 2
-            for url, info in unique_short_urls.items():
+            # 단축 URL의 경우에도 길이가 작은 순서로 정렬
+            sorted_short_urls = sorted(unique_short_urls.items(), key=lambda x: (x[1]['len'], str(x[0])))
+            for url, info in sorted_short_urls:
                 ws.cell(row=row_num, column=20, value=self._sanitize_cell_value(url)).font = msg_font
                 ws.cell(row=row_num, column=21, value=info['len']).font = base_font
                 ws.cell(row=row_num, column=22, value=self._sanitize_cell_value(info['code'])).font = base_font
@@ -426,9 +430,9 @@ class ExcelHandler:
         ws.append(headers)
         
         # Styling
-        header_font = Font(bold=True, size=10.5)
+        header_font = Font(bold=True, size=10)
         base_font = Font(size=10)
-        msg_font = Font(size=10.5)
+        msg_font = Font(size=10)
         msg_fill = PatternFill(start_color="D8EFD3", end_color="D8EFD3", fill_type="solid")
         
         header_align = Alignment(horizontal='center', vertical='center')
@@ -640,6 +644,12 @@ class ExcelHandler:
                     ws.cell(row=row_idx, column=in_token_col_idx, value=in_token_val)
                     ws.cell(row=row_idx, column=out_token_col_idx, value=out_token_val)
                     ws.cell(row=row_idx, column=red_group_col_idx, value="O" if result.get("red_group") else "")
+
+                    if str(code_val) == "3":
+                        finance_ws = wb["금융.SPAM"] if "금융.SPAM" in wb.sheetnames else wb.create_sheet("금융.SPAM")
+                        _msg = ws.cell(row=row_idx, column=msg_col_idx).value
+                        if _msg:
+                            finance_ws.append([self._sanitize_cell_value(_msg)])
 
                     # --- URL Collection Logic ---
                     # Only collect URL from the input column if SPAM or extracted from HAM
@@ -866,7 +876,7 @@ class ExcelHandler:
                 # URL is normally in parts[1] if exists
                 url_in_file = parts[1] if len(parts) > 1 else ""
                 
-                rows.append({"message": msg_body, "url": url_in_file})
+                rows.append({"message": msg_body, "url": url_in_file, "original_line": line})
 
             total_rows = len(rows)
             # 전체 메시지 큐 로드: ≤2000이면 전체, >2000이면 2000개씩 청크
@@ -892,7 +902,7 @@ class ExcelHandler:
                 if not ws.cell(row=1, column=1).value:
                     for c_idx, h_val in enumerate(headers, start=1):
                         ws.cell(row=1, column=c_idx, value=h_val)
-                    header_font = Font(bold=True)
+                    header_font = Font(bold=True, size=10)
                     header_align = Alignment(horizontal='center', vertical='center')
                     header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
                     for cell in ws[1]:
@@ -900,11 +910,44 @@ class ExcelHandler:
                         cell.alignment = header_align
                         cell.fill = header_fill
 
+            sim_sheet_name = "TRAP.시뮬결과전체" if is_trap else "시뮬결과전체"
+            if sim_sheet_name not in wb.sheetnames:
+                wb.create_sheet(sim_sheet_name)
+            sim_ws = wb[sim_sheet_name]
+            
+            # "시뮬결과전체" 시트는 입력 텍스트를 로드한 것과 동일해야 함 (표준 서식: 메시지, URL, 구분, 메시지길이, URL길이)
+            if sim_ws.max_row <= 1 and not sim_ws.cell(row=1, column=1).value:
+                sim_headers = ["메시지", "URL", "구분", "메시지길이", "URL길이"]
+                for c_idx, h_val in enumerate(sim_headers, start=1):
+                    sim_ws.cell(row=1, column=c_idx, value=h_val)
+                for cell in sim_ws[1]:
+                    cell.font = Font(bold=True, size=10)
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                    cell.fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+                
+                # 열 너비 조정 (샘플 서식 반영)
+                sim_ws.column_dimensions['A'].width = 100  # 메시지
+                sim_ws.column_dimensions['B'].width = 50   # URL
+                sim_ws.column_dimensions['C'].width = 10   # 구분
+                sim_ws.column_dimensions['D'].width = 15   # 메시지길이
+                sim_ws.column_dimensions['E'].width = 15   # URL길이
+
+            start_row = sim_ws.max_row + 1 if sim_ws.cell(row=1, column=1).value else 1
+            for idx, r_dict in enumerate(rows):
+                msg = r_dict["message"]
+                url = r_dict.get("url", "")
+                sim_ws.cell(row=start_row + idx, column=1, value=self._sanitize_cell_value(msg))
+                sim_ws.cell(row=start_row + idx, column=2, value=self._sanitize_cell_value(url))
+                # column 3 (구분) -> 빈칸
+                sim_ws.cell(row=start_row + idx, column=4, value=self._lenb(msg))
+                sim_ws.cell(row=start_row + idx, column=5, value=self._lenb(url))
+
             # 4. Batch Processing
             batch_buffer = []
             unique_urls = {} # URL Reduplication Store
             unique_short_urls = {} # Short URL Reduplication Store
             blocklist_data = [] # IBSE Blocklist Store
+            stats = {"spam_count": 0}
 
             def flush_batch(start_idx):
                 if not batch_buffer:
@@ -946,6 +989,7 @@ class ExcelHandler:
                                 "total": total_rows,
                                 "message": batch_buffer[i]["message"],
                                 "excel_row_number": start_idx + i + 2,
+                                "index": start_idx + i,
                                 "result": result,
                                 "is_trap": is_trap
                             })
@@ -972,6 +1016,7 @@ class ExcelHandler:
                     elif is_type_b or is_spam is True:
                         # 일반 Type B 및 Type A는 구분 "o" 통일
                         gubun_val = "o"
+                        stats["spam_count"] += 1
                         raw_code = str(result.get("classification_code", ""))
                         match = re.search(r'\d+', raw_code)
                         code_val = match.group(0) if match else raw_code
@@ -1020,8 +1065,9 @@ class ExcelHandler:
                                 # path가 없거나 "/"뿐이고, query도 없으면 단독 도메인 -> 제외
                                 if (not parsed_u.path or parsed_u.path == "/") and not parsed_u.query:
                                     continue
-                                # 본문 추출 유도를 위해 파손된 단축 URL로 판단된 형태(괄호, 별표, 한글 등 포함) 배제 (User Request)
-                                if bool(re.search(r'[\[\]\*\(\)\{\}\<\>가-힣]', parsed_u.path)):
+                                # 본문 추출 유도를 위해 파손된 단축 URL로 판단된 형태(괄호, 별표 등 포함) 배제 
+                                # (한글은 합법적인 커스텀 URL 슬러그일 수 있으므로 허용)
+                                if bool(re.search(r'[\[\]\*\(\)\{\}\<\>]', parsed_u.path)):
                                     continue
                                 filtered_urls.append(u)
                             except Exception:
@@ -1044,6 +1090,11 @@ class ExcelHandler:
                         self._sanitize_cell_value("O" if result.get("red_group") else "")
                     ])
                     
+                    if str(code_val) == "3":
+                        finance_ws = wb["금융.SPAM"] if "금융.SPAM" in wb.sheetnames else wb.create_sheet("금융.SPAM")
+                        if msg_val:
+                            finance_ws.append([self._sanitize_cell_value(msg_val)])
+                    
                     # --- URL Collection Logic ---
                     # Only collect URLs from SPAM messages or extracted from HAM
                     # drop_url이 True인 경우 (위장 URL, 가비지 URL 등) 중복제거 시트에서도 완벽히 배제
@@ -1065,7 +1116,8 @@ class ExcelHandler:
                                  pass
     
                             if not self.is_short_url(target_url):
-                                 if target_url not in unique_urls:
+                                 # 40바이트 제한 반영
+                                 if target_url not in unique_urls and self._lenb(target_url) <= 40:
                                      # URL중복 제거 시트에는 classification_code 원본 사용 (Type_B여도 실제 코드 표시)
                                      raw_url_code = str(result.get("classification_code", ""))
                                      _m = re.search(r'\d+', raw_url_code)
@@ -1078,7 +1130,8 @@ class ExcelHandler:
                                          "malicious_url_extracted": result.get("malicious_url_extracted", False)
                                      }
                             else:
-                                 if target_url not in unique_short_urls:
+                                 # 40바이트 제한 반영
+                                 if target_url not in unique_short_urls and self._lenb(target_url) <= 40:
                                      raw_url_code = str(result.get("classification_code", ""))
                                      _m = re.search(r'\d+', raw_url_code)
                                      url_dedup_code = _m.group(0) if _m else raw_url_code
@@ -1125,6 +1178,7 @@ class ExcelHandler:
                             "total": total_rows,
                             "message": msg_val,
                             "excel_row_number": start_idx + i + 2,  # +2 for header row
+                            "index": start_idx + i,
                             "result": result,
                             "is_trap": is_trap
                         })
@@ -1161,11 +1215,16 @@ class ExcelHandler:
             blocklist_sheet_name = "TRAP.문자문장차단등록" if is_trap else "문자문장차단등록"
             self._create_blocklist_sheet(wb, blocklist_data, sheet_name=blocklist_sheet_name)
             
+            sheet_name_str = "TRAP.문자열 중복제거" if is_trap else "문자열중복제거"
+            sheet_name_sen = "TRAP.문장 중복제거" if is_trap else "문장중복제거"
+            self._create_split_dedup_sheets(wb, blocklist_data, sheet_name_str, sheet_name_sen)
+            
             # 7. Update Summary Table on "TRAP.문장 중복제거" 
             url_cnt = len(unique_urls) + len(unique_short_urls)
             str_cnt = sum(1 for item in blocklist_data if item['len'] <= 20)
             sen_cnt = sum(1 for item in blocklist_data if item['len'] > 20)
-            self._update_summary_table(wb, is_trap, output_filename, total_rows, url_cnt, str_cnt, sen_cnt)
+            actual_spam_cnt = stats["spam_count"]
+            self._update_summary_table(wb, is_trap, output_filename, actual_spam_cnt, url_cnt, str_cnt, sen_cnt)
                 
             wb.save(output_path)
             # return the actual path used so we can reuse it
@@ -1185,31 +1244,41 @@ class ExcelHandler:
         else:
             ws = wb[target_sheet]
             
+        thin_border = Border(left=Side(style='thin'), 
+                             right=Side(style='thin'), 
+                             top=Side(style='thin'), 
+                             bottom=Side(style='thin'))
+
         # 헤더가 비어있으면 초기 뼈대 세팅
         if not ws["E2"].value:
             # 1) 헤더 및 날짜명칭
             match = re.search(r'(\d{4})(\d{2})(\d{2})_([A-Za-z0-9]+)', filename)
             if match:
                 m, d, group = match.group(2), match.group(3), match.group(4)
-                # 요일은 생략하거나 표시. 간단히 MM월 DD일_A 등으로.
-                date_str = f"● {m}월 {d}일_{group}"
+                try:
+                    dt = datetime(int(match.group(1)), int(m), int(d))
+                    weekdays = ["월", "화", "수", "목", "금", "토", "일"]
+                    wd = weekdays[dt.weekday()]
+                    date_str = f"● {m}월 {d}일 ({wd})_{group}"
+                except ValueError:
+                    date_str = f"● {m}월 {d}일_{group}"
             else:
                 date_str = "● 요약"
             
             ws["E1"] = date_str
-            ws["E1"].font = Font(bold=True)
+            ws["E1"].font = Font(bold=True, size=10)
             
             headers = ["구분", "스팸태깅", "URL", "문자열", "문장"]
             for col_idx, h in enumerate(headers, start=5): # E=5
                 cell = ws.cell(row=2, column=col_idx, value=h)
-                cell.font = Font(bold=True)
+                cell.font = Font(bold=True, size=10)
                 cell.alignment = Alignment(horizontal='center', vertical='center')
                 cell.fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
             
             ws["E3"] = "SPAM"
             ws["E4"] = "TRAP"
-            ws["E3"].font = Font(bold=True)
-            ws["E4"].font = Font(bold=True)
+            ws["E3"].font = Font(bold=True, size=10)
+            ws["E4"].font = Font(bold=True, size=10)
             ws["E3"].fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
             ws["E4"].fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
             ws["E3"].alignment = Alignment(horizontal='center', vertical='center')
@@ -1222,14 +1291,83 @@ class ExcelHandler:
         
         # 데이터 업데이트 (SPAM 이면 3행, TRAP 이면 4행)
         row_idx = 4 if is_trap else 3
-        ws.cell(row=row_idx, column=6, value=spam_cnt if spam_cnt else "-").alignment = Alignment(horizontal='right')
-        ws.cell(row=row_idx, column=7, value=url_cnt if url_cnt else "-").alignment = Alignment(horizontal='right')
-        ws.cell(row=row_idx, column=8, value=str_cnt if str_cnt else "-").alignment = Alignment(horizontal='right')
-        ws.cell(row=row_idx, column=9, value=sen_cnt if sen_cnt else "-").alignment = Alignment(horizontal='right')
+        # 기존 값이 "숫자"인 경우 덮어쓰지 않고 최신값 유지
+        if str(ws.cell(row=row_idx, column=6).value) == "-":
+            ws.cell(row=row_idx, column=6, value=spam_cnt if spam_cnt else "-").alignment = Alignment(horizontal='right')
+        if str(ws.cell(row=row_idx, column=7).value) == "-":
+            ws.cell(row=row_idx, column=7, value=url_cnt if url_cnt else "-").alignment = Alignment(horizontal='right')
+        if str(ws.cell(row=row_idx, column=8).value) == "-":
+            ws.cell(row=row_idx, column=8, value=str_cnt if str_cnt else "-").alignment = Alignment(horizontal='right')
+        if str(ws.cell(row=row_idx, column=9).value) == "-":
+            ws.cell(row=row_idx, column=9, value=sen_cnt if sen_cnt else "-").alignment = Alignment(horizontal='right')
         
+        # 테두리 적용 (E2:I4)
+        for r in range(2, 5):
+            for c in range(5, 10):
+                ws.cell(row=r, column=c).border = thin_border
+
         # 너비 조정
         ws.column_dimensions['E'].width = 15
         ws.column_dimensions['F'].width = 15
         ws.column_dimensions['G'].width = 15
         ws.column_dimensions['H'].width = 15
         ws.column_dimensions['I'].width = 15
+
+    def _create_split_dedup_sheets(self, wb: Workbook, blocklist_data: list, sheet_name_str: str, sheet_name_sen: str):
+        if sheet_name_str not in wb.sheetnames:
+            ws_str = wb.create_sheet(sheet_name_str)
+        else:
+            ws_str = wb[sheet_name_str]
+
+        if sheet_name_sen not in wb.sheetnames:
+            ws_sen = wb.create_sheet(sheet_name_sen)
+        else:
+            ws_sen = wb[sheet_name_sen]
+
+        if not ws_str["A1"].value:
+            headers = ["키워드", "길이", "분류"]
+            for col_idx, h in enumerate(headers, start=1):
+                cell_str = ws_str.cell(row=1, column=col_idx, value=h)
+                cell_sen = ws_sen.cell(row=1, column=col_idx, value=h)
+                for c in [cell_str, cell_sen]:
+                    c.font = Font(bold=True, size=10)
+                    c.alignment = Alignment(horizontal='center', vertical='center')
+                    c.fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+
+        # Deduplicate
+        unique_str = {}
+        unique_sen = {}
+
+        for item in blocklist_data:
+            sig = item['sig']
+            if not sig: continue
+            code = item['code']
+            length = item['len']
+            
+            if length <= 20:
+                if sig not in unique_str:
+                    unique_str[sig] = {"len": length, "code": code}
+            else:
+                if sig not in unique_sen:
+                    unique_sen[sig] = {"len": length, "code": code}
+
+        # 문자열(20바이트 이하): 길이가 작은 순서로 오름차순, 그다음 가나다순
+        sorted_str = sorted(unique_str.items(), key=lambda x: (x[1]['len'], str(x[0])))
+        start_row_str = ws_str.max_row + 1 if ws_str.cell(row=1,column=1).value else 1
+        for row_idx, (sig, info) in enumerate(sorted_str, start=start_row_str):
+            ws_str.cell(row=row_idx, column=1, value=self._sanitize_cell_value(sig))
+            ws_str.cell(row=row_idx, column=2, value=info['len'])
+            ws_str.cell(row=row_idx, column=3, value=info['code'])
+
+        # 문장열(21바이트 이상): 길이가 긴 순서로 내림차순, 그다음 가나다순
+        sorted_sen = sorted(unique_sen.items(), key=lambda x: (-x[1]['len'], str(x[0])))
+        start_row_sen = ws_sen.max_row + 1 if ws_sen.cell(row=1,column=1).value else 1
+        for row_idx, (sig, info) in enumerate(sorted_sen, start=start_row_sen):
+            ws_sen.cell(row=row_idx, column=1, value=self._sanitize_cell_value(sig))
+            ws_sen.cell(row=row_idx, column=2, value=info['len'])
+            ws_sen.cell(row=row_idx, column=3, value=info['code'])
+
+        for c_ws in [ws_str, ws_sen]:
+            c_ws.column_dimensions['A'].width = 80
+            c_ws.column_dimensions['B'].width = 10
+            c_ws.column_dimensions['C'].width = 10

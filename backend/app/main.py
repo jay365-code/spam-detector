@@ -1216,14 +1216,13 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
             extracted_part = date_match.group(0) if date_match else datetime.now().strftime("%Y%m%d")
             
         base_filename = f"MMSC스팸추출_{extracted_part}"
-        llm_model = os.getenv("LLM_MODEL", "gpt-5-mini")
-        final_filename = f"{base_filename}_{llm_model}.xlsx"
+        final_filename = f"{base_filename}.xlsx"
         output_path = os.path.join(OUTPUT_DIR, final_filename)
         
         # Handle duplicate output names
         counter = 1
         while os.path.exists(output_path):
-            final_filename = f"{base_filename}_{llm_model} ({counter}).xlsx"
+            final_filename = f"{base_filename} ({counter}).xlsx"
             output_path = os.path.join(OUTPUT_DIR, final_filename)
             counter += 1
             
@@ -1669,7 +1668,14 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
             key_manager.rotate_key(provider)
             
         # File ID reference can be anything, picking final_filename base for UI
-        return {"id": final_filename, "filename": output_filename, "message": "Processing complete", "total_processed": total_rows}
+        return {
+            "id": final_filename, 
+            "filename": output_filename, 
+            "message": "Processing complete", 
+            "total_processed": total_rows,
+            "kisa_filename": kisa_file.filename if kisa_file else (excel_files[0].filename if excel_files else base_file.filename),
+            "trap_filename": trap_file.filename if trap_file else ""
+        }
     
     except CancellationException as e:
         logger.info(f"Processing cancelled: {e}")

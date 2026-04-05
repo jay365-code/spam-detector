@@ -305,10 +305,16 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                                  final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE & Content Matched (오탐 방어 Override)]"
                              # Do NOT wipe final["classification_code"] to preserve Content Agent's original intent
                      else:
-                         # URL에 스팸 증거가 없어 HAM 판정되었으나, 명백히 안전하다는 증거(대형포털 등)도 없는 상태 (가입 유도, 빈 페이지 등)
-                         # -> 기존 Content Agent 결과(SPAM)를 존중하여 덮어쓰지 않음
-                         short_url_reason = url_reason[:80] + "..." if len(url_reason) > 80 else url_reason
-                         final["reason"] = f"{existing_reason} | [URL 무혐의(원본 판단 유지) 요약: {short_url_reason}]"
+                        is_transactional_match = u_res.get("is_consistently_transactional", False)
+                        if is_transactional_match and final.get("is_spam"):
+                            # URL Agent가 '놀라운 연관성' 등 거래성 일치를 확신한 경우, Content Agent의 스미싱 오탐을 HAM으로 덮어씀
+                            final["is_spam"] = False
+                            final["reason"] = f"{existing_reason} | [URL: 상거래 완벽 일치(Transactional Match). 본문 스미싱/스팸 오탐 방어 Override]"
+                        else:
+                            # URL에 스팸 증거가 없어 HAM 판정되었으나, 명백히 안전하다는 증거(대형포털 등)도 없는 상태 (가입 유도, 빈 페이지 등)
+                            # -> 기존 Content Agent 결과(SPAM)를 존중하여 덮어쓰지 않음
+                            short_url_reason = url_reason[:80] + "..." if len(url_reason) > 80 else url_reason
+                            final["reason"] = f"{existing_reason} | [URL 무혐의(원본 판단 유지) 요약: {short_url_reason}]"
 
         # Ensure malicious_url_extracted is explicitly in the final dict if set
         if "malicious_url_extracted" in final and final["malicious_url_extracted"] is True:

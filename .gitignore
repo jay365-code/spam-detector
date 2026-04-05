@@ -43,7 +43,7 @@ venv.bak/
 # Project specific
 data/
 backend/data/*
-!backend/data/spam_guide.md
+!backend/data/*.md
 # 스팸 메시지 원문
 spams/
 *.xlsx
