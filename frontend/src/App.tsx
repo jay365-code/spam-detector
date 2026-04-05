@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { CheckCircle, AlertCircle, User, Database, Pencil, X, Save, Loader2, Search, FileText, FolderOpen, Settings } from 'lucide-react';
+import { CheckCircle, AlertCircle, User, Database, Pencil, X, Save, Loader2, Search, FileText, FolderOpen, Settings, MessageSquare } from 'lucide-react';
 import { FileUpload } from './components/FileUpload';
 import { StatusPanel } from './components/StatusPanel';
 import { ChatInterface } from './components/ChatInterface';
@@ -115,6 +115,9 @@ function App() {
   // RAG Manager State
   const [isRagManagerOpen, setIsRagManagerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false); // [New] Chat Panel State
+  const [chatWidth, setChatWidth] = useState(450); // [New] Resizable Chat Width
+  const [isChatDragging, setIsChatDragging] = useState(false); // [New] Chat Resize State
   const [ragInitialData, setRagInitialData] = useState<{
     message: string;
     label: 'SPAM' | 'HAM';
@@ -163,6 +166,7 @@ function App() {
     category: string;
     reason: string;
     spam_probability: number;
+    is_trap?: boolean;
   } | null>(null);
   const [editSaving, setEditSaving] = useState(false);
 
@@ -186,7 +190,8 @@ function App() {
       classification_code: log.result.classification_code || '',
       category: '', // Report usually doesn't have category, default to empty
       reason: log.result.reason || '',
-      spam_probability: log.result.spam_probability || 0.95
+      spam_probability: log.result.spam_probability || 0.95,
+      is_trap: log.is_trap || false
     });
     setEditModalOpen(true);
   };
@@ -230,7 +235,8 @@ function App() {
           is_spam: editingLog.is_spam,
           classification_code: editingLog.classification_code,
           reason: editingLog.reason,
-          spam_probability: editingLog.spam_probability
+          spam_probability: editingLog.spam_probability,
+          is_trap: editingLog.is_trap || false
         })
       });
 
@@ -307,9 +313,6 @@ function App() {
   // HITL State
   const [hitlRequest, setHitlRequest] = useState<any | null>(null);
 
-  // Resizable Panel State
-  const [logHeight, setLogHeight] = useState(300);
-  const [isDragging, setIsDragging] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -538,42 +541,42 @@ function App() {
         // Ignore Chat Streaming messages and Process Status for System Log
         if (data.type && (data.type.startsWith('CHAT_') || data.type === 'PROCESS_STATUS')) return;
 
-        // [New] Handle Batch Process Update (Real-time Streaming)
-        if (data.type === 'BATCH_PROCESS_UPDATE') {
-          // Update Progress Logic
-          if (data.current !== undefined && data.total !== undefined) {
-            setProgress({ current: data.current, total: data.total });
-            if (data.current < data.total) {
-              setIsProcessing(true);
-            } else {
-              if (data.current === data.total) {
-                // Done matching backend logic
-                setIsProcessing(false); // Make sure to stop spinner when done
+          // [New] Handle Batch Process Update (Real-time Streaming)
+          if (data.type === 'BATCH_PROCESS_UPDATE') {
+            // Update Progress Logic
+            if (data.current !== undefined && data.total !== undefined) {
+              setProgress({ current: data.current, total: data.total });
+              if (data.current < data.total) {
+                setIsProcessing(true);
+              } else {
+                if (data.current === data.total) {
+                  // Done matching backend logic
+                  setIsProcessing(false); // Make sure to stop spinner when done
+                }
               }
             }
+  
+            // If this is just the initial broadcast, skip adding an empty log row
+            if (data.status === 'started') {
+                return;
+            }
+  
+            setLogs(prev => {
+              const newLogs = [...prev];
+              // Construct Log Object
+              const logItem = {
+                excel_row_number: data.index + 2, // [Fix] Store Excel Row Number (Index + Header + 1-based)
+                message: data.message,
+                result: data.result,
+                is_trap: data.is_trap,
+                timestamp: new Date()
+              };
+  
+              newLogs[data.index] = logItem;
+              return newLogs;
+            });
+            return;
           }
-
-          // If this is just the initial broadcast, skip adding an empty log row
-          if (data.status === 'started') {
-              return;
-          }
-
-          setLogs(prev => {
-            const newLogs = [...prev];
-            // Construct Log Object
-            const logItem = {
-              excel_row_number: data.index + 2, // [Fix] Store Excel Row Number (Index + Header + 1-based)
-              message: data.message,
-              result: data.result,
-              is_trap: data.is_trap,
-              timestamp: new Date()
-            };
-
-            newLogs[data.index] = logItem;
-            return newLogs;
-          });
-          return;
-        }
 
         // Handle Progress/Log with Deduplication
         setLogs(prev => {
@@ -650,22 +653,22 @@ function App() {
     };
   }, [clientId]);
 
-  // Resizing Logic
+  // Chat Resizing Logic
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return;
-      const newHeight = window.innerHeight - e.clientY;
-      setLogHeight(Math.max(100, Math.min(newHeight, window.innerHeight - 200)));
+      if (!isChatDragging) return;
+      const newWidth = window.innerWidth - e.clientX;
+      setChatWidth(Math.max(300, Math.min(newWidth, window.innerWidth - 100)));
     };
 
     const handleMouseUp = () => {
-      setIsDragging(false);
+      setIsChatDragging(false);
     };
 
-    if (isDragging) {
+    if (isChatDragging) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = 'row-resize';
+      document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
     } else {
       document.removeEventListener('mousemove', handleMouseMove);
@@ -680,11 +683,11 @@ function App() {
       document.body.style.cursor = 'default';
       document.body.style.userSelect = 'auto';
     };
-  }, [isDragging]);
+  }, [isChatDragging]);
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleChatResizeMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
-    setIsDragging(true);
+    setIsChatDragging(true);
   };
 
   const handleUploadStart = () => {
@@ -841,11 +844,18 @@ function App() {
             </h1>
             <div className="flex items-center gap-1.5">
               <button
+                onClick={() => setIsChatOpen(!isChatOpen)}
+                className={`flex items-center justify-center p-2 rounded-lg transition-colors border ${isChatOpen ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-400'}`}
+                title="AI 스팸 검증 챗봇"
+              >
+                <MessageSquare className="w-4 h-4" />
+              </button>
+              <button
                 onClick={() => setIsRagManagerOpen(true)}
-                className="flex items-center justify-center p-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors"
+                className="flex items-center justify-center p-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors text-blue-400"
                 title="스팸 RAG"
               >
-                <Database className="w-4 h-4 text-blue-400" />
+                <Database className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setIsSettingsOpen(true)}
@@ -891,35 +901,12 @@ function App() {
           </div>
         </div>
 
-        {/* MIDDLE PANEL: Chat Interface */}
-        <div className="flex-1 p-4 relative min-h-0 overflow-hidden">
-          <ChatInterface
-            clientId={clientId}
-            ws={wsRef.current}
-            hitlRequest={hitlRequest}
-            onHitlResponse={handleHitlResponse}
-            onSendMessage={handleSendMessage}
-            onStopGeneration={handleStopChat}
-            onClearChat={handleClearChat}
-            isConnected={isConnected}
-          />
-        </div>
-
-        {/* RESIZE HANDLE */}
+        {/* BOTTOM PANEL: Log Viewer (Now Main Body) */}
         <div
-          onMouseDown={handleMouseDown}
-          className={`w-full h-1.5 cursor-row-resize bg-slate-800 hover:bg-blue-500 transition-colors z-50 flex items-center justify-center group ${isDragging ? 'bg-blue-500' : ''}`}
-        >
-          <div className="w-16 h-0.5 bg-slate-600 rounded-full group-hover:bg-blue-200 transition-colors" />
-        </div>
-
-        {/* BOTTOM PANEL: Log Viewer */}
-        <div
-          style={{ height: logHeight }}
-          className="min-h-[100px] bg-black/40 overflow-hidden flex flex-col border-t border-slate-800 transition-[height] duration-0 ease-linear"
+          className="flex-1 min-h-0 bg-slate-900/40 backdrop-blur-md overflow-hidden flex flex-col border-t border-slate-800 shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.5)] z-20 mt-2"
         >
           {/* Header */}
-          <div className="px-4 py-3 bg-slate-800/80 border-b border-slate-700 flex items-center gap-4 text-xs font-mono select-none">
+          <div className="px-6 py-4 bg-slate-900 border-b border-slate-800/80 flex items-center gap-4 text-xs font-mono select-none">
             <div className="flex items-center gap-2">
               <FileText className="w-4 h-4 text-blue-400" />
               <span className="text-sm font-bold text-slate-200">Spam Detection Report</span>
@@ -1054,8 +1041,8 @@ function App() {
                 const idx = log.originalIdx;
 
                 return (
-                  <div key={idx} className="flex gap-3 items-start animate-fade-in group hover:bg-white/5 p-1 rounded font-mono text-sm">
-                    <span className="text-slate-500 min-w-[30px] text-xs pt-1">
+                  <div key={idx} className="flex gap-4 items-start animate-fade-in group hover:bg-slate-800/50 p-3 rounded-xl font-mono text-sm border border-transparent hover:border-slate-800/80 transition-all duration-200">
+                    <span className="text-slate-600 min-w-[30px] text-xs pt-1.5 font-bold">
                       {String(idx + 1).padStart(3, '0')}
                     </span>
 
@@ -1144,18 +1131,23 @@ function App() {
                                        {log.result.url_result.details.attempted_urls && log.result.url_result.details.attempted_urls.length > 0
                                          ? (
                                              <>
-                                                 {log.result.url_result.details.attempted_urls.join(', ')}
+                                                 {log.result.url_result.details.attempted_urls.map((url: string, i: number) => (
+                                                   <span key={i}>
+                                                     {i > 0 && ", "}
+                                                     <a href={url.startsWith('http') ? url : `http://${url}`} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{url}</a>
+                                                   </span>
+                                                 ))}
                                                  {log.result.url_result.details.final_url && log.result.url_result.details.final_url !== "Unknown" && !log.result.url_result.details.attempted_urls.includes(log.result.url_result.details.final_url) && (
-                                                     <span className="text-slate-500/70 ml-1.5">→ {log.result.url_result.details.final_url}</span>
+                                                     <span className="text-slate-500/70 ml-1.5">→ <a href={log.result.url_result.details.final_url.startsWith('http') ? log.result.url_result.details.final_url : `http://${log.result.url_result.details.final_url}`} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{log.result.url_result.details.final_url}</a></span>
                                                  )}
                                              </>
                                          )
                                          : log.result.url_result.details.extracted_url && log.result.url_result.details.extracted_url !== "Unknown" 
                                            ? (
                                                <>
-                                                   {log.result.url_result.details.extracted_url}
+                                                   <a href={log.result.url_result.details.extracted_url.startsWith('http') ? log.result.url_result.details.extracted_url : `http://${log.result.url_result.details.extracted_url}`} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{log.result.url_result.details.extracted_url}</a>
                                                    {log.result.url_result.details.final_url && log.result.url_result.details.final_url !== "Unknown" && log.result.url_result.details.final_url !== log.result.url_result.details.extracted_url && (
-                                                       <span className="text-slate-500/70 ml-1.5">→ {log.result.url_result.details.final_url}</span>
+                                                       <span className="text-slate-500/70 ml-1.5">→ <a href={log.result.url_result.details.final_url.startsWith('http') ? log.result.url_result.details.final_url : `http://${log.result.url_result.details.final_url}`} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{log.result.url_result.details.final_url}</a></span>
                                                    )}
                                                </>
                                            )
@@ -1177,17 +1169,31 @@ function App() {
                                   log.result.url_result.details.attempted_urls && log.result.url_result.details.attempted_urls.length > 0 
                                     ? (
                                       <>
-                                        {log.result.url_result.details.attempted_urls.join(', ')}
+                                        {log.result.url_result.details.attempted_urls.map((url: string, i: number) => (
+                                          <span key={i}>
+                                            {i > 0 && ", "}
+                                            <a href={url.startsWith('http') ? url : `http://${url}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{url}</a>
+                                          </span>
+                                        ))}
                                         {log.result.url_result.details.final_url && log.result.url_result.details.final_url !== "Unknown" && !log.result.url_result.details.attempted_urls.includes(log.result.url_result.details.final_url) && (
-                                            <span className="text-slate-400 ml-1.5">→ {log.result.url_result.details.final_url}</span>
+                                            <span className="text-slate-400 ml-1.5">→ <a href={log.result.url_result.details.final_url.startsWith('http') ? log.result.url_result.details.final_url : `http://${log.result.url_result.details.final_url}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{log.result.url_result.details.final_url}</a></span>
                                         )}
                                       </>
                                     )
                                     : (
                                       <>
-                                        {log.result.url_result.details.extracted_url}
+                                        {log.result.url_result.details.extracted_url.split(',').map((u: string, i: number) => {
+                                          const t = u.trim();
+                                          if (!t) return null;
+                                          return (
+                                            <span key={i}>
+                                              {i > 0 && ", "}
+                                              <a href={t.startsWith('http') ? t : `http://${t}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{t}</a>
+                                            </span>
+                                          );
+                                        })}
                                         {log.result.url_result.details.final_url && log.result.url_result.details.final_url !== "Unknown" && log.result.url_result.details.extracted_url !== log.result.url_result.details.final_url && (
-                                            <span className="text-slate-400 ml-1.5">→ {log.result.url_result.details.final_url}</span>
+                                            <span className="text-slate-400 ml-1.5">→ <a href={log.result.url_result.details.final_url.startsWith('http') ? log.result.url_result.details.final_url : `http://${log.result.url_result.details.final_url}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{log.result.url_result.details.final_url}</a></span>
                                         )}
                                       </>
                                     )
@@ -1203,7 +1209,18 @@ function App() {
                                 본문 추출 URL
                               </span>
                               <span className="bg-slate-800/80 px-1.5 py-1 rounded text-slate-300 font-mono text-[11px] break-all border border-slate-700/50">
-                                {log.result.message_extracted_url}
+                                {log.result.message_extracted_url.split(',').map((urlStr: string, i: number) => {
+                                  const trimmedUrl = urlStr.trim();
+                                  if (!trimmedUrl) return null;
+                                  return (
+                                    <span key={i}>
+                                      {i > 0 && ", "}
+                                      <a href={trimmedUrl.startsWith('http') ? trimmedUrl : `http://${trimmedUrl}`} target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:text-emerald-300 hover:underline transition-colors cursor-pointer">
+                                        {trimmedUrl}
+                                      </a>
+                                    </span>
+                                  );
+                                })}
                               </span>
                             </div>
                           )}
@@ -1391,6 +1408,67 @@ function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* AI Chat Drawer & Backdrop */}
+      {isChatOpen && (
+        <div 
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity"
+          onClick={() => setIsChatOpen(false)}
+        />
+      )}
+      <div 
+        style={{ width: chatWidth }}
+        className={`fixed top-0 right-0 h-full bg-slate-900 border-l border-slate-700 shadow-2xl z-50 flex flex-col transform ${isChatOpen ? 'translate-x-0' : 'translate-x-[100%]'} ${isChatDragging ? 'transition-none' : 'transition-transform duration-300 ease-in-out'}`}
+      >
+        {/* Resize Handle (Hitbox) */}
+        {isChatOpen && (
+          <div
+            onMouseDown={handleChatResizeMouseDown}
+            className="absolute left-0 top-0 w-8 h-full cursor-col-resize -translate-x-1/2 flex items-center justify-center group z-[60]"
+          >
+            <div className={`h-full w-1 transition-colors ${isChatDragging ? 'bg-indigo-500' : 'group-hover:bg-indigo-500/50'}`} />
+            <div className={`absolute h-16 w-1 rounded-full transition-colors ${isChatDragging ? 'bg-white' : 'bg-slate-600 group-hover:bg-white'}`} />
+          </div>
+        )}
+        <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900/90 backdrop-blur">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-indigo-400" />
+            <h2 className="font-bold text-slate-200">AI 스팸 검증 챗봇</h2>
+          </div>
+          <button 
+            onClick={() => setIsChatOpen(false)}
+            className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-hidden relative">
+          <ChatInterface
+            clientId={clientId}
+            ws={wsRef.current}
+            hitlRequest={hitlRequest}
+            onHitlResponse={handleHitlResponse}
+            onSendMessage={handleSendMessage}
+            onStopGeneration={handleStopChat}
+            onClearChat={handleClearChat}
+            isConnected={isConnected}
+          />
+        </div>
+      </div>
+
+      {/* Chat FAB */}
+      {!isChatOpen && (
+        <button
+          onClick={() => setIsChatOpen(true)}
+          className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-[0_0_20px_rgba(79,70,229,0.4)] flex items-center justify-center z-30 transition-all hover:scale-105 active:scale-95 group"
+          title="AI 스팸 검증 챗봇 열기"
+        >
+          <MessageSquare className="w-6 h-6 group-hover:animate-pulse" />
+          {hitlRequest && (
+            <span className="absolute top-0 right-0 w-4 h-4 bg-rose-500 rounded-full border-2 border-indigo-600 animate-bounce" />
+          )}
+        </button>
       )}
 
       <RagManager

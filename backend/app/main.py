@@ -1616,45 +1616,63 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
             # a. Create template 
             await loop.run_in_executor(None, excel_handler.create_template_workbook, output_path)
             
-            # b. Process KISA
+            # Base counters
+            kisa_row_count = 0 
+            trap_row_count = 0
+            
+            input_path_kisa = None
+            input_path_trap = None
+
+            # b. Pre-calculate KISA & Save
             if kisa_file:
                 file_id = str(uuid.uuid4())
-                input_path = os.path.join(UPLOAD_DIR, f"{file_id}.txt")
-                with open(input_path, "wb") as buffer:
+                input_path_kisa = os.path.join(UPLOAD_DIR, f"{file_id}.txt")
+                with open(input_path_kisa, "wb") as buffer:
                     shutil.copyfileobj(kisa_file.file, buffer)
                 
-                logger.info(f"Processing KISA component from {kisa_file.filename}")
-                result = await loop.run_in_executor(
-                    None, 
-                    lambda path=input_path, fname=kisa_file.filename: excel_handler.process_kisa_txt(
-                        path, OUTPUT_DIR, process_message_with_hitl, progress_callback, 
-                        batch_size=batch_chunk_size, original_filename=fname,
-                        manager=manager, client_id=client_id, is_trap=False, override_output_path=output_path
-                    )
-                )
-                if isinstance(result, dict):
-                    if "total_rows" in result:
-                        total_rows += result["total_rows"]
+                with open(input_path_kisa, 'r', encoding='utf-8', errors='replace') as f:
+                    kisa_row_count = len([line for line in f if line.strip()])
 
-            # c. Process TRAP
+            # c. Pre-calculate TRAP & Save
             if trap_file:
                 file_id = str(uuid.uuid4())
-                input_path = os.path.join(UPLOAD_DIR, f"{file_id}.txt")
-                with open(input_path, "wb") as buffer:
+                input_path_trap = os.path.join(UPLOAD_DIR, f"{file_id}.txt")
+                with open(input_path_trap, "wb") as buffer:
                     shutil.copyfileobj(trap_file.file, buffer)
-                    
-                logger.info(f"Processing TRAP component from {trap_file.filename}")
-                result = await loop.run_in_executor(
-                    None, 
-                    lambda path=input_path, fname=trap_file.filename: excel_handler.process_kisa_txt(
-                        path, OUTPUT_DIR, process_message_with_hitl, progress_callback, 
-                        batch_size=batch_chunk_size, original_filename=fname,
-                        manager=manager, client_id=client_id, is_trap=True, override_output_path=output_path
+
+                with open(input_path_trap, 'r', encoding='utf-8', errors='replace') as f:
+                    trap_row_count = len([line for line in f if line.strip()])
+
+            global_total_rows = kisa_row_count + trap_row_count
+            total_rows = global_total_rows
+
+            # d. Process KISA
+            if input_path_kisa:
+                logger.info(f"Processing KISA component from {kisa_file.filename} (found {kisa_row_count} lines)")
+                
+                def run_kisa(in_path=input_path_kisa, orig_name=kisa_file.filename):
+                    return excel_handler.process_kisa_txt(
+                        in_path, OUTPUT_DIR, process_message_with_hitl, progress_callback, 
+                        batch_size=batch_chunk_size, original_filename=orig_name,
+                        manager=manager, client_id=client_id, is_trap=False, override_output_path=output_path, 
+                        index_offset=0, global_total_rows=global_total_rows
                     )
-                )
-                if isinstance(result, dict):
-                    if "total_rows" in result:
-                        total_rows += result["total_rows"]
+                    
+                result = await loop.run_in_executor(None, run_kisa)
+
+            # e. Process TRAP
+            if input_path_trap:
+                logger.info(f"Processing TRAP component from {trap_file.filename} (found {trap_row_count} lines) with index_offset={kisa_row_count}")
+                
+                def run_trap(in_path=input_path_trap, orig_name=trap_file.filename):
+                    return excel_handler.process_kisa_txt(
+                        in_path, OUTPUT_DIR, process_message_with_hitl, progress_callback, 
+                        batch_size=batch_chunk_size, original_filename=orig_name,
+                        manager=manager, client_id=client_id, is_trap=True, override_output_path=output_path, 
+                        index_offset=kisa_row_count, global_total_rows=global_total_rows
+                    )
+                    
+                result = await loop.run_in_executor(None, run_trap)
                         
             output_filename = final_filename
         
@@ -1711,6 +1729,7 @@ class ExcelRowUpdate(BaseModel):
     classification_code: str
     reason: str
     spam_probability: float = 0.95
+    is_trap: bool = False
 
 @app.put("/api/excel/update-row")
 async def update_excel_row(update: ExcelRowUpdate):
@@ -1760,7 +1779,14 @@ async def update_excel_row(update: ExcelRowUpdate):
     
     try:
         wb = load_workbook(file_path)
-        ws = wb.active
+        
+        # Select correct sheet based on is_trap
+        if update.is_trap and "TRAP.시뮬결과전체" in wb.sheetnames:
+            ws = wb["TRAP.시뮬결과전체"]
+        elif not update.is_trap and "시뮬결과전체" in wb.sheetnames:
+            ws = wb["시뮬결과전체"]
+        else:
+            ws = wb.active
         
         # 헤더 찾기
         headers = [cell.value for cell in ws[1]]

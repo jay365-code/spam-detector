@@ -92,6 +92,14 @@ class IBSEAgentService:
             
         final = final_state.get("final_result", {}) or {}
         
+        # [중요] 모든 재시도 루프가 종료되었음에도 에러가 남아있다면, 최종 실패로 간주하고 unextractable로 덮어씌움
+        if final_state.get("error"):
+            logger.warning(f"IBSE Pipeline finished with unresolved error for {message_id}: {final_state.get('error')}. Forcing 'unextractable'.")
+            final["decision"] = "unextractable"
+            final["signature"] = None
+            final["reason"] = f"검증 실패 (Retry 초과): {final_state.get('error')}"
+            final["byte_len_cp949"] = 0
+        
         # Calculate Candidate Count safely
         c_count = len(final_state.get("candidates_20", [])) + len(final_state.get("candidates_40", []))
 
