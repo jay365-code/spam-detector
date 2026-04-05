@@ -9,6 +9,10 @@ class Validator:
         if decision == "unextractable":
             return result
         
+        allowed_decisions = ["use_string", "use_sentence", "unextractable"]
+        if decision not in allowed_decisions:
+            return {**result, "error": f"Invalid decision: '{decision}'. Must be one of {allowed_decisions}."}
+        
         if not signature:
             return {**result, "error": "Signature is empty but decision is not unextractable"}
         
@@ -16,8 +20,22 @@ class Validator:
         if signature not in text_context:
             return {**result, "error": "Strict extraction failed. The extracted signature does NOT exist exactly within the original message text."}
             
-
-            
+        # 2. URL Substring Check (Prevent Domain-only extraction)
+        import re
+        url_pattern = r'(?:(?:https?://)|(?:www\.))?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-zA-Z]{2,6}\b(?:[-a-zA-Z0-9@:%_\+.~#?&//=]*)'
+        urls_in_text = list(re.finditer(url_pattern, text_context))
+        
+        sig_start = text_context.find(signature)
+        if sig_start != -1:
+            sig_end = sig_start + len(signature)
+            for url_match in urls_in_text:
+                u_start = url_match.start()
+                u_end = url_match.end()
+                
+                # Check if the signature is ENTIRELY contained within the URL
+                if sig_start >= u_start and sig_end <= u_end:
+                    return {**result, "error": f"URL(또는 도메인)의 일부나 전체만 단독으로 시그니처에 사용하는 것은 금지됩니다. 반드시 URL 밖의 한글 텍스트(문자열)를 함께 포함하여 유니크하게 만들거나 unextractable 처리하세요. (추출된 시그니처: {signature})"}
+                        
         # 3. Blacklist Check
         blacklist = ["광고", "(광고)", "[광고]", "080-", "무료거부", "수신거부", "무료수신거부"]
         for b in blacklist:
@@ -26,8 +44,6 @@ class Validator:
                 
         # 4. Byte Length constraints
         byte_len = get_cp949_byte_len(signature)
-        if byte_len == -1: # Fallback calculation if encoding fails
-             byte_len = len(signature) * 2
              
         if byte_len < 9:
              return {**result, "error": f"Signature is too short ({byte_len} bytes). Must be at least 9 bytes."}
@@ -36,16 +52,8 @@ class Validator:
              return {**result, "error": f"Decision is use_string but length is {byte_len} bytes. Should be between 9 and 20."}
              
         if decision == "use_sentence":
-             # 원본 메시지가 39바이트보다 짧은 특수 상황이 아닌 이상, 39~40을 엄격히 시킴
-             full_msg_len = get_cp949_byte_len(text_context)
-             if full_msg_len == -1: full_msg_len = len(text_context) * 2
-             
-             if full_msg_len >= 39:
-                 if byte_len < 39 or byte_len > 40:
-                      return {**result, "error": f"Decision is use_sentence but length is {byte_len} bytes. Should be exactly 39 or 40 bytes."}
-             else:
-                 if byte_len != full_msg_len:
-                      return {**result, "error": f"Decision is use_sentence on a short message. Length {byte_len} must match full message length {full_msg_len}."}
+             if byte_len < 39 or byte_len > 40:
+                  return {**result, "error": f"Decision is use_sentence but length is {byte_len} bytes. Should be exactly 39 or 40 bytes. (If the original text is too short, you must use use_string or unextractable instead.)"}
              
         return result
 

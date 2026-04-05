@@ -34,7 +34,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ ws, hitlRequest, o
     useEffect(() => {
         setMessages([{
             role: 'assistant',
-            content: '안녕하세요! 엑셀 파일을 업로드하여 스팸 탐지를 시작하거나, 스팸 관련 질문을 자유롭게 입력해주세요.\n(예: "도박 사이트 홍보 기준이 뭐야?")'
+            content: '분석할 메시지를 입력하세요.'
         }]);
     }, []);
 
@@ -247,11 +247,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ ws, hitlRequest, o
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="flex items-start gap-4 animate-fade-in pl-1">
-                                        <div className={`mt-1 flex-shrink-0 w-9 h-9 rounded-full overflow-hidden border border-white/10 shadow-lg relative ${msg.isStreaming ? 'animate-bounce' : ''}`}>
+                                    <div className="flex items-start gap-3 animate-fade-in pl-1">
+                                        <div className={`flex-shrink-0 w-8 h-8 rounded-full overflow-hidden border border-white/10 shadow-lg relative ${msg.isStreaming ? 'animate-bounce' : ''}`}>
                                             <img src="/icon.png" alt="AI Agent" className="w-full h-full object-cover" />
                                         </div>
-                                        <div className="prose prose-invert prose-sm max-w-none w-full leading-relaxed break-words prose-p:mb-2 prose-p:mt-1 prose-ul:my-2 prose-ul:ml-4 prose-ul:list-disc prose-li:my-0.5 prose-ol:my-2 prose-ol:ml-4 prose-ol:list-decimal prose-strong:text-blue-300 prose-strong:font-bold prose-headings:text-slate-100 prose-headings:font-bold prose-headings:mb-3 prose-headings:mt-4 prose-blockquote:border-l-4 prose-blockquote:border-slate-600 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-slate-400">
+                                        <div className="prose prose-invert prose-sm max-w-none w-full leading-relaxed break-words prose-p:my-0 prose-ul:my-2 prose-ul:ml-4 prose-ul:list-disc prose-li:my-0.5 prose-ol:my-2 prose-ol:ml-4 prose-ol:list-decimal prose-strong:text-blue-300 prose-strong:font-bold prose-headings:text-slate-100 prose-headings:font-bold prose-headings:mb-3 prose-headings:mt-4 prose-blockquote:border-l-4 prose-blockquote:border-slate-600 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-slate-400 pt-1">
                                             {msg.processStatus && (
                                                 <div className="mb-4 px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-lg text-blue-300 text-xs font-mono flex items-center gap-2 animate-pulse w-fit">
                                                     <div className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
@@ -269,12 +269,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ ws, hitlRequest, o
                     </div>
                 ))}
                 {isGenerating && messages[messages.length - 1]?.role === 'user' && (
-                    <div className="flex items-start gap-4 animate-fade-in pl-1">
-                        <div className="mt-1 flex-shrink-0 w-9 h-9 rounded-full overflow-hidden border border-white/10 shadow-lg relative animate-bounce">
+                    <div className="flex items-start gap-3 animate-fade-in pl-1">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden border border-white/10 shadow-lg relative animate-bounce">
                             <img src="/icon.png" alt="AI Agent" className="w-full h-full object-cover" />
                         </div>
                         <div className="prose prose-invert prose-sm max-w-none w-full">
-                            <div className="font-sans text-[15px] italic text-slate-400 mt-2">
+                            <div className="font-sans text-[15px] italic text-slate-400 pt-1">
                                 스팸 분석 중...
                             </div>
                         </div>

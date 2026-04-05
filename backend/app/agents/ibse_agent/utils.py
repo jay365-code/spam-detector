@@ -4,12 +4,9 @@ import re
 def get_cp949_byte_len(text: str) -> int:
     """
     Calculates the byte length of a string when encoded in CP949.
-    Returns -1 if the text contains characters that cannot be encoded in CP949.
+    Uses errors='replace' to safely handle unencodable characters.
     """
-    try:
-        return len(text.encode("cp949"))
-    except UnicodeEncodeError:
-        return -1
+    return len(text.encode("cp949", errors="replace"))
 
 def is_valid_cp949(text: str) -> bool:
     """

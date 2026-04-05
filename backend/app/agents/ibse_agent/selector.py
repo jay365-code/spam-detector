@@ -36,13 +36,13 @@ class LLMSelector:
 [추출 타입]
 1) "use_sentence": 39~40 bytes 길이의 긴 시그니처 추출
 - 추출 길이 제한: 순수 한글/영문/특수기호 혼합하여 39~40 bytes 분량 (글자수 무관)
-- **[🚨 절대 금지]** 메시지가 40바이트를 명백히 넘음에도 불구하고 원본 텍스트 전체를 통째로 추출하지 마라! 반드시 40바이트 이내의 부분 문자열을 잘라내야 한다. 단 애초에 메시지 전체 길이가 39 bytes도 안 되는 아주 짧은 메시지인 경우에만 예외적으로 원문 전체를 변경 없이 묶어서 추출한다.
+- **[🚨 절대 금지]** 메시지 크기에 상관없이 원본 텍스트 전체를 통째로 추출하지 마라! 부분 문자열을 잘라내야 한다. 원문 전체 길이가 39 bytes가 안 되는 아주 짧은 메시지라도, 원문을 그대로 사용하는 것이 아니라 반드시 9~20 bytes (use_string) 이내로 유니크한 문자열을 추출해라.
 
 2) "use_string": 9~20 bytes 사이의 짧은 단어장/키워드 배열 추출 (가장 흔함)
 - 추출 길이 제한: CP949 인코딩 기준 **반드시 9 bytes 이상 20 bytes 이하**여야 한다. (영문/숫자/특수기호는 1바이트, 한글은 2바이트로 계산)
-- 🚨 [9바이트 미만 절대 금지] 만약 찾아낸 핵심 식별자(예: 'F-ONE')가 너무 짧아서 9바이트가 안 된다면, 절대 단독으로 추출하거나 포기하고 "NONE"을 뱉지 마라! 반드시 해당 키워드 주변의 특수기호나 단어를 덧붙여서(예: `◆F-ONE◆김대표`) 최소 9바이트 이상 20바이트 이하 길이를 강제로라도 맞추거나, 아예 39~40바이트의 `use_sentence`로 크게 묶어 추출해라.
-- 🚨 [서명 중간 절단 절대 금지] 20바이트 혹은 40바이트 제한 기준에 맞추다 어쩔 수 없이 식별용 URL이나 핵심 영단어의 한가운데가 툭 잘려나간 형태(예: `www.youtube.com/watc`)로 추출해서는 절대 안 된다. 시그니처가 중간에 잘리면 오탐 확률이 대폭 늘어난다. 만약 주소가 너무 길어 길이 제한 탓에 중간이 잘릴 수밖에 없다면, 차라리 도메인/URL 추출을 포기하고 메시지 내 다른 Unique한 형태의 한글 문자열이나 고유 패턴을 시그니처로 삼아라. URL을 추출할 것이라면 반드시 '풀(Full)'로 완전한 형태로 뽑거나 다른 특이 문자열을 추출해라.
-- **[🚨 억지 추출 금지]** 길이 기준(+잘림 없는 온전한 형태)에 부합하는 적절한 문자열을 원문에서 도저히 찾을 수 없다면, 억지로 기준에 어긋나는 부분을 끼워 맞춰 추출할 필요가 **전혀 없다**. 고민하지 말고 안전하게 `"decision": "unextractable"`을 리턴해라.
+- 🚨 [9바이트 미만 절대 금지] 만약 찾아낸 핵심 식별자(예: 'F-ONE')가 너무 짧아서 9바이트가 안 된다면, 절대 단독으로 추출하거나 포기하고 "NONE"을 뱉지 마라! 반드시 해당 키워드 주변의 특수기호나 단어를 덧붙여 최소 9바이트 이상 20바이트 이하 길이를 강제로라도 맞추어라.
+- 🚨 [도메인/URL 단독 추출 금지] 도메인이나 URL 구역의 글자로만 100% 채워진 시그니처는 대형 오탐 사고를 내므로 절대 금지한다. URL은 단독으로 쓰지 말고, 반드시 한글 텍스트(문자열)를 단독으로 추출하거나, 유니크함이 보장된다면 "한글 문자열 + URL 일부/전체" 형태의 혼합 조합으로 추출해라. 무엇이 되었든 가장 중요한 기준은 "이 시그니처가 스팸을 특정할 수 있는 유니크한 문자열인가?" 이다.
+- **[🚨 억지 추출 금지]** 유니크한 문자/문장(시그니처)을 추출하지 못하겠다면 억지로 추출하지 말고 안전하게 `"decision": "unextractable"`을 선언하라.
 
 ---
 [INPUT DATA]
@@ -54,13 +54,13 @@ class LLMSelector:
   "message_id": "{message_id}",
   "decision": "use_string" | "use_sentence" | "unextractable",
   "identified_url_or_domain": "원문에서 찾은 URL/도메인 본체 (없으면 null)",
-  "signature": "추출한 원본 부분 문자열 (최우선: 난독화/투명 기호가 섞인 특이한 문자열(예: '쿠-팡')이 있다면 이를 1일 단기 차단용으로 우선 추출할 것. 평범한 텍스트일 때는 가급적 identified_url_or_domain을 포함할 것)",
+  "signature": "추출한 유니크한 원본 부분 문자열. (주의: URL이나 도메인만 단독으로 추출하지 마라. 한글 문자열 단독이거나 '문자열 + URL' 조합으로 유니크하게 뽑아라.)",
   "risk": "low" | "medium" | "high",
-  "reason": "왜 이 문자열이 가장 고유하고 강력한 시그니처인지 1~2줄 요약 (오탐 여부 등)"
+  "reason": "왜 이 문자열이 가장 고유하고 강력한 시그니처인지 1~2줄 요약"
 }}"""
 
     REPAIR_SYSTEM_PROMPT = """이전 출력이 검증에 실패했다.
-가장 중요한 원칙은 **signature가 match_text 내에 정확히 존재해야(오타/변형 불가) 하며, 길이는 반드시 9~20 bytes 또는 39~40 bytes 중 하나여야 한다 (21~38 bytes는 절대 불가).**
+가장 중요한 원칙은 **signature가 match_text 내에 정확히 존재해야하며, 길이는 반드시 9~20 bytes 또는 39~40 bytes 중 하나여야 한다.** (도메인이나 URL만 단독으로 추출하는 것은 금지며, 문맥 텍스트를 포함해 '유니크한 문자열'을 만들어야 함)
 반드시 JSON 단일 객체로만 다시 출력해라."""
 
     REPAIR_USER_TEMPLATE = """검증 실패 사유: {error_reason}
@@ -75,7 +75,7 @@ obfuscated_urls: {obfuscated_urls}
   "message_id": "{message_id}",
   "decision": "use_string" | "use_sentence" | "unextractable",
   "identified_url_or_domain": "원문에서 찾은 URL/도메인 본체 (없으면 null)",
-  "signature": "추출한 원본 부분 문자열 (반드시 identified_url_or_domain을 포함할 것!)",
+  "signature": "추출한 원본 부분 문자열 (도메인/URL 단독 추출 금지, 문자열 단독 또는 문자열+URL 조합으로 유니크하게 추출할 것)",
   "risk": "low" | "medium" | "high",
   "reason": "왜 이 문자열이 가장 고유하고 강력한 시그니처인지 1~2줄 요약 (오탐 여부 등)"
 }}"""
@@ -254,46 +254,8 @@ async def select_signature_node(state: IBSEState) -> dict:
     match_text = state.get("match_text", "")
     sig_text = result.get("signature") or ""
     
-    # 만약 LLM이 URL을 아예 못 찾았다면, 정규식으로 직접 찾아서 강제 주입
-    if not identified_url or identified_url == "null":
-        # 영문/숫자 혼합 도메인 및 경로를 최소한으로 잡는 범용 정규식
-        found_urls = re.findall(r'[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:/[a-zA-Z0-9_/?=#&.-]*)?', match_text)
-        if found_urls:
-            # 보통 맨 마지막이나 핵심에 있는 URL이 타겟. 문자열 안에 존재하는 실제 URL만 필터링
-            for u in found_urls:
-                if u in match_text:
-                    identified_url = u
-                    break
-
-    if identified_url and identified_url != "null" and isinstance(identified_url, str):
-        if identified_url in match_text and identified_url not in sig_text:
-            logger.warning(f"⚠️ [IBSE Agent] LLM missed URL in signature or gave up! Forcing inclusion programmatically: {identified_url}")
-            url_len = len(identified_url.encode("cp949", errors="replace"))
-            
-            # [중요] 단축 URL (Path가 3 이하)인 경우 단독 추출은 오탐 유발, 반드시 Context 필요
-            path_parts = identified_url.split('/')
-            is_short_url = len(path_parts) > 1 and len(path_parts[-1]) <= 3
-            
-            if not is_short_url and url_len <= 20:
-                result["decision"] = "use_string"
-                sig_text = identified_url
-            else:
-                result["decision"] = "use_sentence"
-                end_idx = match_text.find(identified_url) + len(identified_url)
-                target_text = match_text[:end_idx]
-                encoded = target_text.encode("cp949", errors="replace")
-                if len(encoded) > 40:
-                    truncated = encoded[-40:]
-                    while len(truncated) > 0:
-                        try:
-                            sig_text = truncated.decode("cp949", errors="strict")
-                            break
-                        except UnicodeDecodeError:
-                            truncated = truncated[1:] # 앞부분 바이트 깨짐 보정
-                else:
-                    sig_text = target_text
-            
-            result["signature"] = sig_text
+    # [Python 2차 방어] LLM이 URL을 찾아놓고도 프롬프트를 어기고 시그니처에 빼먹은 경우 강제 치환하는 로직 삭제 (사용자 방침에 따라 URL 강제 포함 금지)
+    pass
 
     if "signature" in result and result["signature"] and result.get("decision") in ["use_string", "use_sentence"]:
         max_bytes = 20 if result["decision"] == "use_string" else 40
@@ -306,28 +268,45 @@ async def select_signature_node(state: IBSEState) -> dict:
         if result["decision"] == "use_sentence" and len(encoded) < 39:
             idx = match_text.find(sig_text)
             if idx != -1:
-                end_idx = idx + len(sig_text)
-                pad_front = match_text[:end_idx].encode("cp949", errors="replace")
-                pad_back = match_text[idx:].encode("cp949", errors="replace")
+                left_idx = idx
+                right_idx = idx + len(sig_text)
                 
-                if len(pad_front) >= 39:
-                    encoded = pad_front[-40:]
-                    while len(encoded) > 0:
-                        try:
-                            sig_text = encoded.decode("cp949", errors="strict")
-                            break
-                        except UnicodeDecodeError:
-                            encoded = encoded[1:]
-                elif len(pad_back) >= 39:
-                    encoded = pad_back[:40]
-                    while len(encoded) > 0:
-                        try:
-                            sig_text = encoded.decode("cp949", errors="strict")
-                            break
-                        except UnicodeDecodeError:
-                            encoded = encoded[:-1]
-                else:
-                    # 원문 전체를 모아도 39바이트 미만인 불가항력 -> 무조건 문자열(use_string)로 강제 다운그레이드
+                # Expand string window to reach 39~40 bytes without breaking CP949 or inserting '?'
+                while True:
+                    current_len = len(match_text[left_idx:right_idx].encode("cp949", errors="replace"))
+                    if current_len >= 39:
+                        break
+                        
+                    expanded = False
+                    
+                    # Try expanding left
+                    if left_idx > 0:
+                        test_left = left_idx - 1
+                        test_len = len(match_text[test_left:right_idx].encode("cp949", errors="replace"))
+                        if test_len <= 40:
+                            left_idx = test_left
+                            expanded = True
+                            if test_len >= 39:
+                                break
+                                
+                    # Try expanding right
+                    if right_idx < len(match_text):
+                        test_right = right_idx + 1
+                        test_len = len(match_text[left_idx:test_right].encode("cp949", errors="replace"))
+                        if test_len <= 40:
+                            right_idx = test_right
+                            expanded = True
+                            if test_len >= 39:
+                                break
+                    
+                    if not expanded:
+                        # Cannot expand further without exceeding 40 or reaching ends
+                        break
+                
+                sig_text = match_text[left_idx:right_idx]
+                
+                if len(sig_text.encode("cp949", errors="replace")) < 39:
+                    # 원문 전체를 모아도 39바이트 미만이거나 패딩 실패 -> 무조건 문자열(use_string)로 강제 변환
                     result["decision"] = "use_string"
                     max_bytes = 20
             else:
@@ -388,10 +367,7 @@ async def select_signature_node(state: IBSEState) -> dict:
                 
             result["signature"] = sig_text
             
-        try:
-            result["byte_len_cp949"] = len(result["signature"].encode("cp949"))
-        except:
-             result["byte_len_cp949"] = len(result["signature"]) * 2
+        result["byte_len_cp949"] = len(result["signature"].encode("cp949", errors="replace"))
 
     return {
         "final_result": result,

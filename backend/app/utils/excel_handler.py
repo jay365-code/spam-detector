@@ -788,7 +788,7 @@ class ExcelHandler:
             logger.error(f"Error processing Excel: {e}")
             raise e
 
-    def process_kisa_txt(self, file_path: str, output_dir: str, processing_function, progress_callback=None, batch_size: int = 1, original_filename: str = None, manager=None, client_id: str = None, is_trap: bool = False, override_output_path: str = None):
+    def process_kisa_txt(self, file_path: str, output_dir: str, processing_function, progress_callback=None, batch_size: int = 10, original_filename: str = None, manager=None, client_id: str = None, is_trap: bool = False, override_output_path: str = None, index_offset: int = 0, global_total_rows: int = 0):
         """
         Process KISA format TXT file: [Body] <TAB> [URL]
         """
@@ -964,13 +964,17 @@ class ExcelHandler:
                 
                 try:
                     # Pass start_index, pre_parsed_urls (KISA TXT), and is_trap to processing_function
-                    results = processing_function(messages, start_index=start_idx, total_count=total_rows, pre_parsed_urls=pre_parsed_urls, is_trap=is_trap)
+                    # Use global_total_rows for smooth progress bar handling
+                    _start = index_offset + start_idx
+                    _total = global_total_rows if global_total_rows > 0 else total_rows
+                    
+                    results = processing_function(messages, start_index=_start, total_count=_total, pre_parsed_urls=pre_parsed_urls, is_trap=is_trap)
                 except TypeError:
                     # Fallback: 이전 시그니처 호환 (Excel 등 pre_parsed_urls 미지원 시에도 억지로라도 is_trap을 보내볼 수 있지만 안전하게 fallback은 무시)
                     try:
-                        results = processing_function(messages, start_index=start_idx, total_count=total_rows, is_trap=is_trap)
+                         results = processing_function(messages, start_index=_start, total_count=_total, is_trap=is_trap)
                     except TypeError:
-                        results = processing_function(messages, start_index=start_idx, total_count=total_rows)
+                         results = processing_function(messages, start_index=_start, total_count=_total)
                 except Exception as e:
                     from ..main import CancellationException
                     if isinstance(e, CancellationException):
@@ -983,17 +987,8 @@ class ExcelHandler:
                     # [User Request] Skip Excel Write but SHOW in UI Report
                     if result.get("exclude_from_excel"):
                         logger.debug(f"Row {start_idx + i + 1}: Skipped from Excel (exclude_from_excel=True), but showing in UI")
-                        if progress_callback:
-                            progress_callback({
-                                "current": start_idx + i + 1,
-                                "total": total_rows,
-                                "message": batch_buffer[i]["message"],
-                                "excel_row_number": start_idx + i + 2,
-                                "index": start_idx + i,
-                                "result": result,
-                                "is_trap": is_trap
-                            })
                         continue
+
 
                     original_data = batch_buffer[i]
                     msg_val = original_data["message"]
@@ -1148,7 +1143,9 @@ class ExcelHandler:
                     # 1) AI가 명시적으로 ibse_signature를 추출했거나,
                     # 2) "URL이 없는 스팸메시지"이면 문장 자체를 서명으로 채택해 중복 제거 시트로 넘김
                     
-                    is_url_less_spam = (result.get("is_spam") is True or is_type_b) and (not url_val)
+                    # AI가 텍스트 내부에서 찾은 URL이 있는지 확인 (사용자가 입력 안 했더라도)
+                    has_any_url = url_val or (result.get("extracted_urls") and len(result.get("extracted_urls")) > 0)
+                    is_url_less_spam = (result.get("is_spam") is True or is_type_b) and (not has_any_url)
                     
                     if result.get("ibse_signature") or is_url_less_spam:
                         clean_msg = re.sub(r'[ \t\r\n\f\v]+', '', msg_val)
@@ -1157,11 +1154,20 @@ class ExcelHandler:
                         m_ibse = re.search(r'\d+', raw_ibse_code)
                         ibse_code = m_ibse.group(0) if m_ibse else raw_ibse_code
                         
-                        if result.get("ibse_signature"):
+                        if result.get("ibse_signature") and result.get("ibse_signature") != "unextractable":
                             clean_sig = str(result.get("ibse_signature")).replace(" ", "").replace("\n", "").replace("\r", "")
                             sig_len = result.get("ibse_len", self._lenb(clean_sig))
                         else:
-                            clean_sig = clean_msg  # URL 없는 스팸 본문 전체를 시그니처로 사용
+                            clean_sig = clean_msg  # 진성 URL 없는 스팸 본문 전체를 시그니처로 사용
+                            # 엑셀 규격 오류(50바이트 풍선효과) 방지: 원문이 너무 길면 40바이트로 강제 절삭
+                            if self._lenb(clean_sig) > 40:
+                                valid_len = 0
+                                for i in range(1, len(clean_sig) + 1):
+                                    if len(clean_sig[:i].encode("cp949", errors="replace")) <= 40:
+                                        valid_len = i
+                                    else:
+                                        break
+                                clean_sig = clean_sig[:valid_len]
                             sig_len = self._lenb(clean_sig)
                         
                         blocklist_data.append({
@@ -1169,18 +1175,6 @@ class ExcelHandler:
                             "sig": clean_sig, # whitespace removed signature
                             "len": sig_len,
                             "code": ibse_code
-                        })
-
-                    # Progress
-                    if progress_callback:
-                         progress_callback({
-                            "current": start_idx + i + 1, 
-                            "total": total_rows,
-                            "message": msg_val,
-                            "excel_row_number": start_idx + i + 2,  # +2 for header row
-                            "index": start_idx + i,
-                            "result": result,
-                            "is_trap": is_trap
                         })
 
                 try:
