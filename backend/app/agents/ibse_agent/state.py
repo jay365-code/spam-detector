@@ -56,6 +56,4 @@ class IBSEState(TypedDict):
     retry_count: int            # For repair/retry logic
     error: Optional[str]        # Error message if any
     
-    is_garbage_obfuscation: bool # Signal from content_agent for intentional obfuscation
-    is_safe_url_injection: bool # Signal from content_agent for intentional obfuscation
-    obfuscated_urls: List[str] # Restored obfuscated URLs (if any)
+    obfuscated_urls: List[str] # List of obfuscated URLs found by content_agent (if any)

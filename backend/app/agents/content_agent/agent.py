@@ -541,24 +541,13 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         signals = result_json.get("signals", {})
         harm_anchor = signals.get("harm_anchor", False)
         route_or_cta = signals.get("route_or_cta", False)
-        is_impersonation = signals.get("is_impersonation", False)
-        is_vague_cta = signals.get("is_vague_cta", False)
-        is_personal_lure = signals.get("is_personal_lure", False)
-        is_garbage_obfuscation = signals.get("is_garbage_obfuscation", False)
-        is_normal_layout = signals.get("is_normal_layout", False)
-        is_safe_url_injection = signals.get("is_safe_url_injection", False)
         
         # Ensure signals dict is up to date
-        signals["is_impersonation"] = is_impersonation
-        signals["is_vague_cta"] = is_vague_cta
-        signals["is_personal_lure"] = is_personal_lure
-        signals["is_garbage_obfuscation"] = is_garbage_obfuscation
-        signals["is_normal_layout"] = is_normal_layout
-        signals["is_safe_url_injection"] = is_safe_url_injection
+        signals["harm_anchor"] = harm_anchor
+        signals["route_or_cta"] = route_or_cta
 
         # ========== TRUST SPAM GUIDE & LLM ==========
-        # Spam Guide 기반 프롬프트와 Type B 방어 시스템을 전적으로 신뢰합니다.
-        # Python 측의 harm_anchor=false 강제 오버라이드를 제거하고 LLM의 label을 존중합니다.
+        # Spam Guide 기반 프롬프트를 전적으로 신뢰합니다.
         
         label = result_json.get("label", "HAM").upper()
         if label == "SPAM":
@@ -578,21 +567,6 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
             is_spam = False
             if classification_code in ["0", "1", "2", "3", "10"]:
                 classification_code = None
-
-        # ========== HAM SIGNAL DEFENSE ==========
-        # 학습 보호 시그널(is_impersonation, is_vague_cta, is_personal_lure, is_garbage_obfuscation)은
-        # SPAM 확정 메시지에만 의미가 있음. HAM으로 판정된 경우 강제로 false로 초기화.
-        if not is_spam:
-            if any([signals.get("is_impersonation"), signals.get("is_vague_cta"), 
-                    signals.get("is_personal_lure"), signals.get("is_garbage_obfuscation"), 
-                    signals.get("is_normal_layout")]):
-                logger.debug("[HAM Signal Defense] HAM 판정 메시지의 학습 보호 시그널을 false로 초기화")
-            signals["is_impersonation"] = False
-            signals["is_vague_cta"] = False
-            signals["is_personal_lure"] = False
-            signals["is_garbage_obfuscation"] = False
-            signals["is_normal_layout"] = False
-            signals["is_safe_url_injection"] = False
 
         obfuscated_urls = result_json.get("obfuscated_urls", [])
         if not isinstance(obfuscated_urls, list):
@@ -696,28 +670,15 @@ Step 3. 시그널 1차 판정:
 
 Step 4. 의도 명확도 산출: 최종 스팸 확률을 spam_probability(0.0~1.0)로 산출하라.
 
-Step 5. [Type B 시그널 추출: CNN 모델 데이터 오염 방어]
-   ⚠️ 중요: 메시지가 SPAM으로 판별될 때만 시그널이 켜진다. 아무리 명백한 스팸이더라도, 이 메시지의 레이아웃이나 문구가 일반 정상 안내문자와 너무 흡사하여 CNN 모델에 원형 그대로 들어갈 경우 향후 무고한 정상 문자까지 모조리 스팸으로 오탐(False Positive)하게 만들 위험이 있다면, 반드시 해당 시그널을 `true`로 켜서 시스템이 이 데이터를 안전하게 격리(Type B)하게 만들어라.
-   - 5-1. [is_impersonation]: 공공기관, 구직 제안, 대기업 알림, 혹은 평범한 식당/학원 마케팅 전단지 레이아웃을 완벽하게 모방하여 정상 알림까지 스팸으로 오탐하게 할 템플릿 위험성이 있는가?
-   - 5-2. [is_personal_lure]: 부고, 청첩장, 안부 인사 등 지인 간의 사적인 대화를 완벽히 위장하여 사적 대화 오탐을 유발할 위험이 있는가?
-   - 5-3. [is_vague_cta]: 특정 악성 단어조차 없이 "확인 바람", "아래 링크 참고" 등 너무 범용적인 문구만으로 교묘하게 클릭을 유도하여 평범한 안내문자까지 오탐을 유발할 수 있는가?
-   - 5-4. [is_garbage_obfuscation]: 단어를 비정상적으로 찢거나 무의미한 특수문자/기호를 마구 혼합해 형태소를 고의로 파괴(난독화)하여 시스템을 교란시키는가? (만약 '점켬', '쩜컴', '닷넷' 등 도메인/URL을 한글로 난독화한 것이 발견되거나, `급등주bit.ly/정보방선착순` 처럼 URL 앞뒤에 한글 문맥이 엉겨붙어 있는 경우, 혹은 **`7.0.0.0`, `2.3.4.5` 등 숫자를 마침표(.)로 구분해 IP 주소인 것처럼 위장하여 인원수 등을 난독화한 경우** 이 시그널을 true로 켜고, 해당 가짜 IP 파편이나 복원된 도메인/URL을 아래 `obfuscated_urls` 리스트에 반드시 포함하라.)
-     🔥 [강제 규칙 추가] 단, "이벵트", "십오퍼", "카쥐노" 같은 고의적인 맞춤법 파괴 은어나, 아예 "카", "바", "슬"처럼 1음절 일상 명사로 불법 단어를 극단적으로 축약/위장한 정황이 목격된다면, 이는 정상 단어 생태계 파괴(OOV 치환)를 방지하기 위해 가장 강력히 배제되어야 하므로 반드시 `true`로 켜라.
-   - 5-5. [is_normal_layout]: 메시지 레이아웃 자체는 매우 정상적인 일반 광고/알림/모집 텍스트처럼 보이지만, 수신거부(080) 누락 같은 정통망법 위반이나 식별 불가능한 발신자, 미묘한 사행성 유도 등의 사유로 SPAM 판정되었는가?
-     🔥 [강제 규칙 추가 - 샌드위치 방어] "안녕하세요", "바쁘신 일정", "감기 조심하세요" 등 지극히 일상적인 정상 인사말이 텍스트의 80% 이상을 위아래 샌드위치처럼 감싸고 있는 스팸이라면, 정상 인삿말이 스팸 피처로 오염 학습되는 것을 막기 위해 반드시 `true`로 켜라.
-     🚀 [예외 규칙 추가 - 시황/픽스터 수용] 단, "지수 변동성", "금리 동결 발표", "주식 수급" 등 전문 경제 시황 브리핑 형식을 띠는 주식 스팸이나, 해외 카지노 및 스포츠 토토 배당률을 정밀하게 적어놓은 픽스터 문자는 CNN 학습에 필수적인 고순도 데이터이므로 레이아웃이 멀쩡해 보이더라도 절대 시그널을 켜지 말고 `false`로 두어라.
-     🚀 [예외 규칙 추가 - 압축 고밀도 수용] 또한, "울산 남구 1차2차 20대 한태중" 처럼 자연스러운 서술어나 조사 없이 100% 도박/유흥 명사만 빽빽하게 나열된 압축 텍스트는 최상의 N-gram 패턴이므로, 문장이 불완전/모호해 보인다는 이유로 섣불리 Type B 시그널(`is_normal_layout`, `is_vague_cta`)을 켜지 말고 `false`로 두어 온전히 Type A로 통과시켜라.
-   - 5-6. [is_safe_url_injection]: (위장 URL 방패막이 전술 감지 - 문맥 불일치) 본문의 목적이 "명백한 도박/불법대출/주식리딩방/성인" 중 하나인데, 텍스트 안에 삽입된 링크가 이 목적과 **전혀 무관해 보이는 일반 정상 웹사이트(뉴스 기사, 포털, 블로그, 관공서, 일반 기업 사이트 등 규모 무관)** 도메인인가? (즉, 스팸 필터를 우회할 목적으로 상관없는 정상 링크를 방패막이로 세웠다고 확신할 때만 `true`로 설정)
-     ⚠️ 주의: 텍스트가 "관리비", "택배", "부고장" 등 일상 안내를 사칭하는 스미싱(Smishing) 텍스트이고, 첨부된 URL이 단축 URL(`bit.ly`, `agshort.link` 등)이거나 사설 웹 주소라면 이는 해당 스미싱과 연결된 "진짜 피싱/청구서 사이트"일 가능성이 높다.(즉, 문맥이 일치함). 따라서 이는 엉뚱한 사이트를 가져다 쓴 '방패막이(injection)' 전술이 **아니므로** 절대로 `true`로 설정하지 말고 `false`로 두어야 한다!
+Step 5. [암묵적 도메인 (Covert Domain) 추론 및 추출]
+   - 만약 메시지 내에 "도박, 스포츠토토, 카지노, 성인 유흥" 등을 암시하는 불법적인 문맥이 존재하거나, 접속을 유도하는 기이한 텍스트 구조가 있을 경우 다음과 같이 숨겨진 URL을 복원하여 `obfuscated_urls`에 넣는다.
+   - ① 고의 확장자 누락/잘림: `NH1245`, `메인337`처럼 독립된 식별 코드나, `nike26. `처럼 확장자 직전까지만 쓰여진 경우 무조건 `.com`을 붙여 복원하라 (예: `NH1245.com`, `nike26.com`).
+   - ② 한글음차/변형 확장자: `.com`을 `점켬`, `점컴`, `쩜컴`, `닷컴` 등으로 변형한 경우 `.com`으로 복원하여 추출하라 (예: `TOY9898 점켬` -> `TOY9898.com`).
+   - ③ 특수기호 위장 확장자: `c@rn`, `cㅇm` 처럼 알파벳을 비슷한 모양의 특수기호/기타 문자로 위장한 경우 정상 문자로 치환하여 추출하라 (예: `mx6001.c@rn` -> `mx6001.carn` 또는 `mx6001.com`).
+   - ④ 영문 번역/음차 유추: 단독 한글 코드가 영단어 발음인 경우(예: `메인337`), 한글과 영어를 각각 추출하라 (`메인337.com`, `main337.com`).
+   - 단, 악성 의도가 없는 완전 정상/일상 대화, 일반적인 금융 인증번호 등에는 절대 `.com`을 붙이지 마라.
 
-Step 6. [암묵적 도메인 (Covert Domain) 추론 및 추출]
-   - 만약 메시지 내에 "도박, 스포츠토토, 카지노, 성인 유흥" 등을 암시하는 불법적인 문맥이 존재하거나, 혹은 문맥이 너무 생략되어 기이한 텍스트 구조(예: "찍으면 운 리가 기다리는")를 가질 때,
-   - 본문 내에 `NH1245`, `EUN888`, `메인337`처럼 "영문+숫자" 또는 "한글+숫자"로 이루어진 짧은 고유 식별 코드가 '검색어'나 '접속 주소'처럼 유도되고 있다면, 이는 도메인 확장자(.com)를 고의로 숨긴 위장 사이트일 확률이 높다.
-   - 이러한 악성 의도가 감지된 단독 식별 코드에 대해서는 반드시 `.com`을 붙여 복원한 URL(예: `NH1245.com`)을 아래 `obfuscated_urls` 리스트에 추출하라.
-   - 💡 [영문 번역/음차 유추 규칙]: 만약 `메인337`처럼 식별 코드의 한글 부분이 특정 영단어의 발음(메인 -> main, 벳 -> bet, 퍼스트 -> first)을 의미함이 명백하다면, 한글을 그대로 사용한 URL(`메인337.com`)뿐만 아니라 **영문 영단어로 변환한 URL(`main337.com`)도 모두 각각 추출**하여 리스트에 포함하라.
-   - 단, 문맥이 완전한 일상 대화이거나 정상적인 택배/쇼핑몰의 '주문번호', 은행 '인증번호' 등 악성 의도가 없는 경우에는 절대 `.com`을 붙여 추출하지 마라. (환각/Hallucination 절대 금지)
-
-Step 7. 최종 판정 (label 확정):
+Step 6. 최종 판정 (label 확정):
    - Guide 기준에 따라 완벽한 정상문자면 HAM. 
    - Guide 기준 SPAM 사유에 해당하면 무조건 SPAM. SPAM일 경우 spam_code (0, 1, 2, 3 중 택1)를 반드시 Guide의 3항(분류 코드 선택) 기준에 맞게 지정하라.
 
@@ -726,8 +687,8 @@ Step 7. 최종 판정 (label 확정):
 "label": "HAM|SPAM",
 "spam_code": "0|1|2|3|null",
 "spam_probability": 0.0,
-"reason": "Spam Guide의 어떤 기준에 의해 판정했는지 명시하고, SPAM인 경우 CNN 오탐 위험성(Type B 사유) 혹은 안전한 표본(Type A) 여부에 대한 너의 논리를 포함하여 한국어로 짧게 작성할 것.",
-"signals": {{ "harm_anchor": false, "route_or_cta": false, "is_impersonation": false, "is_vague_cta": false, "is_personal_lure": false, "is_garbage_obfuscation": false, "is_normal_layout": false, "is_safe_url_injection": false }},
+"reason": "Spam Guide의 어떤 기준에 의해 판정했는지 명시하여 한국어로 짧게 작성할 것.",
+"signals": {{ "harm_anchor": false, "route_or_cta": false }},
 "obfuscated_urls": []
 }}
 """
@@ -814,7 +775,7 @@ Step 7. 최종 판정 (label 확정):
                         "spam_probability": 0.99,
                         "classification_code": "2",
                         "reason": "Safety Filter Blocked: Content was flagged as prohibited (likely highly offensive or explicit) even after removing context. Assuming High-Risk SPAM.",
-                        "signals": {"harm_anchor": True, "route_or_cta": True, "is_impersonation": False, "is_vague_cta": False, "is_personal_lure": False}
+                        "signals": {"harm_anchor": True, "route_or_cta": True}
                     })
                 except Exception as retry_e:
                     logger.error(f"Sync bridging retry for LLM failed: {retry_e}")
@@ -940,7 +901,7 @@ Step 7. 최종 판정 (label 확정):
                         "spam_probability": 0.99,
                         "classification_code": "2",
                         "reason": "Safety Filter Blocked: Content was flagged as prohibited (likely highly offensive or explicit) even after removing context. Assuming High-Risk SPAM.",
-                        "signals": {"harm_anchor": True, "route_or_cta": True, "is_impersonation": False, "is_vague_cta": False, "is_personal_lure": False}
+                        "signals": {"harm_anchor": True, "route_or_cta": True}
                     })
             except QuotaExhaustedNoRetryError as e:
                 logger.error(f"Async LLM query failure (Quota Exhausted): {e}")

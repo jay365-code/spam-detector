@@ -10,72 +10,21 @@ from app.agents.ibse_agent.service import IBSEAgentService
 from dotenv import load_dotenv
 
 async def fp_sentinel_logic(c_res, i_res):
-    res_str = "\n--- Running FP Sentinel Logic ---\n"
-    c_impersonation = c_res.get("is_impersonation", False)
-    c_vague_cta = c_res.get("is_vague_cta", False)
-    
+    res_str = "\n--- Running Finalizer Logic ---\n"
     is_spam = c_res.get("is_spam", False)
     reason = c_res.get("reason", "")
-    
-    semantic_class = "Ham"
-    learning_label = "HAM"
     code = c_res.get("classification_code")
-    ibse_sig = None
-    
-    if c_impersonation:
-        res_str += " -> Hit Rulset 1: c_impersonation = True\n"
-        semantic_class = "Type_B"
-        learning_label = "HAM"
-        if not is_spam:
-            is_spam = True
-            code = "10"
-        
-        if i_res.get("signature") and i_res.get("decision") != "unextractable":
-            res_str += " -> Adding IBSE Signature!\n"
-            ibse_sig = i_res.get("signature")
-            code = "13"
-            reason += f" | [FP Sentinel Override] 사칭/기만(Type_B) + 시그니처: {ibse_sig}"
-        else:
-            reason += " | [FP Sentinel Override] 사칭/기만(Type_B) 확정 차단 (시그니처 없음)"
-            
-    elif c_vague_cta and is_spam:
-        res_str += " -> Hit Rulset 1.2: c_vague_cta = True & is_spam = True\n"
-        semantic_class = "Type_B"
-        learning_label = "HAM"
-        if i_res.get("signature") and i_res.get("decision") != "unextractable":
-            res_str += " -> Adding IBSE Signature!\n"
-            ibse_sig = i_res.get("signature")
-            code = "13"
-            reason += f" | [FP Sentinel Override] 모호한 CTA 스팸(Type_B) + 시그니처: {ibse_sig}"
-        else:
-             reason += " | [FP Sentinel Override] 모호한 CTA 스팸(Type_B) 처리 (시그니처 없음)"
-             
-    elif c_res.get("is_personal_lure", False):
-        res_str += " -> Hit Rulset 1.3: c_personal_lure = True\n"
-        semantic_class = "Type_B"
-        learning_label = "HAM"
-        if not is_spam:
-            is_spam = True
-        
-        has_sig = bool(i_res.get("signature") and i_res.get("decision") != "unextractable")
-        if has_sig:
-             ibse_sig = i_res.get("signature")
-             reason += f" | [FP Sentinel Override] 사적/경조사 위장(Type_B) + 시그니처: {ibse_sig}"
-        else:
-             reason += " | [FP Sentinel Override] 사적/경조사 위장(Type_B) 확정 차단 (시그니처 없음)"
+    ibse_sig = i_res.get("signature") if i_res else None
 
-    elif c_res.get("is_garbage_obfuscation", False):
-        res_str += " -> Hit Rulset 1.4: c_garbage_obfuscation = True\n"
-        semantic_class = "Type_B"
-        learning_label = "HAM"
-        if not is_spam:
-            is_spam = True
-        reason += " | [FP Sentinel Override] 난독화/쓰레기 토큰(Type_B) 보호"
-
-    elif is_spam:
+    if is_spam:
         res_str += " -> Hit Rulset 2: Type_A (Pure Spam)\n"
         semantic_class = "Type_A"
         learning_label = "SPAM"
+    else:
+        res_str += " -> Hit Rulset 3: Ham\n"
+        semantic_class = "Ham"
+        learning_label = "HAM"
+        ibse_sig = None
         
     res_str += f"\n[FINAL] Spam: {is_spam}\n"
     res_str += f"[FINAL] Class: {semantic_class}\n"

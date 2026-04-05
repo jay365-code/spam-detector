@@ -315,7 +315,7 @@ function App() {
   const [isAtBottom, setIsAtBottom] = useState(true);
 
   // Filter & Search State
-  const [logFilter, setLogFilter] = useState<'ALL' | 'SPAM' | 'HAM' | 'FP_SENSITIVE'>('ALL');
+  const [logFilter, setLogFilter] = useState<'ALL' | 'SPAM' | 'HAM' | 'RED_GROUP' | 'FP_SENSITIVE'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Report Management State
@@ -775,16 +775,16 @@ function App() {
   console.log("DEBUG: Valid logs size for tab", reportTab, ":", validLogs.length);
   
   const allCount = validLogs.length;
-  const spamCount = validLogs.filter(({ log }) => log?.result?.is_spam && !log?.result?.semantic_class?.startsWith('Type_B')).length;
+  const spamCount = validLogs.filter(({ log }) => log?.result?.is_spam).length;
   const hamCount = validLogs.filter(({ log }) => log?.result && !log.result.is_spam).length;
-  const fpSensitiveCount = validLogs.filter(({ log }) => log?.result?.semantic_class?.startsWith('Type_B')).length;
+  const redGroupCount = validLogs.filter(({ log }) => log?.result?.red_group).length;
 
   const filteredLogs = validLogs
     .filter(({ log }) => {
       // Apply Filter
-      if (logFilter === 'SPAM' && (!log.result || !log.result.is_spam || log.result.semantic_class?.startsWith('Type_B'))) return false;
+      if (logFilter === 'SPAM' && (!log.result || !log.result.is_spam)) return false;
       if (logFilter === 'HAM' && (!log.result || log.result.is_spam)) return false;
-      if (logFilter === 'FP_SENSITIVE' && !log.result?.semantic_class?.startsWith('Type_B')) return false;
+      if (logFilter === 'RED_GROUP' && (!log.result || !log.result.red_group)) return false;
 
       // Apply Search
       if (searchQuery.trim()) {
@@ -793,9 +793,7 @@ function App() {
         // 검색 범위를 헤더 표시 텍스트까지 확장
         let headerText = '';
         if (log.result) {
-          if (log.result.semantic_class?.startsWith('Type_B')) {
-            headerText = `fp sensitive ${log.result.semantic_class.toLowerCase()} ${getCodeDescription(log.result.classification_code)?.toLowerCase() || ''}`;
-          } else if (log.result.is_spam) {
+          if (log.result.is_spam) {
             headerText = `spam ${getCodeDescription(log.result.classification_code)?.toLowerCase() || ''}`;
           } else {
             headerText = 'ham';
@@ -943,8 +941,8 @@ function App() {
               {[
                 { label: 'ALL', count: allCount, filterKey: 'ALL', activeClass: 'bg-blue-500 text-white shadow-lg', inactiveClass: 'text-slate-400 hover:text-slate-200' },
                 { label: 'SPAM', count: spamCount, filterKey: 'SPAM', activeClass: 'bg-red-500 text-white shadow-lg', inactiveClass: 'text-red-400 hover:text-red-200' },
-                { label: 'FP SENSITIVE', count: fpSensitiveCount, filterKey: 'FP_SENSITIVE', activeClass: 'bg-orange-500 text-white shadow-lg', inactiveClass: 'text-orange-400 hover:text-orange-200' },
                 { label: 'HAM', count: hamCount, filterKey: 'HAM', activeClass: 'bg-green-600 text-white shadow-lg', inactiveClass: 'text-green-400 hover:text-green-200' },
+                { label: 'RED GROUP', count: redGroupCount, filterKey: 'RED_GROUP', activeClass: 'bg-pink-500 text-white shadow-lg', inactiveClass: 'text-pink-400 hover:text-pink-200' },
               ].map(({ label, count, filterKey, activeClass, inactiveClass }) => (
                 <button
                   key={filterKey}
@@ -1051,19 +1049,27 @@ function App() {
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         {log.result ? (
                           <>
-                            {log.result.semantic_class?.startsWith('Type_B') ? (
-                              <span className="text-orange-400 flex items-center gap-1 bg-orange-400/10 px-1.5 rounded text-xs font-bold whitespace-nowrap">
-                                <AlertCircle className="w-3 h-3" /> FP SENSITIVE ({Math.round(log.result.spam_probability * 100)}%) - {log.result.semantic_class.replace('Type_B ', '')} - {getCodeDescription(log.result.classification_code) || '사칭/위장형 스팸'}
-                              </span>
-                            ) : log.result.is_spam ? (
+                            {log.result.is_spam ? (
                               <span className="text-red-400 flex items-center gap-1 bg-red-400/10 px-1.5 rounded text-xs font-bold whitespace-nowrap">
-                                <CheckCircle className="w-3 h-3 invisible" /> {/* Placeholder to balance space if needed */}
-                                <AlertCircle className="w-3 h-3" /> SPAM ({Math.round(log.result.spam_probability * 100)}%) - {getCodeDescription(log.result.classification_code)}
+                                <AlertCircle className="w-3 h-3" /> SPAM ({Math.round(log.result.spam_probability * 100)}%)
+                                {((log.result.message_extracted_url && log.result.message_extracted_url.trim() && !log.result.drop_url) || (log.result.ibse_signature && log.result.ibse_signature.trim() && log.result.ibse_signature.toLowerCase() !== 'none')) && (
+                                  <span className="text-red-300 ml-0.5">
+                                    ({[
+                                      ...(log.result.message_extracted_url && log.result.message_extracted_url.trim() && !log.result.drop_url ? ['URL'] : []),
+                                      ...(log.result.ibse_signature && log.result.ibse_signature.trim() && log.result.ibse_signature.toLowerCase() !== 'none' ? ['SIGNATURE'] : [])
+                                    ].join(', ')})
+                                  </span>
+                                )} - {getCodeDescription(log.result.classification_code)}
                               </span>
                             ) : (
                               <span className="text-green-400 flex items-center gap-1 bg-green-400/10 px-1.5 rounded text-xs font-bold whitespace-nowrap">
                                 <CheckCircle className="w-3 h-3" /> HAM
                               </span>
+                            )}
+                            {log.result.red_group && (
+                               <span className="text-pink-400 flex items-center gap-1 bg-pink-400/10 px-1.5 py-0.5 rounded border border-pink-400/30 text-[10px] uppercase font-bold whitespace-nowrap drop-shadow-[0_0_8px_rgba(244,114,182,0.5)]" title="Red Group: 본문 HAM이나 단순 악성 URL 포함 격리">
+                                 RED GROUP
+                               </span>
                             )}
                             {/* 수정 버튼 */}
                             <button
@@ -1120,29 +1126,54 @@ function App() {
                               <span className="bg-slate-800/80 px-1.5 py-1 rounded text-slate-300 font-mono text-[11px] break-all border border-slate-700/50">
                                 {log.result.drop_url ? (
                                   <>
-                                    <span className="text-slate-500 mr-2">
-                                      {log.result.url_result.details.attempted_urls && log.result.url_result.details.attempted_urls.length > 0
-                                        ? log.result.url_result.details.attempted_urls.join(', ')
-                                        : log.result.url_result.details.extracted_url && log.result.url_result.details.extracted_url !== "Unknown" 
-                                          ? log.result.url_result.details.extracted_url 
-                                          : ""}
-                                    </span>
+                                     <span className="text-slate-500 mr-2">
+                                       {log.result.url_result.details.attempted_urls && log.result.url_result.details.attempted_urls.length > 0
+                                         ? (
+                                             <>
+                                                 {log.result.url_result.details.attempted_urls.join(', ')}
+                                                 {log.result.url_result.details.final_url && log.result.url_result.details.final_url !== "Unknown" && !log.result.url_result.details.attempted_urls.includes(log.result.url_result.details.final_url) && (
+                                                     <span className="text-slate-500/70 ml-1.5">→ {log.result.url_result.details.final_url}</span>
+                                                 )}
+                                             </>
+                                         )
+                                         : log.result.url_result.details.extracted_url && log.result.url_result.details.extracted_url !== "Unknown" 
+                                           ? (
+                                               <>
+                                                   {log.result.url_result.details.extracted_url}
+                                                   {log.result.url_result.details.final_url && log.result.url_result.details.final_url !== "Unknown" && log.result.url_result.details.final_url !== log.result.url_result.details.extracted_url && (
+                                                       <span className="text-slate-500/70 ml-1.5">→ {log.result.url_result.details.final_url}</span>
+                                                   )}
+                                               </>
+                                           )
+                                           : ""}
+                                     </span>
                                     {log.result.drop_url_reason === "obfuscation" ? (
                                         <span className="text-orange-400 font-semibold" title="난독화된 기형 URL(특수문자/한글 등)이 감지되어 추출 목록 대신 시그니처로 단독 추출되었습니다.">[난독화 URL 감지: 시그니처 추출]</span>
                                     ) : log.result.drop_url_reason === "safe_injection" ? (
                                         <span className="text-red-400 font-semibold" title="정상 도메인을 방패막이로 악용한 위장 URL로 판별되어 추출 목록에서 제외되었습니다.">[정상 도메인 위장 감지: 우회 방어]</span>
+                                    ) : log.result.drop_url_reason === "bare_domain_decoy" ? (
+                                        <span className="text-purple-400 font-semibold" title="대기업/정상 포털 등의 단독 도메인을 사칭/방패막이 목적으로 기재한 것으로 간주되어 추출 목록에서 제외되었습니다.">[단독 도메인: 사칭 방어 제외]</span>
+                                    ) : (log.result.drop_url_reason === "anti_hallucination" || log.result.drop_url_reason === "hidden_url") ? (
+                                        <span className="text-emerald-500 font-semibold" title="스패머가 의도적으로 숨긴 URL을 추적하여 검사했으며, 데이터 정합성을 위해 엑셀에는 저장하지 않습니다.">[숨김 URL 추적 완료: 엑셀 제외]</span>
                                     ) : (
                                         <span className="text-slate-400 font-semibold" title="접속 불가하거나 불완전한 URL로 판별되어 추출 목록에서 제외되었습니다.">[불완전 URL: 추출 제외]</span>
                                     )}
                                   </>
                                 ) : (
                                   log.result.url_result.details.attempted_urls && log.result.url_result.details.attempted_urls.length > 0 
-                                    ? log.result.url_result.details.attempted_urls.join(', ')
+                                    ? (
+                                      <>
+                                        {log.result.url_result.details.attempted_urls.join(', ')}
+                                        {log.result.url_result.details.final_url && log.result.url_result.details.final_url !== "Unknown" && !log.result.url_result.details.attempted_urls.includes(log.result.url_result.details.final_url) && (
+                                            <span className="text-slate-400 ml-1.5">→ {log.result.url_result.details.final_url}</span>
+                                        )}
+                                      </>
+                                    )
                                     : (
                                       <>
                                         {log.result.url_result.details.extracted_url}
-                                        {log.result.url_result.details.final_url && log.result.url_result.details.extracted_url !== log.result.url_result.details.final_url && (
-                                            <span className="text-slate-500 ml-1">→ {log.result.url_result.details.final_url}</span>
+                                        {log.result.url_result.details.final_url && log.result.url_result.details.final_url !== "Unknown" && log.result.url_result.details.extracted_url !== log.result.url_result.details.final_url && (
+                                            <span className="text-slate-400 ml-1.5">→ {log.result.url_result.details.final_url}</span>
                                         )}
                                       </>
                                     )

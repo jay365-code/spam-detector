@@ -19,6 +19,9 @@ class SpamState(TypedDict):
     
     # 분석 결과
     is_spam: Optional[bool]         # 스팸 여부 (True: SPAM, False: HAM, None: UNKNOWN)
+    is_confirmed_safe: Optional[bool]
+    is_mismatched: Optional[bool]
+    is_consistently_transactional: Optional[bool]
     spam_probability: float         # 스팸 확률 (0.0 ~ 1.0)
     classification_code: Optional[str] # 분류 코드 (예: "1", "HAM-1")
     reason: str                     # 판단 사유

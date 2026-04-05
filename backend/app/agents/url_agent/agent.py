@@ -128,6 +128,9 @@ class UrlAnalysisAgent:
 
             return {
                 "is_spam": is_spam,
+                "is_confirmed_safe": result_state.get("is_confirmed_safe", False),
+                "is_mismatched": result_state.get("is_mismatched", False),
+                "is_consistently_transactional": result_state.get("is_consistently_transactional", False),
                 "spam_probability": prob,
                 "classification_code": classification_code,
                 "reason": reason
@@ -229,6 +232,9 @@ class UrlAnalysisAgent:
 
             return {
                 "is_spam": is_spam,
+                "is_confirmed_safe": result_state.get("is_confirmed_safe", False),
+                "is_mismatched": result_state.get("is_mismatched", False),
+                "is_consistently_transactional": result_state.get("is_consistently_transactional", False),
                 "spam_probability": prob,
                 "classification_code": classification_code,
                 "reason": reason,

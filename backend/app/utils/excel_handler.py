@@ -36,7 +36,7 @@ class ExcelHandler:
             wb.create_sheet(name)
             
         # 데이터가 기록될 주요 시트들에 헤더 적용
-        headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Reason"]
+        headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Reason", "Red Group"]
         header_font = Font(bold=True)
         header_align = Alignment(horizontal='center', vertical='center')
         header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
@@ -536,6 +536,7 @@ class ExcelHandler:
             reason_col_idx = get_col_idx("Reason", semantic_col_idx + 1)
             in_token_col_idx = get_col_idx("In_Token", reason_col_idx + 1)
             out_token_col_idx = get_col_idx("Out_Token", in_token_col_idx + 1)
+            red_group_col_idx = get_col_idx("Red Group", out_token_col_idx + 1)
 
             # 3. Iterate Rows & Batch Processing
             total_rows = ws.max_row - 1 # Excluding header
@@ -638,6 +639,7 @@ class ExcelHandler:
                     ws.cell(row=row_idx, column=reason_col_idx, value=reason_val)
                     ws.cell(row=row_idx, column=in_token_col_idx, value=in_token_val)
                     ws.cell(row=row_idx, column=out_token_col_idx, value=out_token_val)
+                    ws.cell(row=row_idx, column=red_group_col_idx, value="O" if result.get("red_group") else "")
 
                     # --- URL Collection Logic ---
                     # Only collect URL from the input column if SPAM or extracted from HAM
@@ -886,7 +888,7 @@ class ExcelHandler:
             # 헤더는 템플릿 생성 시 이미 적용되었거나, 없으면 나중에 _apply_formatting 시 추가될 수 있지만,
             # 안전하게 기존 1행이 비어 있을 때만 추가합니다.
             if ws.max_row <= 1:
-                headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Reason"]
+                headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Reason", "Red Group"]
                 if not ws.cell(row=1, column=1).value:
                     for c_idx, h_val in enumerate(headers, start=1):
                         ws.cell(row=1, column=c_idx, value=h_val)
@@ -1004,6 +1006,29 @@ class ExcelHandler:
                         # [User Request] 분홍색 분리감지 케이스만 수동으로 URL 컬럼에 강제 오버라이딩
                         url_val = result.get("message_extracted_url", "")
                         url_len = self._lenb(url_val)
+                        
+                    # [최종 확인] 엑셀에 기록될 최종 url_val이 Path나 Query 없는 단독 도메인이라면 무조건 비우기 (User Request)
+                    if url_val:
+                        import urllib.parse
+                        filtered_urls = []
+                        for u in url_val.split(","):
+                            u = u.strip()
+                            if not u: continue
+                            test_u = u if "://" in u else "http://" + u
+                            try:
+                                parsed_u = urllib.parse.urlparse(test_u)
+                                # path가 없거나 "/"뿐이고, query도 없으면 단독 도메인 -> 제외
+                                if (not parsed_u.path or parsed_u.path == "/") and not parsed_u.query:
+                                    continue
+                                # 본문 추출 유도를 위해 파손된 단축 URL로 판단된 형태(괄호, 별표, 한글 등 포함) 배제 (User Request)
+                                if bool(re.search(r'[\[\]\*\(\)\{\}\<\>가-힣]', parsed_u.path)):
+                                    continue
+                                filtered_urls.append(u)
+                            except Exception:
+                                filtered_urls.append(u)
+                        
+                        url_val = ", ".join(filtered_urls)
+                        url_len = self._lenb(url_val)
                     
                     # Write Row
                     ws.append([
@@ -1015,7 +1040,8 @@ class ExcelHandler:
                         url_len, 
                         self._sanitize_cell_value(prob_val),
                         self._sanitize_cell_value(semantic_val),
-                        self._sanitize_cell_value(reason_val)
+                        self._sanitize_cell_value(reason_val),
+                        self._sanitize_cell_value("O" if result.get("red_group") else "")
                     ])
                     
                     # --- URL Collection Logic ---

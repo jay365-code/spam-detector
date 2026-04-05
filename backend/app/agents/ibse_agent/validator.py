@@ -16,13 +16,15 @@ class Validator:
         if signature not in text_context:
             return {**result, "error": "Strict extraction failed. The extracted signature does NOT exist exactly within the original message text."}
             
-        # 2. Blacklist Check
+
+            
+        # 3. Blacklist Check
         blacklist = ["광고", "(광고)", "[광고]", "080-", "무료거부", "수신거부", "무료수신거부"]
         for b in blacklist:
             if b in signature:
                 return {**result, "error": f"Signature contains blacklisted word: {b}"}
                 
-        # 3. Byte Length constraints
+        # 4. Byte Length constraints
         byte_len = get_cp949_byte_len(signature)
         if byte_len == -1: # Fallback calculation if encoding fails
              byte_len = len(signature) * 2

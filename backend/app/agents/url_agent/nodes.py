@@ -152,6 +152,22 @@ def get_llm():
     _loop_bound_clients[dict_key] = client
     return client
 
+_URL_SPAM_GUIDE_CACHE = None
+
+def load_url_guide() -> str:
+    global _URL_SPAM_GUIDE_CACHE
+    if _URL_SPAM_GUIDE_CACHE:
+        return _URL_SPAM_GUIDE_CACHE
+    try:
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        guide_path = os.path.join(base_dir, "data/url_spam_guide.md")
+        with open(guide_path, "r", encoding="utf-8") as f:
+            _URL_SPAM_GUIDE_CACHE = f.read()
+            return _URL_SPAM_GUIDE_CACHE
+    except Exception as e:
+        logger.error(f"Failed to load url_spam_guide.md: {e}")
+        return "**[지침 로드 실패]** 기본 스팸 분류 기준을 따르십시오."
+
 async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content_context: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     Gemini Vision API를 사용하여 스크린샷 기반 스팸 분석
@@ -189,23 +205,7 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
         페이지 제목: {title}
         {content_context_str}
         
-        **[절대 원칙 (Supreme Directive)]**
-        당신의 유일하고 절대적인 임무는, "화면에 보이는 시각적 정보(스크린샷) 안에 명백하고 불법적인 스팸 콘텐츠가 존재하는가?"를 증명하는 것입니다.
-        SMS 내용이 수상해 보이더라도, 스크린샷 자체에 불법/사기 증거가 없다면 절대로 넘겨짚어 SPAM으로 분류해서는 안 됩니다.
-
-        **[SPAM 확정 기준 - 명백한 시각적 증거 필요]**
-        다음 중 어느 하나의 내용이 스크린샷에 명시적으로 노출되어 있을 때만 무조건 SPAM 처리하십시오. (SMS와의 문맥 일치 여부 불문)
-        1. 불법 도박: 카지노, 슬롯, 사이버 토토, 바둑이, 환전 등
-        2. 불법 사금융 및 주식/코인 리딩방: "무조건 수익 보장", "VIP 급등주 방", "전문가 리딩", "종목 추천 카톡방 유도" 등
-        3. 피싱 및 스캠: 공공기관/금융사를 위장한 가짜 로그인 창, 실체적 상품 없이 오직 현금/돈다발 사진이나 가짜 수익률 인증만 전시하며 텔레그램/오픈채팅 가맹만 요구하는 사기(Scam) 랜딩 페이지
-
-        **[무죄 추정의 원칙 (과잉 추론 및 환각 금지)]**
-        - 증거가 없다면 무조건 HAM 유지: 스크린샷이 뉴스 기사, 언론사, 유튜브, 정치 캠페인, 일반 쇼핑몰, 빈 페이지, 404 에러 화면 등 명시적인 불법 스팸 텍스트/이미지가 없는 정상 혹은 판단 불가(Inconclusive) 뷰라면, 그것이 조잡해 보이거나 SMS 맥락과 어긋나더라도 무조건 **HAM** (또는 Content Agent 판단 유지) 처리하십시오.
-        - 환각(Hallucination) 및 우회(Evasion) 가설 엄격 통제: "이 정상적인 뉴스 페이지는 차단을 피하기 위한 위장용 미끼일 것이다", "이 소규모 쇼핑몰은 사업자 번호가 안 보이니 사기일 것이다"라는 일체의 주관적인 추리를 절대로 금지합니다. 물리적 증거가 없으면 무조건 HAM입니다.
-
-        **[안전성 확정 (CONFIRMED SAFE) 기준]**
-        "is_confirmed_safe" 필드는 대상 사이트가 확실하게 신뢰할 수 있는 정상적인 사이트임이 100% 입증될 때만 true로 설정하십시오. (대규모 카카오톡 채널, 네이버/유튜브 등 대형 포털, 주요 언론사 기사, 공식 대기업 페이지 등)
-        가입/투자 유도만 있거나, 실체가 불분명한 랜딩 페이지, 빈 페이지, 404 에러 등 "스팸 증거도 없지만 안전하다는 증거도 없는" 상태라면 is_spam=false, is_confirmed_safe=false 로 두어야 합니다.
+        {load_url_guide()}
 
         분류 코드 (SPAM인 경우에만 아래 목록에서 하나 사용):
 {code_list_str}
@@ -214,6 +214,8 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
         {{
             "is_spam": boolean,
             "is_confirmed_safe": boolean,
+            "is_mismatched": boolean,
+            "is_consistently_transactional": boolean,
             "classification_code": "명확한 스팸 코드 문자열 (HAM/Inconclusive인 경우 null)",
             "spam_probability": float (0.0-1.0),
             "reason": "시각적 콘텐츠에서 발견된 팩트 기반의 한국어 설명 (증거 유무를 판단 근거로 명확히 서술)"
@@ -383,6 +385,9 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
         result_json = json.loads(content.strip())
         
         is_spam = result_json.get("is_spam")
+        is_confirmed_safe = result_json.get("is_confirmed_safe", False)
+        is_mismatched = result_json.get("is_mismatched", False)
+        is_consistently_transactional = result_json.get("is_consistently_transactional", False)
         prob = result_json.get("spam_probability", 0.0)
         reason = result_json.get("reason", "")
         classification_code = result_json.get("classification_code")
@@ -391,6 +396,9 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
         
         return {
             "is_spam": is_spam,
+            "is_confirmed_safe": is_confirmed_safe,
+            "is_mismatched": is_mismatched,
+            "is_consistently_transactional": is_consistently_transactional,
             "spam_probability": prob,
             "classification_code": classification_code,
             "reason": f"[Vision 분석] {reason}",
@@ -493,10 +501,12 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
     if pre_parsed:
         unique_urls = []
         seen = set()
+        clean_pattern = r'(?:http|https)://[^\s\[\]<>◆▶★♥→※○●◎◇□■△▲▽▼▷◁◀♤♠♡♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬]+|(?:[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.)+[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]{2,}(?:/[^\s\[\]<>◆▶★♥→※○●◎◇□■△▲▽▼▷◁◀♤♠♡♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬]*)?'
         for raw_url in pre_parsed:
             if not raw_url or len(raw_url) < 4:
                 continue
-            url = raw_url.strip().rstrip('.,;!?)]}"\'')
+            matches = re.findall(clean_pattern, raw_url)
+            url = matches[0] if matches else raw_url.strip().rstrip('.,;!?)]}"\'')
             if not url.startswith(("http://", "https://")):
                 url = "http://" + url
             if len(url) < 10:
@@ -505,31 +515,31 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
             if converted not in seen:
                 seen.add(converted)
                 unique_urls.append(converted)
-        max_urls = int(os.getenv("MAX_URLS_PER_MESSAGE", "3"))
-        if len(unique_urls) > max_urls:
-            unique_urls = unique_urls[:max_urls]
-            logger.info(f"[URL Agent] Pre-parsed URLs limited to {max_urls}")
-        logger.info(f"[URL Agent] Using pre-parsed URLs (skip extract): {unique_urls}")
-        return {
-            "target_urls": unique_urls,
-            "current_url": unique_urls[0] if unique_urls else None,
-            "visited_history": [],
-            "scraped_data": {},
-            "depth": 0,
-            "is_final": False if unique_urls else True,
-            "is_spam": False if not unique_urls else None,
-            "reason": "No URL found" if not unique_urls else "Pre-parsed URL used"
-        }
+        
+        # Add any obfuscated URLs reconstructed by Content Agent
+        content_context = state.get("content_context") or {}
+        obfuscated_urls = content_context.get("obfuscated_urls", [])
+        if isinstance(obfuscated_urls, list):
+            for ou in obfuscated_urls:
+                if ou and isinstance(ou, str) and len(ou) > 3:
+                    ou_stripped = ou.strip()
+                    if not ou_stripped.startswith(("http://", "https://")):
+                        ou_stripped = "http://" + ou_stripped
+                    converted = convert_korean_domain_to_punycode(ou_stripped)
+                    if converted not in seen:
+                        seen.add(converted)
+                        unique_urls.insert(0, converted)  # Prioritize LLM reconstructed URLs
+                        
+        # 위에서 return을 하지 않고, 밑의 본문 추출 로직까지 타게 해서 합치도록 변경!
+    else:
+        unique_urls = []
+        seen = set()
+        obfuscated_urls = (state.get("content_context") or {}).get("obfuscated_urls", [])
     
     # 난독화 디코딩된 텍스트가 있으면 우선 사용
     message = state.get("decoded_text") or state.get("sms_content", "")
     
-    # 0. Content Agent (LLM)에서 복원한 난독화 URL 주입
-    content_context = state.get("content_context") or {}
-    obfuscated_urls = content_context.get("obfuscated_urls", [])
-
     # 1. 프로토콜이 있는 URL 추출 (가장 확실, 한글 포함 가능)
-    # http://오징어.오뎅탕 -> 허용
     protocol_pattern = r'(?:http|https)://[^\s\[\]<>◆▶★♥→※○●◎◇□■△▲▽▼▷◁◀♤♠♡♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬]+'
     protocol_urls = re.findall(protocol_pattern, message)
     
@@ -545,9 +555,6 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
                     logger.info(f"[URL Agent] LLM De-obfuscated/Cleaned URL injected: {ou_stripped}")
     
     # 2. 프로토콜이 없는 도메인 패턴 추출 (엄격한 검증 필요)
-    # 한글.한글 -> 오징어.오뎅탕 (제외되어야 함)
-    # google.com -> 허용
-    # 정규식: (문자열.문자열) 형태, 경로(/anicsn016a) 등 포함
     domain_pattern = r'(?:[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]+\.)+[a-zA-Z0-9\uac00-\ud7a3\u3131-\u3163-]{2,}(?:/[^\s\[\]<>◆▶★♥→※○●◎◇□■△▲▽▼▷◁◀♤♠♡♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬]*)?'
     raw_candidates = re.findall(domain_pattern, message)
     
@@ -731,10 +738,7 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
         cleaned_urls.append(url)
     urls = cleaned_urls
         
-    # 중복 제거 및 Punycode 변환
-    unique_urls = []
-    seen = set()
-    
+    # 중복 제거 및 Punycode 변환 (pre_parsed 등에 의해 이미 채워진 unique_urls 에 이어붙임)
     for url in urls:
         # 최소 길이 체크
         if len(url) < 10: # http://a.com
@@ -801,7 +805,7 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
             if status in ["error", "failed"] or "404" in title or "not found" in title.lower():
                 
                 # 1단계: 쓰레기값 잘라내기 (Trailing Garbage Stripping)
-                cleaned_url = re.sub(r'[\[\]\(\)<>가-힣◆▶★♥]+.*$', '', url)
+                cleaned_url = re.sub(r'[\[\]\(\)<>◆▶★♥※○●◎◇□■△▲▽▼▷◁◀♤♠♡♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬]+.*$', '', url)
                 
                 parsed_parts = cleaned_url.rstrip('/').split('/')
                 if len(parsed_parts) > 3:
@@ -1012,26 +1016,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     - 웹 페이지 콘텐츠 (증거 텍스트):
     {raw_text}
     
-    **[절대 원칙 (Supreme Directive)]**
-    당신의 유일하고 절대적인 임무는, "웹페이지 텍스트 안에 명백하고 불법적인 스팸 콘텐츠가 자체적으로 존재하는가?"를 증명하는 것입니다.
-    SMS 내용이 아무리 수상해 보이거나 상호 불일치 하더라도, 수집된 페이지 텍스트 자체에 오판의 여지 없는 직접적인 악성 증거가 없다면 절대 SPAM으로 넘겨짚어 처리하지 마십시오.
-    
-    **[SPAM 확정 기준 - 명백한 텍스트 증거 필요]**
-    아래 내용 중 하나라도 웹 콘텐츠 텍스트에 명시되어 있다면 무조건 SPAM 처리하십시오.
-    1. 불법 도박: 카지노, 슬롯, 환전, 바카라, 사이버 토토 등 도박 관련성
-    2. 불법 사금융 및 주식/코인 리딩방: "무조건 수익 보장", "VIP 급등주 추천", "전문가 오픈채팅 입장", "손실 복구 프로젝트" 등 명백한 불법 리딩방 유도
-    3. 피싱 및 사기 스캠: 정부, 경찰, 택배사, 금융사를 사칭하여 생년월일이나 비밀번호 입력을 노골적으로 요구하거나, 회사/상품 정보 없이 돈다발 사진이나 숫자 조작 수익률만 언급하며 카톡/텔레그램 가맹만 강요하는 급조된 찌라시 페이지
-
-    **[무죄 추정의 원칙 (과잉 추론 및 환각 금지) - 매우 중요]**
-    - 사이트 품질로 꼬투리 잡기 금지: 정보가 부족한 에러 페이지(404), 빈 화면, 뉴스 기사, 정치 선거 캠페인, 유튜브 동영상, 혹은 회사 정보나 사업자번호가 아예 누락된 조잡한 소규모 의류 쇼핑몰(인스타 마켓)이라도 명시적인 '범죄 증명 유도 텍스트'가 없다면 **절대로 사기(Scam/Phishing)로 기소하고 SPAM 코드를 부여하지 마십시오.** 증거 불충분은 무조건 **HAM** (또는 Content 판정 반영) 입니다.
-    - 우회(Evasion) 가설 절대 금지: "SMS는 홍보를 주장하는데, 접속한 링크는 연예인 뉴스나 정치 기사 페이지네? 이것은 스팸 탐지 우회를 위한 사기꾼의 고의적인 가짜 링크(Mismatched) 수법이다!" 라는 식의 넘겨짚기(Hallucination) 추론을 어떤 경우에도 절대 하지 마십시오. 페이지 텍스트 자체에 유해성이 없으면 즉시 오탐방지를 위해 HAM으로 확정하십시오.
-
-    **[카카오톡 채널 특수 룰]**
-    - 대상 페이지가 카카오톡 채널(pf.kakao.com) 구조인 경우: 페이지 내에 명시된 친구 수가 1000명 이상 등 대규모 채널임이 파악되면, 내용에 일부 스팸 키워드가 포함됐더라도 공식 비즈니스로 간주하여 무조건 HAM으로 방어하십시오. 반대로 친구 수가 비정상적으로 적고(100명 이하수준) 주식/코인/도박 리딩방 참여를 유도하는 텍스트만 있다면 바로 SPAM 처리하십시오.
-
-    **[안전성 확정 (CONFIRMED SAFE) 기준]**
-    "is_confirmed_safe" 필드는 대상 웹페이지가 확실하게 신뢰할 수 있는 정상적인 사이트임이 100% 입증될 때만 true로 설정하십시오. (예: 대규모 구독자를 보유한 공식 카카오톡 채널, 네이버/유튜브 등 대형 포털, 주요 언론사 기사, 공식 대기업 페이지 등)
-    단지 불법적인 단어가 없어서 HAM으로 판단될 뿐(단순 가입 유도 페이지, 연락처만 있는 빈 페이지, 404 에러 등) "안전하다는 확고한 증거도 없는" 상태라면 is_spam=false, is_confirmed_safe=false 로 설정하여 텍스트 분석부의 원본 판단을 존중하도록 하십시오.
+    {load_url_guide()}
 
     [분류 코드 (SPAM인 경우에만 아래 목록에서 하나 사용)]:
 {code_list_str}
@@ -1040,6 +1025,8 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     {{
         "is_spam": boolean,
         "is_confirmed_safe": boolean,
+        "is_mismatched": boolean,
+        "is_consistently_transactional": boolean,
         "classification_code": "명확한 스팸 코드 문자열 (HAM/Inconclusive인 경우 null)",
         "spam_probability": float (0.0-1.0),
         "reason": "웹 페이지 텍스트(물리적 증거)에 불법 콘텐츠가 존재하는지 여부를 중심으로 서술 (환각 및 우회 추론 금지, 증거 기반 서술)"
@@ -1160,6 +1147,8 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         
         is_spam = result_json.get("is_spam")
         is_confirmed_safe = result_json.get("is_confirmed_safe", False)
+        is_mismatched = result_json.get("is_mismatched", False)
+        is_consistently_transactional = result_json.get("is_consistently_transactional", False)
         prob = result_json.get("spam_probability", 0.0)
         reason = result_json.get("reason", "") + fallback_text
         if fallback_model and reason:
@@ -1190,6 +1179,8 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                 return {
                     "is_spam": is_spam,
                     "is_confirmed_safe": vision_result.get("is_confirmed_safe", False),
+                    "is_mismatched": vision_result.get("is_mismatched", False),
+                    "is_consistently_transactional": vision_result.get("is_consistently_transactional", False),
                     "spam_probability": vision_result.get("spam_probability", 0.0),
                     "classification_code": vision_result.get("classification_code"),
                     "reason": vision_result.get("reason"),
@@ -1207,6 +1198,8 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         return {
             "is_spam": is_spam,
             "is_confirmed_safe": is_confirmed_safe,
+            "is_mismatched": is_mismatched,
+            "is_consistently_transactional": is_consistently_transactional,
             "spam_probability": prob,
             "classification_code": classification_code,
             "reason": reason,
@@ -1260,8 +1253,10 @@ async def select_link_node(state: SpamState) -> Dict[str, Any]:
         
         prev_reason = state.get("reason", "")
         final_reason = "All URLs scanned (No SPAM detected)"
-        if prev_reason and ("(※" in prev_reason or "failed" in prev_reason.lower()):
-            final_reason += f" | 마지막 시도: {prev_reason}"
+        
+        # 이전 분석 사유가 단순 추출 메시지가 아니라면 자세한 사유를 덧붙임
+        if prev_reason and prev_reason != "URL extracted" and prev_reason != "No URL found":
+            final_reason += f" | 마지막 분석/시도: {prev_reason}"
             
         return {
             "is_final": True,
