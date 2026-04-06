@@ -57,19 +57,29 @@ class ExcelHandler:
     def _load_shortener_domains(self) -> set:
         # 기본 하드코딩된 단축 도메인 세트
         domains = {
-            "bit.ly", "goo.gl", "tinyurl.com", "ow.ly", "t.co", 
-            "is.gd", "buff.ly", "adf.ly", "bit.do", "mcaf.ee", 
-            "me2.do", "kakaolink.com", "buly.kr", 
-            "vo.la", "url.kr", "zrr.kr", "yun.kr", "han.gl",
-            "shorter.me", "shrl.me", "link24.kr", "myip.kr",
-            "sbz.kr", "tne.kr", "dokdo.in", "uto.kr",
-            "rb.gy", "short.io", "dub.co", "bl.ink", "tiny.cc", 
-            "t.ly", "tr.ee", "reurl.kr", "abit.ly", "blow.pw", 
-            "c11.kr", "di.do", "koe.kr", "lrl.kr", "muz.so", 
-            "t2m.kr", "ouo.io", "adfoc.us",
-            "ii.ad", "vvd.bz", "vvd.im", "gooal.kr", "ko.gl", "qrco.de", "linktr.ee",
-            "goo.su", "cogi.cc", "shorturl.at", "horturl.at", "iii.ad", "a.to",
-            "clic.ke", "t.me", "coupa.ng"
+            "a.to", "abit.ly", "adf.ly", "adfoc.us", "aka.ms", "amzn.to", "apple.co", "asq.kr", 
+            "bit.do", "bit.ly", "bitly.com", "bitly.kr", "bl.ink", "blow.pw", "buff.ly", "buly.kr", 
+            "c11.kr", "clic.ke", "cogi.cc", "coupa.ng", "cutt.it", "cutt.ly", 
+            "di.do", "dokdo.in", "dub.co", 
+            "fb.me", 
+            "gmarket.it", "goo.gl", "goo.su", "gooal.kr", 
+            "han.gl", "horturl.at", 
+            "ii.ad", "iii.ad", "instagr.am", "is.gd", 
+            "j.mp", 
+            "kakaolink.com", "ko.gl", "koe.kr", 
+            "link24.kr", "linktr.ee", "lrl.kr", 
+            "mcaf.ee", "me2.do", "muz.so", "myip.kr", 
+            "naver.me", 
+            "ouo.io", "ow.ly", 
+            "qrco.de", 
+            "rb.gy", "rebrand.ly", "reurl.kr", 
+            "sbz.kr", "short.io", "shorter.me", "shorturl.at", "shrl.me", "shrtco.de", 
+            "t.co", "t.ly", "t.me", "t2m.kr", "tiny.cc", "tinyurl.com", "tne.kr", "tny.im", "tr.ee", 
+            "url.kr", "uto.kr", 
+            "v.gd", "vo.la", "vvd.bz", "vvd.im", 
+            "wp.me", 
+            "youtu.be", "yun.kr", 
+            "zrr.kr"
         }
         
         # 외부 클론잡 동작용 txt 파일이 존재하면 정적으로 병합 구성
