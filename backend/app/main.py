@@ -1618,7 +1618,7 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
             
             # Base counters
             kisa_row_count = 0 
-            trap_row_count = 0단축
+            trap_row_count = 0
             
             input_path_kisa = None
             input_path_trap = None
