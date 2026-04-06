@@ -1565,13 +1565,13 @@ export default function ValidatorPage() {
                                                                     {item.llm_url && (
                                                                         <div className="text-[10px] text-slate-600 flex items-start gap-1">
                                                                             <span className="font-bold whitespace-nowrap shrink-0 text-blue-600 mt-0.5" title="KISA 텍스트 파일의 URL 필드에서 입력받은 값을 분석한 결과입니다.">텍스트입력 URL:</span>
-                                                                            <span className="break-all bg-blue-50 px-1 rounded border border-blue-100">{item.llm_url}</span>
+                                                                            <a href={item.llm_url.startsWith('http') ? item.llm_url : `http://${item.llm_url}`} target="_blank" rel="noopener noreferrer" className="break-all bg-blue-50 px-1 rounded border border-blue-100 hover:text-blue-600 hover:underline">{item.llm_url}</a>
                                                                         </div>
                                                                     )}
                                                                     {item.llm_message_extracted_url && (
                                                                         <div className="text-[10px] text-slate-600 flex items-start gap-1">
                                                                             <span className="font-bold whitespace-nowrap shrink-0 text-emerald-600 mt-0.5" title="메시지 본문 내용에서 AI가 직접 텍스트를 분석하여 추출/복원한 URL입니다.">메시지내 URL:</span>
-                                                                            <span className="break-all bg-emerald-50 px-1 rounded border border-emerald-100">{item.llm_message_extracted_url}</span>
+                                                                            <a href={item.llm_message_extracted_url.startsWith('http') ? item.llm_message_extracted_url : `http://${item.llm_message_extracted_url}`} target="_blank" rel="noopener noreferrer" className="break-all bg-emerald-50 px-1 rounded border border-emerald-100 hover:text-emerald-600 hover:underline">{item.llm_message_extracted_url}</a>
                                                                         </div>
                                                                     )}
                                                                     {item.llm_signature && (

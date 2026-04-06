@@ -4,6 +4,8 @@ from typing import TypedDict, Optional, Dict, Any, List
 
 from langgraph.graph import StateGraph, END
 
+from typing import Callable
+
 # Define State
 class BatchState(TypedDict):
     message: str
@@ -11,6 +13,7 @@ class BatchState(TypedDict):
     prefetched_context: Optional[Dict[str, Any]] # [Batch Optimization] Injected Context
     pre_parsed_url: Optional[str] # KISA TXT에서 탭으로 파싱한 URL (있으면 본문 추출 대신 사용)
     pre_parsed_only_mode: Optional[bool]  # KISA TXT면 URL 없을 때 본문 추출 스킵 (Chat/Excel은 False)
+    status_callback: Optional[Callable[[str], Any]] # [Log Streaming] status updates
     
     # Results
     content_result: Optional[Dict[str, Any]]
@@ -33,21 +36,17 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         msg = state["message"]
         s1 = state.get("s1_result") or {}
         prefetched = state.get("prefetched_context")
+        cb = state.get("status_callback")
         
         loop = asyncio.get_running_loop()
         
+        if cb: await cb("🧩 [Unified Flow] Content Agent 의도 분석 노드 진입")
+        
         if prefetched:
-            # [Batch Optimization] Use prefetched context directly
-            # check()와 유사하지만, context retrieval 단계를 건너뛰고 바로 _build_prompt -> _query_llm 호출
-            # 하지만 check() 메서드는 내부적으로 _retrieve_context를 호출함.
-            # 따라서 acheck의 로직을 본따서 context-aware execution을 해야 함.
-            # 가장 깔끔한 방법: acheck/check에 'content_context' 인자를 추가하여 retrieval bypass 지원
-            # (UrlAgent는 이미 지원함). 
-            # ContentAnalysisAgent.acheck에 'content_context'(이름이 헷갈리지만 context_data임) 지원 추가 필요.
-            res = await content_agent.acheck(msg, s1, content_context=prefetched)
+            res = await content_agent.acheck(msg, s1, status_callback=cb, content_context=prefetched)
         else:
             # Legacy/Fallback Mode
-            res = await loop.run_in_executor(None, lambda: content_agent.check(msg, s1))
+            res = await content_agent.acheck(msg, s1, status_callback=cb)
             
         return {"content_result": res}
 
@@ -86,15 +85,18 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
             except Exception:
                 pass
                 
+        cb = state.get("status_callback")
+        if cb: await cb("🧩 [Unified Flow] URL Agent 분석 노드 진입")
+        
         # 난독화 디코딩된 텍스트가 있으면 전달
         decoded_text = s1.get("decoded_text")
-        # URL Agent is already Async - Content 결과를 컨텍스트로 전달
-        # pre_parsed_url: KISA TXT에서 파싱한 URL이 있으면 본문 추출 대신 사용
-        # pre_parsed_only_mode: KISA TXT면 URL 없을 때 본문 추출 스킵
-        res = await url_agent.acheck(msg, content_context=content_result, decoded_text=decoded_text, pre_parsed_url=pre_parsed_url, pre_parsed_only_mode=pre_parsed_only_mode, playwright_manager=playwright_manager)
+        res = await url_agent.acheck(msg, status_callback=cb, content_context=content_result, decoded_text=decoded_text, pre_parsed_url=pre_parsed_url, pre_parsed_only_mode=pre_parsed_only_mode, playwright_manager=playwright_manager)
         return {"url_result": res}
 
     async def ibse_node(state: BatchState):
+        cb = state.get("status_callback")
+        if cb: await cb("🧩 [Unified Flow] IBSE Agent 시그니처 추출 노드 진입")
+        
         msg = state["message"]
         c_res = state.get("content_result") or {}
         obfuscated_urls = c_res.get("obfuscated_urls", [])
@@ -102,6 +104,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         # IBSE Agent is now Async
         res = await ibse_service.process_message(
             msg, 
+            status_callback=cb,
             obfuscated_urls=obfuscated_urls
         )
         return {"ibse_result": res}
@@ -469,13 +472,10 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         
         ibse_category = final.get("ibse_category")
         
-        # [NEW] 오탐 방지 안전장치: 시그니처 추출이 도저히 불가능한 경우 (unextractable) 
-        # 추출할 유니크한 식별자도 없고 URL도 없는 평범한 일상 대화로 간주하여 강제 HAM 처리
+        # [NEW] 안전장치 해제: 시그니처 추출이 불가능한 경우(unextractable)라도
+        # 사용자 요청에 의해 강제 HAM 강등(Override)을 하지 않고 원본 SPAM 판정을 유지함
         if final.get("is_spam") is True and ibse_category == "unextractable":
-             final["is_spam"] = False
-             final["reason"] = final.get("reason", "") + " | [FP Sentinel] 시그니처 추출 불가능(unextractable)으로 식별자 부족. 오탐 방지를 위해 HAM 강등"
-             final.pop("classification_code", None)
-             final.pop("url_spam_code", None)
+             final["reason"] = final.get("reason", "") + " | [FP Sentinel] 시그니처 추출 불가능(unextractable)이나 SPAM 판정 유지 (Override 해제)"
 
         # Rulset 2: Type_A (Pure Spam)
         if final.get("is_spam") is True:

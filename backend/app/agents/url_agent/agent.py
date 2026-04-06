@@ -194,14 +194,24 @@ class UrlAnalysisAgent:
                     user_msg = f"Processing: {node_name}..."
                     
                     if node_name == "extract":
-                        count = len(node_output.get('target_urls', []))
-                        user_msg = f"🔗 Link Extraction: Found {count} URL(s)"
+                        urls = node_output.get('target_urls', [])
+                        count = len(urls)
+                        url_list = ", ".join(urls[:2]) + ("..." if count > 2 else "") if count > 0 else "None"
+                        user_msg = f"🔗 [URL 추출] {count}개의 URL 대조 ({url_list})"
                     elif node_name == "scrape":
-                        url = node_output.get('scraped_data', {}).get('url', 'Unknown')
-                        user_msg = f"🌐 Web Scraping: {url}"
+                        scraped = node_output.get('scraped_data', {})
+                        url = scraped.get('url', 'Unknown')
+                        # Scrape fallback or error detection
+                        err = scraped.get('error')
+                        if err:
+                            user_msg = f"⚠️ [URL 스크래핑 실패/재시도] {url} (사유: {err})"
+                        else:
+                            user_msg = f"🌐 [URL 스크래핑] 목적지 접속 및 캡처 중: {url}"
                     elif node_name == "analyze":
-                        # If analysis is done
-                        user_msg = f"🧠 AI Analysis Completed"
+                        user_msg = f"🧠 [시각적 분석] 캡처된 랜딩 페이지 구조 및 텍스트 검증 중..."
+                    elif node_name == "select_link":
+                        curr = node_output.get('current_url', 'Unknown')
+                        user_msg = f"🔄 [심층 추적] 숨겨진 경로 발굴, 재전송 시도: {curr}"
 
                     logger.info(f"[ISAA] {node_name.upper()} -> {log_msg}")
                     

@@ -70,7 +70,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ ws, hitlRequest, o
                 setMessages(prev => {
                     const lastMsg = prev[prev.length - 1];
                     if (lastMsg && lastMsg.role === 'assistant') {
-                        return [...prev.slice(0, -1), { ...lastMsg, processStatus: data.content }];
+                        const logs = lastMsg.processLogs || [];
+                        return [...prev.slice(0, -1), { 
+                            ...lastMsg, 
+                            processStatus: data.content,
+                            processLogs: [...logs, { time: new Date().toLocaleTimeString('en-GB', { hour12: false }), text: data.content }]
+                        }];
                     }
                     return prev;
                 });
@@ -252,10 +257,32 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ ws, hitlRequest, o
                                             <img src="/icon.png" alt="AI Agent" className="w-full h-full object-cover" />
                                         </div>
                                         <div className="prose prose-invert prose-sm max-w-none w-full leading-relaxed break-words prose-p:my-0 prose-ul:my-2 prose-ul:ml-4 prose-ul:list-disc prose-li:my-0.5 prose-ol:my-2 prose-ol:ml-4 prose-ol:list-decimal prose-strong:text-blue-300 prose-strong:font-bold prose-headings:text-slate-100 prose-headings:font-bold prose-headings:mb-3 prose-headings:mt-4 prose-blockquote:border-l-4 prose-blockquote:border-slate-600 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-slate-400 pt-1">
-                                            {msg.processStatus && (
-                                                <div className="mb-4 px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-lg text-blue-300 text-xs font-mono flex items-center gap-2 animate-pulse w-fit">
-                                                    <div className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
-                                                    {msg.processStatus}
+                                            {msg.processLogs && msg.processLogs.length > 0 && (
+                                                <div className="mb-4 bg-slate-800/80 border border-slate-700 rounded-lg overflow-hidden flex flex-col font-mono text-[11px] w-full max-w-full">
+                                                    <div className="bg-slate-800 px-3 py-1.5 border-b border-slate-700 flex items-center gap-2 text-slate-400">
+                                                        <div className="flex gap-1.5">
+                                                            <div className="w-2 h-2 rounded-full bg-red-400/80"></div>
+                                                            <div className="w-2 h-2 rounded-full bg-yellow-400/80"></div>
+                                                            <div className="w-2 h-2 rounded-full bg-green-400/80"></div>
+                                                        </div>
+                                                        <span className="ml-1 tracking-wider uppercase text-[9px] font-bold">Analysis Console</span>
+                                                    </div>
+                                                    <div className="px-3 py-2 space-y-1 max-h-[150px] overflow-y-auto scrollbar-hide flex flex-col">
+                                                        {msg.processLogs.map((log: any, i: number) => (
+                                                            <div key={i} className="flex gap-2 items-start opacity-90 hover:opacity-100 block whitespace-pre-wrap break-all break-words leading-relaxed font-sans text-xs">
+                                                                <span className="text-slate-500 font-mono flex-shrink-0">[{log.time}]</span>
+                                                                <span className={log.text.includes('⚠️') || log.text.includes('실패') || log.text.includes('재시도') ? 'text-amber-400 font-medium' : log.text.includes('✅') ? 'text-emerald-400' : 'text-blue-300'}>
+                                                                    {log.text}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                        {msg.isStreaming && (
+                                                            <div className="flex gap-2 items-start pt-1 font-sans text-xs">
+                                                                <span className="text-blue-400 animate-pulse flex items-center mt-1.5"><div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" /></span>
+                                                                <span className="text-slate-400 italic animate-pulse">Running...</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             )}
                                             <div className="font-sans text-[15px]">

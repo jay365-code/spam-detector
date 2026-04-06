@@ -1032,7 +1032,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 "content_result": None,
                                 "url_result": None,
                                 "ibse_result": None,
-                                "final_result": None
+                                "final_result": None,
+                                "status_callback": send_status
                             }
                             
                             try:
