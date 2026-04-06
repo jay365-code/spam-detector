@@ -1,0 +1,20 @@
+{
+  "chk1": 0,
+  "chk2": 278,
+  "chk2_sample": [
+    {
+      "row": 145,
+      "url": "enn.kr",
+      "class": ""
+    },
+    {
+      "row": 256,
+      "url": "sbz.kr/LArA0",
+      "class": "2"
+    }
+  ],
+  "chk3": 0,
+  "chk3_sample": [],
+  "chk4": 0,
+  "chk4_sample": []
+}

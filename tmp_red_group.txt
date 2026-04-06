@@ -1,0 +1,936 @@
+==================
+Row: 4
+Text: '# 【 π PI 】미수령 대상자 안내 # 【 π PI 】에어드랍 참여후, 26일 현재까지 미수령 대상자로 확인되어 아래와 같이 안내드립니다.  ◆ 대상 * 현재까지 에어드랍후 파이'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: '해당 메시지는 파이 코인(Pi Coin) 에어드랍 미수령을 빌미로 한 전형적인 가상자산(코인) 피싱 및 스캠 메시지입니다. 비현실적인 고액의 평가금(약 1.5억 원)을 제시하며 수신자를 현혹하고, 공식 도메인이 아닌 의심스러운 URL(enn.kr 하위 도메인)로 접속을 유도하여 개인정보 탈취나 자산 편취를 목적으로 합니다. 메시지 구조가 일반적인 기업의 공지사항이나 안내문 레이아웃을 정교하게 모방하고 있어, 이를 정상 문구로 학습할 경우 발생할 오탐(False Positive)을 방지하기 위해 Type B 시그널을 활성화하여 격리 처리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 메시지와 연결된 웹페이지는 전형적인 가상자산(코인)]'
+==================
+Row: 5
+Text: "'  '   '   '       `    mgw7     `     so"
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | 해당 메시지는 공백과 백틱(`) 등 특수문자를 과도하게 삽입하여 필터링 시스템을 우회하려는 명백한 난독화(Obfuscation) 의도가 드러납니다. 본문의 'mgw7'과 'so'는 도메인 주소(mgw7.so)를 의도적으로 분리하여 기재한 것으로 판단되며, 정상적인 비즈니스나 개인 간 소통으로 볼 수 없는 전형적인 악성 스팸 패턴입니다. 형태소가 완전히 파괴된 가비지 데이터이므로 CNN 모델 학습에서 제외하기 위해 is_garbage_obfuscation 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 6
+Text: '(걘)  (간)편(심)사  qxx1'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | '간편심사'라는 금융/대출 관련 키워드를 괄호를 사용하여 의도적으로 분절 및 난독화((간)편(심)사)하였으며, 공식 업체명이나 연락처 없이 'qxx1'이라는 식별 코드만을 제시하여 사설 메신저나 불법 사이트로 유도하는 전형적인 불법 금융 스팸 패턴입니다. 형태소 파괴가 심하여 정상 문구 학습을 방해할 수 있으므로 Type B(is_garbage_obfuscation) 시그널을 적용합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 7
+Text: '# 【 π PI 】미수령 대상자 안내 # 【 π PI 】에어드랍 참여후, 27일 현재까지 미수령 대상자로 확인되어 아래와 같이 안내드립니다.  ◆ 대상 * 현재까지 에어드랍후 파이'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: '해당 메시지는 파이(PI) 코인 에어드랍 미수령을 빌미로 피싱 사이트 접속을 유도하는 전형적인 가상자산 스캠입니다. 제0원칙(가상자산 사기 및 피싱)에 따라 즉시 SPAM으로 분류합니다. 특히 오늘 날짜(2026-03-31)보다 과거인 일정(03-30)을 언급하며 수신자의 불안감을 조성하고 있으며, 공식 도메인이 아닌 의심스러운 URL을 사용하고 있습니다. 정상적인 안내문 레이아웃을 정교하게 모방하고 있어 CNN 모델이 이를 정상 알림으로 학습할 위험이 크므로 Type B 시그널(is_impersonation, is_normal_layout)을 활성화하여 격리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 메시지와 연결된 웹페이지는 가상자산을 미끼로 한 )]'
+==================
+Row: 9
+Text: '# 【 π PI 】미수령 대상자 안내 # 【 π PI 】에어드랍 참여후, 27일 현재까지 미수령 대상자로 확인되어 아래와 같이 안내드립니다.  ◆ 대상 * 현재까지 에어드랍후 파이'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: '가상자산(파이코인) 에어드랍 미수령을 빌미로 비현실적인 고액의 평가금(약 1.5억)이 존재한다고 기망하며 피싱 사이트 접속을 유도하는 전형적인 코인 사기 메시지입니다. 공식 도메인이 아닌 의심스러운 URL(qaa.kr 하위 도메인)을 사용하고 있으며, 계정 비활성화 등의 압박 문구를 통해 수신자의 행동을 강요합니다. 메시지 구조가 정상적인 공지사항 레이아웃을 정교하게 모방하고 있어 CNN 모델의 오탐을 유발할 수 있으므로 Type B 시그널을 적용합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 메시지와 연결된 웹페이지는 전형적인 가상자산 피싱 )]'
+==================
+Row: 12
+Text: '# 【 π PI 】미수령 대상자 안내 # 【 π PI 】에어드랍 참여후, 27일 현재까지 미수령 대상자로 확인되어 아래와 같이 안내드립니다.  ◆ 대상 * 현재까지 에어드랍후 파이'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "가상자산(파이 코인) 에어드랍 미수령을 빙자하여 비현실적인 자산 가치를 제시하고 피싱 사이트 접속을 유도하는 전형적인 코인 스캠(사기) 메시지입니다. 제0원칙의 '가상자산 사기' 및 '피싱' 기준에 해당하여 즉시 차단 대상입니다. 공식 안내문 형식을 정교하게 모방하고 있어(is_impersonation, is_normal_layout) CNN 모델이 이를 정상 알림으로 학습할 경우 오탐(FP)을 유발할 위험이 큰 Type B 데이터로 분류합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 건은 가상자산(파이 코인) 에어드랍 미수령을 미끼로)]"
+==================
+Row: 13
+Text: '# 【 π PI 】미수령 대상자 안내 # 【 π PI 】에어드랍 참여후, 27일 현재까지 미수령 대상자로 확인되어 아래와 같이 안내드립니다.  ◆ 대상 * 현재까지 에어드랍후 파이'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: '해당 메시지는 비현실적인 고액의 자산(약 1.5억 원) 수령을 미끼로 가상자산(파이 코인) 에어드랍을 유도하는 전형적인 코인 피싱 스캠입니다. Spam Guide 제0원칙 및 2.B.3항(가상자산 사기/에어드랍 유도)에 따라 SPAM으로 판정합니다. 공식 도메인이 아닌 URL(qaa.kr)을 사용하며, 수령 절차를 위장하여 개인정보 탈취나 악성 사이트 접속을 유도하고 있습니다. 메시지 형식이 공공기관이나 공식 기업의 안내문 레이아웃을 정교하게 모방하고 있어, 정상적인 안내 문구와 혼동될 위험이 크므로 Type B 시그널(is_impersonation, is_normal_layout)을 활성화하여 모델 오염을 방지합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 건은 SMS 메시지의 유인 내용과 연결된 웹 페이)]'
+==================
+Row: 15
+Text: '# 【 π PI 】미수령 대상자 안내 # 【 π PI 】에어드랍 참여후, 27일 현재까지 미수령 대상자로 확인되어 아래와 같이 안내드립니다.  ◆ 대상 * 현재까지 에어드랍후 파이'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: '제0원칙에 명시된 가상자산(코인) 에어드랍을 빙자한 피싱 및 스캠 메시지입니다. 공식 도메인이 아닌 의심스러운 URL(qaa.kr 하위 도메인)로 접속을 유도하며, 비현실적인 평가 금액을 제시하여 수령을 독촉하는 전형적인 사기 수법입니다. 메시지 형식이 일반적인 공지사항 레이아웃을 정교하게 모방하고 있어, 정상 안내 문자로 오탐될 위험이 크므로 Type B 시그널(is_impersonation, is_normal_layout)을 적용하여 격리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 메시지와 연결된 웹페이지는 전형적인 가상자산 피싱 )]'
+==================
+Row: 56
+Text: '(광고) 럭키데이 6300님  2만원 무료쿠폰이 도착했습니다.   ◆ 로 : 흐름, 지금 확인하시는 분들만 가져가고 있습니다 ◆ 또 : 또 다른 기회는 쉽게 오지 않습니다 ◆ 번 '
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "Spam Guide의 '2. 판단 우선순위 및 VoC 예외 보호(A. 4대 보호 범주)' 및 '5. 카테고리별 최종 판정'에 따라 로또 관련 메시지는 오차단 시 VoC 발생 우려가 높은 보호 대상(HAM)으로 분류됩니다. 본 메시지는 '럭키데이'라는 상호를 명시하고 로또 추천 조합 및 쿠폰 혜택을 안내하는 전형적인 로또 정보 서비스의 홍보 문구이며, 제0원칙에서 금지하는 명백한 도박(배팅 유도), 피싱, 불법 대출 등의 악성 의도가 포함되지 않았으므로 가이드에 따라 HAM으로 판정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS는 '럭키데이'라는 상호를 언급하며 로또 추천 조)] | [FP Sentinel Override] 악성 URL 탐지 Type_B 확정 차단"
+==================
+Row: 57
+Text: '(광고) 럭키데이 1535님  2만원 무료쿠폰이 도착했습니다.   ◆ 로 : 흐름, 지금 확인하시는 분들만 가져가고 있습니다 ◆ 또 : 또 다른 기회는 쉽게 오지 않습니다 ◆ 번 '
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "본 메시지는 로또 번호 추천 및 조합 정보를 제공하는 서비스의 광고성 메시지입니다. [Spam Guide]의 '2. 판단 우선순위 및 VoC 예외 보호' 중 'A-1. 순수 로또 관련(로또 당첨 알림, 단순 예측 번호 전달)' 카테고리에 해당합니다. 제0원칙에서 규정하는 도박, 사기, 피싱 등 명백한 악성 의도가 포함되지 않았으며, 가이드라인 5항(카테고리별 최종 판정)에 따라 로또 관련 정보는 오차단 시 고객 불만(VoC) 유발 가능성이 높아 HAM으로 보호합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 메시지는 로또 번호 추천을 빙자하여 사용자를 유인하)] | [FP Sentinel Override] 악성 URL 탐지 Type_B 확정 차단"
+==================
+Row: 59
+Text: '(광고) 럭키데이 9366님  2만원 무료쿠폰이 도착했습니다.   ◆ 로 : 흐름, 지금 확인하시는 분들만 가져가고 있습니다 ◆ 또 : 또 다른 기회는 쉽게 오지 않습니다 ◆ 번 '
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "Spam Guide 제2조 A항(4대 보호 범주) 및 제5조(카테고리별 최종 판정)에 따라, 로또 당첨 알림 및 단순 예측 번호 전달과 관련된 메시지는 명백한 악성 사기나 도박 유도(제0원칙)가 포함되지 않는 한 VoC 방지를 위해 HAM으로 분류한다. 본 메시지는 '로또번호' 사행시를 활용하여 추천 조합 및 정보를 안내하는 전형적인 로또 서비스 홍보 문구이며, 발신 브랜드(럭키데이)가 명시되어 있고 텍스트 난독화나 기망적 요소가 없으므로 보호 대상인 정상 광고로 판단한다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 '럭키데이'라는 명칭을 사용하여 로또 )] | [FP Sentinel Override] 악성 URL 탐지 Type_B 확정 차단"
+==================
+Row: 60
+Text: '(광고) 럭키데이 8658님  2만원 무료쿠폰이 도착했습니다.   ◆ 로 : 흐름, 지금 확인하시는 분들만 가져가고 있습니다 ◆ 또 : 또 다른 기회는 쉽게 오지 않습니다 ◆ 번 '
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "본 메시지는 로또 번호 추천 및 조합 안내를 제공하는 서비스 홍보 문자로, Spam Guide의 '2. 판단 우선순위 및 VoC 예외 보호 (Whitelist)' 중 'A-1. 순수 로또 관련' 카테고리에 해당합니다. 제0원칙(불법 도박, 사기, 피싱 등)에 해당하는 명백한 악성 의도가 발견되지 않으며, 과거 유사 사례(에프미디움 등)에서도 로또 정보 제공 서비스는 오차단 방지를 위해 HAM으로 판정된 바 있습니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 '럭키데이'라는 명칭을 사용하여 로또 )] | [FP Sentinel Override] 악성 URL 탐지 Type_B 확정 차단"
+==================
+Row: 63
+Text: '(광고) 럭키데이 3589님  2만원 무료쿠폰이 도착했습니다.   ◆ 로 : 흐름, 지금 확인하시는 분들만 가져가고 있습니다 ◆ 또 : 또 다른 기회는 쉽게 오지 않습니다 ◆ 번 '
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "본 메시지는 로또 번호 추천 및 조합 정보를 제공하는 광고성 안내입니다. 스팸 가이드의 '2. 판단 우선순위 및 VoC 예외 보호' 규정에 따르면, '순수 로또 관련(당첨 알림, 단순 예측 번호 전달)' 메시지는 제0원칙(명백한 악성 사기) 위반 사항이 없는 한 VoC 방지를 위해 HAM으로 보호하도록 명시되어 있습니다. 제공된 유사 사례(예시 1, 2, 3)에서도 로또 정보 서비스는 일관되게 HAM으로 판정되었으므로, 해당 기준을 적용하여 비스팸으로 분류합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 메시지는 로또 번호 추천을 미끼로 사용자를 유인하고)] | [FP Sentinel Override] 악성 URL 탐지 Type_B 확정 차단"
+==================
+Row: 242
+Text: '(광고)서비스 모르죠 이 숫자들이 어떻게 다가올지 https://vo.la/rprsRu 무료거부 0808811277'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "발신 상호명이 전혀 명시되지 않은 상태에서 '숫자들이 어떻게 다가올지'와 같은 모호하고 추상적인 미끼(Bait)성 문구를 사용하여 단축 URL 클릭을 유도하고 있습니다. 이는 [Spam Guide] 제0원칙의 '익명 찌라시 및 가입 유도'에 해당하며, 비현실적 수익이나 사행성 정보를 암시하는 기망 의도가 명백하므로 SPAM으로 판정합니다. 다만, 사용된 문구가 매우 범용적이어서 정상적인 안내 메시지와의 오탐(False Positive)을 방지하기 위해 Type B 시그널(is_vague_cta)을 활성화하여 학습 데이터에서 격리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지의 '숫자들이 어떻게 다가올지'라는 모호한)]"
+==================
+Row: 271
+Text: '(광고)일교차가심한날씨에건강조심하시고좋은술자리엔서면&연산정지훈있습돠.무료거부0808706154'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "해당 메시지는 부산의 대표적 유흥가 지역명(서면, 연산)과 영업진 이름(정지훈)을 언급하며 '술자리'를 홍보하는 전형적인 유흥업소 호객 문자입니다. 스팸 가이드 제0원칙의 '야간유흥업소 은어 및 위장 영업 강력 차단' 기준에 따라, 구체적인 상호명 없이 지역명과 MD 성함을 노출하며 유흥을 유도하므로 즉결 SPAM(코드 1)으로 판정합니다. 또한, 일상적인 날씨 인사를 앞부분에 배치하여 스팸 의도를 숨기려 한 '샌드위치 기법'이 적용되었고, 필터 회피를 위해 전체 문장의 띄어쓰기를 의도적으로 생략하였으므로 CNN 모델 오염 방지를 위해 Type B 시그널(is_normal_layout, is_garbage_obfuscation)을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (No URL found)]"
+==================
+Row: 273
+Text: "(광고)임팩터  (0원 특강) 초기 자본 없이 '0원'으로 시작해 월순익 2,000만원 만든 '아마존 AI 자동 구매대행' 실전 노하우를 무료로 공개합니다  ▷ 내일(목요일), 단"
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "제0원칙(악성 스팸 절대 차단)에 명시된 '비현실적 고수익 보장(0원 자본으로 월 2,000만원 수익)'을 미끼로 한 전형적인 부업 사기/기망 메시지입니다. 시스템 날짜(2026-03-31, 화요일) 기준 내일은 수요일임에도 '내일(목요일)'이라고 언급한 점은 자동화된 스팸 템플릿의 흔적입니다. 다만, 광고 표기 규격과 수신거부 번호 등 일반적인 광고 레이아웃을 완벽히 갖추고 있어 정상 광고 데이터 오염을 방지하기 위해 is_normal_layout을 true로 설정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지와 연결된 웹 페이지의 내용(아마존 AI )]"
+==================
+Row: 299
+Text: '(광고)탑TV [불법 피싱 사칭 주의 안내문]  최근 탑TV를 사칭한 불법 피싱 시도가 지속적으로 적발되고 있어 고객의 피해를 예방 하기위해 안내드립니다.  ※ 불법 피싱 주요 수'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 '탑TV'라는 명확한 상호명을 밝히고 고객들에게 피싱 피해 예방을 위한 주의 사항을 전달하는 정상적인 기업 보안 안내문입니다. 광고 표기 및 수신거부 번호 등 법적 규격을 준수하고 있으며, 제0원칙에 위배되는 악성 의도(도박, 사기, 불법 리딩방 유도 등)가 전혀 없습니다. 오히려 피싱 수법을 안내하며 고객 피해를 방지하려는 목적이 명확하므로 '정상 업체 홍보 및 생활 안내(Whitelist A-4, C)' 범주에 해당하여 HAM으로 판정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 SMS는 '탑TV'라는 업체를 사칭한 피싱 주의 )] | [FP Sentinel Override] 악성 URL 탐지 Type_B 확정 차단"
+==================
+Row: 320
+Text: '(긴급) 럭키데이, 8642님  2만원 무료쿠폰이 도착했습니다.   ▼쿠폰확인▼ https://link24.kr/5q96J9n  [쿠폰 외 무료혜택] → 이번 주  "추천조합" 안'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "메시지 내 '추천조합', '핵심 흐름 요약' 등의 표현은 Spam Guide의 VoC 예외 보호 범주인 '순수 로또 관련(2-A-1)' 또는 '단순 주식 관련(2-A-2)' 서비스 안내로 해석됩니다. 가이드 제5항(카테고리별 최종 판정)에 따라 로또 및 주식 관련 정보 제공은 오차단 시 발생하는 고객 불만(VoC)을 방지하기 위해 최우선적으로 HAM으로 보호하도록 명시되어 있습니다. 비록 무료 쿠폰이라는 유인책과 URL이 포함되어 있으나, 명백한 도박, 성인, 피싱 등의 제0원칙 위반 사항이 확인되지 않으므로 안전하게 HAM으로 판정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 '2만원 무료쿠폰'과 '추천조합'이라는)] | [FP Sentinel Override] 악성 URL 탐지 Type_B 확정 차단"
+==================
+Row: 324
+Text: '*            *       *주월변 *     sk822'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 유흥업소(마사지, 룸싸롱 등)에서 근무 시간대나 예약 상태를 의미하는 은어인 '주월변(주간/월간/변경)'을 사용하고 있으며, 'sk822'라는 메신저 ID 혹은 접속 코드를 노출하여 연락을 유도하고 있습니다. 특히 특수문자(*)와 과도한 공백을 사용하여 문장 구조를 파괴한 것은 필터링 시스템을 우회하려는 명백한 악성 난독화(Textual Obfuscation) 시그널입니다. 이는 제0원칙의 '야간유흥업소 은어 및 위장 영업' 기준에 부합하며, 형태소가 완전히 파괴된 쓰레기 토큰이 포함되어 있어 CNN 모델의 정상 학습을 방해하는 Type B 데이터로 분류됩니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 '주월변'이라는 유흥업소 관련 은어와 )]"
+==================
+Row: 328
+Text: '*                 4               *     ok7705'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | 메시지 내에 비정상적인 공백과 특수문자(*)를 과다하게 삽입하여 필터링을 우회하려는 악의적 난독화(Textual Obfuscation)가 명백합니다. 'ok7705'라는 식별자 외에 아무런 문맥이 없어 정상적인 통신으로 보기 어려우며, 이는 수신자를 특정 플랫폼이나 사이트로 유인하려는 스팸의 전형적인 수법입니다. 형태소 파괴가 심각하여 CNN 모델의 정상 학습을 방해할 수 있으므로 Type B(is_garbage_obfuscation)로 판정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 334
+Text: '**                 @             :ht774'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "특수문자(**, @)와 과도한 공백을 사용하여 필터링을 우회하려는 의도가 명백하며, 아무런 문맥 없이 메신저 아이디(@ht774)만을 노출하여 불법적인 유입을 유도하는 전형적인 스팸 패턴입니다. 이는 가이드의 '난독화가 심하고 문맥이 부자연스러운 메시지' 및 '익명 가입 유도' 기준에 해당합니다. 형태소가 완전히 파괴된 난독화 메시지이므로 CNN 모델의 오염을 막기 위해 Type B(is_garbage_obfuscation)로 처리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 특수문자(**, @)와 과도한 공백을 )]"
+==================
+Row: 344
+Text: '-               -       -GVT988'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | 하이픈(-)과 공백을 활용한 극단적인 난독화 구조와 함께 'GVT988'이라는 특정 식별 코드를 노출하는 방식은 불법 도박 또는 성인 사이트의 유입을 목적으로 한 전형적인 스팸 수법입니다. 이는 정상적인 통신 범주를 완전히 벗어난 형태소 파괴형 메시지이므로 제0원칙에 따라 차단하며, CNN 모델의 오염을 방지하기 위해 난독화 시그널(is_garbage_obfuscation)을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 346
+Text: '.           30,000a  ▶ kng53.  Code: 811388'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 '30,000a'라는 금전적 혜택(포인트 또는 현금)을 미끼로 하여 'kng53.'이라는 불완전한 도메인과 가입 코드(811388)를 제시하는 전형적인 불법 도박 또는 사행성 사이트 유도 문구입니다. 문장 성분이 결여된 채 특수문자와 파편화된 정보만 나열된 구조는 필터링 우회를 목적으로 한 강력한 난독화 시그널(is_garbage_obfuscation)이며, 이는 정상적인 통신 범주를 벗어난 악성 스팸으로 판단됩니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 '30,000a'라는 금전적 혜택(포인)]"
+==================
+Row: 349
+Text: '.          30,000K  Code: 811595  ade56.'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "30,000K(3천만)라는 비현실적인 포인트 금액을 미끼로 제시하고, 'ade56'이라는 은닉된 사이트 식별자와 접속 코드를 제공하여 불법 도박 사이트 재방문을 유도하는 전형적인 포인트 미끼형 스팸입니다. 문장 성분 없이 숫자와 코드만으로 구성된 파편화된 구조와 불필요한 공백/마침표 나열은 필터링 우회를 목적으로 한 악의적 난독화(is_garbage_obfuscation)에 해당하며, 이는 정상적인 인증/알림 문자의 범주를 완전히 벗어난 악성 스팸의 특징입니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 '30,000K(3천만)'라는 비현실적)]"
+==================
+Row: 351
+Text: '.          30,000e  ade56.     Code: 811455'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: '해당 메시지는 불법 도박 사이트에서 흔히 사용하는 \'보유 포인트(30,000e)\'와 \'접속 코드(811455)\'를 안내하여 재방문을 유도하는 전형적인 스팸 패턴입니다. 필터링 우회를 위해 마침표(.), 다량의 공백, 따옴표(""")를 무분별하게 삽입하여 문장 구조를 파괴한 강력한 난독화(is_garbage_obfuscation)가 관찰됩니다. 정상적인 발신처 정보나 수신거부 수단이 전혀 없으며, 암묵적 도메인(ade56.)을 포함하고 있어 제0원칙에 따라 즉시 차단 대상입니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 \'30,000e\'라는 보유 포인트 암시)]'
+==================
+Row: 352
+Text: '.          30,000n  wsx35.     code: 811790'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: '해당 메시지는 보유 포인트(30,000n), 사이트 식별 주소(wsx35), 접속 코드(811790)를 나열한 전형적인 불법 도박 사이트 권유 패턴입니다. 필터링 시스템을 우회하기 위해 마침표(.)와 공백을 비정상적으로 삽입한 강력한 난독화(is_garbage_obfuscation)가 관찰되며, 이는 제0원칙(도박/사행성) 및 제2-B-4항에 따라 즉각적인 차단 대상입니다. 형태소가 완전히 파괴된 텍스트이므로 CNN 모델의 오학습을 방지하기 위해 Type B 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지 원문은 보유 포인트(30,000n), 사)]'
+==================
+Row: 353
+Text: '.          30,000v  Code: 811790  wsx35.'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 정상적인 업체명이나 수신거부 번호 없이 '30,000v'라는 포인트/금액 암시와 'Code', 'wsx35'와 같은 식별 코드만을 나열하고 있습니다. 이는 전형적인 불법 도박 사이트의 잔액 알림 또는 접속 유도 미끼 문자로 판단됩니다. 문장 성분이 결여된 채 특수문자와 파편화된 정보만 제공하는 난독화 패턴이 뚜렷하므로, 이를 정상 문구로 학습하지 않도록 Type B(is_garbage_obfuscation) 시그널을 적용합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 정상적인 업체명, 광고 표기(광고), )]"
+==================
+Row: 356
+Text: '.봄이오면시작   [FREE]EVENT ㅌㄹwow8253'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | 발신 주체나 구체적인 서비스 내용 없이 '[FREE]EVENT'라는 미끼 문구와 텔레그램 아이디(ㅌㄹ)만을 노출하여 익명 채널 가입을 유도하는 전형적인 스팸입니다. 이는 제0원칙의 '익명 찌라시 및 가입 유도'에 해당하며, 'ㅌㄹ'와 같은 초성 사용은 필터 회피를 위한 명백한 난독화 시그널로 판단됩니다. 텍스트가 매우 짧고 모호하여 정상적인 안내 메시지로 오탐될 위험이 있으므로 Type B 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 357
+Text: '.   .       30,000  ▶ kng53.  Code: 811388'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "본 메시지는 '30,000'이라는 금전적 수치(가입 포인트 혹은 체험 머니)를 미끼로 내세워 특정 식별값(kng53)과 접속 코드(811388)를 제공하는 전형적인 불법 도박 사이트 가입 유도 문구입니다. 문장 처음에 마침표와 공백을 과도하게 사용하여 레이아웃을 구성한 것은 스팸 필터링 시스템을 우회하려는 의도적인 난독화(is_garbage_obfuscation)로 판단되며, 발신 주체나 수신거부 번호가 없는 익명성 기반의 유도 메시지이므로 제0원칙에 따라 SPAM으로 확정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 '30,000'이라는 금전적 수치와 특)]"
+==================
+Row: 361
+Text: '/-(광고) 럭키데이 1796님  2만원 무료쿠폰이 도착했습니다.   ◆ 로 : 흐름, 지금 확인하시는 분들만 가져가고 있습니다 ◆ 또 : 또 다른 기회는 쉽게 오지 않습니다 ◆ '
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "Spam Guide의 '2. 판단 우선순위 및 VoC 예외 보호' 중 'A-1. 순수 로또 관련' 기준에 따라, 로또 번호 추천 조합 및 분석 정보를 제공하는 메시지는 오차단 시 VoC 발생 우려가 높은 보호 대상(HAM)으로 분류한다. 본문에서 '로또번호'를 세로 드립 형태로 표현하는 등 마케팅적 요소가 있으나, 제0원칙에서 금지하는 도박이나 명백한 금융 사기 의도가 드러나지 않으므로 정상적인 서비스 안내로 판단한다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 로또 번호 추천 및 무료 쿠폰을 미끼로)] | [FP Sentinel Override] 악성 URL 탐지 Type_B 확정 차단"
+==================
+Row: 367
+Text: '10~500     4       kopp8'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | 상호명이나 법적 광고 규격(광고, 080 수신거부) 없이 '10~500'이라는 숫자 범위와 'kopp8'이라는 식별 코드만을 나열한 극단적 난독화 메시지입니다. 이는 사설 도박 사이트의 배팅 한도나 가입 코드를 전파하여 필터링을 회피하려는 전형적인 악성 스팸 수법(제0원칙 및 난독화 규정)에 해당합니다. 문맥이 파괴된 파편화된 데이터이므로 CNN 모델 오염 방지를 위해 is_garbage_obfuscation을 true로 설정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 370
+Text: '0701님 안녕하세요, LUCKY DAY입니다.  현재 0701님께 안내드린 내용이 마감 단계로 이어지고 있어 핵심만 간단히 다시 전해드립니다.  이번 주 기준 안내드릴 사항은 →'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "발신 주체가 불분명한 'LUCKY DAY'라는 명칭을 사용하며, [광고] 표시 및 080 수신거부 번호 등 법적 필수 규격을 전혀 준수하지 않았습니다. '3등 세트 제공', '매일 20,000원 지급' 등 비현실적인 금전적 미끼를 통해 단축 URL 클릭을 유도하는 전형적인 스팸/피싱 메시지입니다. 수신자의 번호 뒷자리(0701)를 언급하여 개인화된 안내처럼 위장하는 기망 전술을 사용하고 있습니다. 다만, 메시지 레이아웃이 일반적인 기업의 이벤트 알림과 매우 흡사하여 정상 문자를 스팸으로 오탐할 위험이 크므로 Type B(is_normal_layout, is_vague_cta) 시그널을 활성화하여 격리 처리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지와 연결된 웹 페이지를 종합 분석한 결과,)]"
+==================
+Row: 371
+Text: '2           10        ㅌ- PM4774'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | 해당 메시지는 극심한 공백 삽입과 'ㅌ', 'PM4774'와 같은 난독화된 기호를 사용하여 스팸 필터를 우회하려는 의도가 명백합니다. '2 10'은 도박 사이트에서 흔히 사용하는 입금 보너스(예: 2만 충전 시 10만 지급) 혹은 특정 게임 테이블/채널을 암시하는 사행성 은어로 판단됩니다. 정상적인 통신 문맥이 전혀 없으며, 식별 코드만을 노출하는 전형적인 불법 도박 유도 패턴이므로 SPAM으로 판정합니다. (Type B: 형태소 파괴 및 극심한 난독화 포함) | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 372
+Text: '1137님 안녕하세요, LUCKY DAY입니다.  현재 안내드린 혜택이 곧 마감됩니다. 확인 가능할 때 바로 확인해주시기 바랍니다.  이번 주 기준으로 → 1137님 전용 확장 "'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "명확한 상호명이나 비즈니스 주체 없이 'LUCKY DAY'라는 모호한 명칭을 사용하며, '전용 확장 3등 구간', '구매지원 혜택' 등 구체적 근거가 없는 사행성/기만성 혜택을 미끼로 단축 URL 클릭을 유도하는 익명 찌라시형 스팸입니다. 메시지의 전체적인 레이아웃(인사말-혜택안내-링크-맺음말)과 '확인해보세요'와 같은 권유형 문구가 지극히 정상적인 마케팅 메시지의 형식을 완벽히 모방하고 있어, 향후 정상 광고 문자의 오탐(False Positive)을 방지하기 위해 Type B 시그널(is_normal_layout, is_vague_cta)을 활성화하여 격리 처리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지에서 언급된 'LUCKY DAY'라는 모호)]"
+==================
+Row: 374
+Text: '2~4                 30                        akk96'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: '해당 메시지는 숫자(2~4, 30)와 특정 식별 코드(akk96)를 극단적인 공백으로 분리하여 나열한 전형적인 난독화 스팸입니다. 이는 사설 도박 사이트의 배당률이나 보너스 비율을 암시하며 필터링 시스템을 우회하려는 의도가 명백합니다. 상호명이나 법적 광고 규격(080 수신거부 등)이 전혀 없으며, 과거 유사 사례(코드 및 숫자 조합)에 비추어 볼 때 불법 도박 유도(SPAM CODE 2)로 판단됩니다. 형태소가 파괴된 파편화된 텍스트이므로 CNN 모델 오염 방지를 위해 Type B 시그널을 설정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지와 URL 페이지를 비교 분석한 결과, 명)]'
+==================
+Row: 376
+Text: '2~4                 30                      akk96'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 구체적인 상호명이나 광고 규격(광고 표기, 080 수신거부) 없이 비정상적인 공백과 숫자 조합(2~4, 30), 그리고 메신저 ID 혹은 접속 코드로 의심되는 'akk96'만을 나열하고 있습니다. 이는 필터링 시스템을 우회하기 위해 의도적으로 형태소를 파괴하고 문맥을 은닉한 전형적인 난독화 기법(is_garbage_obfuscation)이며, 사설 도박 사이트의 배당률이나 유입 코드를 전달하려는 악성 의도가 명백하므로 SPAM으로 판정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 원문은 '2~4', '30', 'akk96'과 )]"
+==================
+Row: 383
+Text: '2199님 안녕하세요, LUCKY DAY입니다.  현재 2199님께 안내드린 내용이 마감 단계로 이어지고 있어 핵심만 간단히 다시 전해드립니다.  이번 주 기준 안내드릴 사항은 →'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "발신 주체가 불분명한 'LUCKY DAY'라는 명칭을 사용하며, '매일 출석만으로 20,000원'이라는 비현실적인 금전적 혜택을 미끼로 단축 URL 클릭을 유도하고 있습니다. 이는 가이드 내 '익명 찌라시 및 가입 유도' 및 '로또/사행성 미끼' 범주에 해당하여 제0원칙(악성 스팸)에 따라 SPAM으로 판정합니다. 또한, '안녕하세요', '감사합니다' 등 지극히 정상적인 인사말을 앞뒤에 배치한 샌드위치 기법을 사용하고 있어, 정상 문구의 오염 학습을 방지하기 위해 Type B(is_normal_layout) 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지와 연결된 웹페이지를 종합 분석한 결과, )]"
+==================
+Row: 395
+Text: '3535님 안녕하세요, LUCKY DAY입니다.  현재 안내드린 혜택이 곧 마감됩니다. 확인 가능할 때 바로 확인해주시기 바랍니다.  이번 주 기준으로 → 3535님 전용 확장 "'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "'LUCKY DAY'라는 모호한 명칭을 사용하며, 정식 광고 규격((광고) 표시, 080 수신거부 등)을 전혀 준수하지 않은 채 '구매지원 혜택', '3등 구간' 등 기만적인 미끼(Bait) 문구로 단축 URL 클릭을 유도하고 있습니다. 이는 가이드상 '익명 찌라시 및 가입 유도' 스캠으로 간주됩니다. 또한, 메시지 구조가 일반적인 고객 안내문과 유사하여 정상 문자를 오탐할 위험이 크므로 Type B 시그널(is_normal_layout, is_vague_cta)을 활성화하여 격리 조치합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 'LUCKY DAY'라는 불분명한 발신)]"
+==================
+Row: 400
+Text: '4382님 안녕하세요, LUCKY DAY입니다.  현재 4382님께 안내드린 내용이 마감 단계로 이어지고 있어 핵심만 간단히 다시 전해드립니다.  이번 주 기준 안내드릴 사항은 →'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "LUCKY DAY라는 정체불명의 상호를 사용하여 '3등 세트 제공', '매일 출석 시 20,000원' 등 사행성을 조장하는 비현실적 혜택을 미끼로 단축 URL 클릭을 유도하고 있습니다. 이는 전형적인 불법 도박 사이트나 스캠의 유입 수법입니다. 또한 '안녕하세요', '감사합니다'와 같은 일상적인 인사말을 앞뒤에 배치하여 정상적인 안내 메시지처럼 위장하는 '샌드위치 기법'을 사용하고 있으며, '촐석'과 같은 의도적 오타(필터 회피)가 의심됩니다. 정상적인 인사말이 스팸 피처로 학습되는 것을 방지하기 위해 is_normal_layout을 true로 설정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS에서 언급된 '3등 세트 제공', '매일 출석 시)]"
+==================
+Row: 404
+Text: '4937님 안녕하세요, LUCKY DAY입니다.  현재 안내드린 혜택이 곧 마감됩니다. 확인 가능할 때 바로 확인해주시기 바랍니다.  이번 주 기준으로 → 4937님 전용 확장 "'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 'LUCKY DAY'라는 명칭과 '3등 구간', '구매지원 혜택' 등의 표현을 사용하는 로또(Lotto) 관련 안내 또는 홍보 문구로 판단됩니다. Spam Guide 제2조 A항(4대 보호 범주) 및 제5조(카테고리별 최종 판정)에 의거하여, 로또 관련 메시지는 도박, 피싱 등 제0원칙에 해당하는 명백한 악성 의도가 드러나지 않는 한 오차단으로 인한 VoC 방지를 위해 HAM으로 보호하는 것을 원칙으로 합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS는 'LUCKY DAY'라는 명칭을 사용하여 로또)] | [FP Sentinel Override] 악성 URL 탐지 Type_B 확정 차단"
+==================
+Row: 407
+Text: '99%       50~1000 30                        akk96'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 '99%'라는 비현실적인 수치와 '50~1000'이라는 베팅 혹은 투자 범위를 암시하는 숫자, 그리고 'akk96'이라는 식별 코드를 나열한 전형적인 불법 도박 혹은 사기성 스팸입니다. 정상적인 문장 구조 없이 공백과 파편화된 정보만을 제공하여 필터링 시스템을 우회하려는 의도가 명확합니다. 이는 제0원칙(도박/사기) 위반이며, 텍스트 자체가 형태소가 파괴된 난독화 상태이므로 CNN 모델 학습에서 제외해야 할 Type B(is_garbage_obfuscation) 데이터로 판정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 원문에 포함된 'akk96'이라는 식별 코드가 )]"
+==================
+Row: 408
+Text: '8721님 안녕하세요, LUCKY DAY입니다.  현재 8721님께 안내드린 내용이 마감 단계로 이어지고 있어 핵심만 간단히 다시 전해드립니다.  이번 주 기준 안내드릴 사항은 →'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "LUCKY DAY라는 불분명한 상호를 사용하여 '3등 세트 제공' 및 '출석 시 20,000원 지급'과 같은 사행성 미끼로 단축 URL 클릭을 유도하고 있습니다. 이는 사설 도박 사이트나 스캠 플랫폼의 전형적인 가입 유도 수법이며, 정식 광고 규격(광고 표기, 080 수신거부)을 전혀 준수하지 않았습니다. 또한, '안녕하세요', '감사합니다' 등 일상적인 인사말을 앞뒤에 배치하여 정상 문자로 위장한 샌드위치 기법을 사용하고 있어 CNN 모델의 오염을 막기 위해 Type B(is_normal_layout) 시그널을 적용합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 SMS와 연결된 웹페이지를 종합 분석한 결과, 전형)]"
+==================
+Row: 423
+Text: '<로얄>고민은 그만 지금 바로 체크 https://myip.kr/TCboM'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "'로얄'이라는 명칭은 불법 도박(카지노, 바카라 등) 사이트에서 흔히 사용하는 브랜드명이며, '고민은 그만 지금 바로 체크'와 같은 문구는 사행성 심리를 자극하여 단축 URL 클릭을 유도하는 전형적인 도박 스팸의 패턴입니다. 이는 Spam Guide 제0원칙(도박)에 해당하여 모든 예외 없이 SPAM으로 판정합니다. 다만, '지금 바로 체크'와 같은 문구는 정상적인 안내문자에서도 쓰일 수 있는 범용적 표현이므로 CNN 모델의 오염을 막기 위해 is_vague_cta 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 '로얄'이라는 명칭과 함께 '고민은 그)]"
+==================
+Row: 430
+Text: '==                ==                             dk191'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | 의미 없는 기호(==)와 과도한 공백, 그리고 'dk191'이라는 정체불명의 식별 코드를 조합한 극단적 난독화 메시지입니다. 이는 정상적인 의사소통 의도가 전혀 없으며, 필터링 시스템을 우회하여 특정 불법 사이트(도박 등)로의 접속이나 검색을 유도하는 전형적인 스팸 수법(Baiting)입니다. 형태소가 완전히 파괴된 패턴이므로 CNN 모델의 정상 학습을 방해할 수 있어 Type B(is_garbage_obfuscation) 시그널을 적용하여 격리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 443
+Text: 'G2G     2          이          9장          90    지       .NET     KMEN'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 'G2G', '.NET', 'KMEN' 등 도메인 구성 요소와 '9장', '90' 등 사행성(도박) 관련 은어를 비정상적인 공백으로 파편화하여 필터링 시스템을 우회하려는 의도가 명백합니다. 이는 Spam Guide의 제0원칙(악성 스팸) 및 난독화 규정에 따라 즉시 차단 대상이며, 극심한 형태소 파괴(is_garbage_obfuscation)를 동반하고 있어 정상적인 텍스트 학습 데이터로 부적합한 Type B 스팸으로 분류합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 'G2G', '.NET' 등 도메인 구)]"
+==================
+Row: 495
+Text: '[           ] [            ] [         3OOO] [       5OOO] ▶      CV82'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "숫자 '0'을 영문 대문자 'O'로 치환한 난독화(3OOO, 5OOO)와 의미를 알 수 없는 식별 코드(CV82)를 조합한 전형적인 불법 도박 사이트 권유 메시지입니다. 정상적인 통신 문맥이 전혀 없으며, 필터링 시스템을 우회하려는 의도가 명백하므로 제0원칙에 따라 SPAM으로 판정합니다. 또한, 형태소 파괴가 심해 CNN 모델 학습 시 오염 위험이 크므로 Type B(is_garbage_obfuscation)로 분류합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 숫자 '0'을 영문 대문자 'O'로 치)]"
+==================
+Row: 497
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad팡 \xad파트\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad너사 \xad체\xad험단\xad 당\xad\xad첨 안내입'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "쿠팡을 사칭하여 체험단 당첨 및 현금 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 구인/구직(체험단) 사기 메시지입니다. 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 필터링 우회를 위해 단어 사이에 보이지 않는 특수문자를 대량 삽입한 극심한 난독화 패턴(is_garbage_obfuscation)이 관찰됩니다. 대기업 알림 레이아웃을 모방(is_impersonation)하고 있어 정상 문자와의 혼동을 막기 위해 Type B로 격리 처리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 메시지는 대기업인 '쿠팡'을 사칭하여 체험단 당첨 )]"
+==================
+Row: 498
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 체\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad험\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "이 메시지는 대기업(쿠팡)을 사칭하여 체험단 당첨 및 현금 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 구인/체험단 사기 스팸입니다. Spam Guide 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 필터링 우회를 위해 글자 사이에 다량의 투명 특수문자를 삽입한 극심한 난독화(is_garbage_obfuscation)와 브랜드 사칭(is_impersonation)이 확인되어 Type B 시그널을 포함한 SPAM으로 확정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (이 메시지는 대기업인 '쿠팡'을 사칭하여 체험단 모집 )]"
+==================
+Row: 500
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad팡 \xad파트\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad너 \xad체\xad험단\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "대기업인 '쿠팡'을 사칭하여 체험단 모집 및 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 구인/구직 사기 메시지입니다. 스팸 가이드 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 필터링 우회를 위해 단어 사이에 보이지 않는 특수문자를 대량 삽입한 극심한 난독화(is_garbage_obfuscation)가 관찰됩니다. 이러한 사칭 및 난독화 패턴은 정상적인 안내 문자로 오인될 위험이 커 CNN 모델 학습에서 격리가 필요한 Type B 표본입니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 SMS는 대기업 '쿠팡'을 사칭하여 체험단 모집 )]"
+==================
+Row: 501
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad팡 \xad파트\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad너사 \xad체\xad험단\xad 당\xad\xad첨 안내입'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 대기업(쿠팡)을 사칭하여 체험단 당첨 및 수당 지급을 미끼로 카카오톡 채널 가입을 유도하는 전형적인 구인/구직 빙자 사기(알바 사기)입니다. Spam Guide 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 필터링을 회피하기 위해 단어 사이사이에 무수히 많은 투명 특수문자(Soft Hyphen 등)를 삽입한 극심한 난독화 패턴이 확인됩니다. 이는 정상적인 비즈니스 메시지에서 발생할 수 없는 악의적 기만 행위이므로 즉시 차단이 필요합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 SMS는 대기업인 '쿠팡'을 사칭하여 체험단 당첨)]"
+==================
+Row: 502
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 체\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad험\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "쿠팡을 사칭하여 체험단 당첨 및 현금 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 체험단/알바 사기 메시지입니다. 제0원칙에 명시된 '대기업 사칭 체험단 사기'에 해당하며, 특히 단어 사이에 대량의 보이지 않는 특수문자를 삽입하여 필터링을 우회하려는 극심한 난독화(is_garbage_obfuscation)가 발견되었습니다. 또한 정상적인 기업 알림 레이아웃을 모방(is_impersonation)하고 있어 CNN 모델의 오염을 방지하기 위해 Type B 시그널을 활성화하여 격리 조치합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 SMS는 전형적인 '대기업 사칭 체험단 사기' 메시)]"
+==================
+Row: 503
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad팡 \xad파트\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad너사 \xad체\xad험단\xad 당\xad\xad첨 안내입'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "쿠팡을 사칭하여 체험단 당첨 및 고수익 수당을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 피싱/구인 사기 메시지입니다. 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 필터링 우회를 위해 글자 사이에 무수히 많은 투명 특수문자를 삽입한 극심한 난독화 패턴(is_garbage_obfuscation)과 기업 사칭(is_impersonation)이 명백하여 즉시 차단이 필요합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 SMS는 쿠팡(Coupang)을 사칭하여 체험단 )]"
+==================
+Row: 504
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad팡 \xad파트\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad너사 \xad체\xad험단\xad 당\xad\xad첨 안내입'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "대기업(쿠팡)을 사칭하여 체험단 당첨 및 현금 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 아르바이트 사기 문구입니다. 특히 필터링 우회를 위해 글자 사이에 대량의 투명 특수문자를 삽입한 극심한 난독화(is_garbage_obfuscation)가 확인되며, 정상적인 기업 안내문의 레이아웃을 모방(is_impersonation)하고 있어 CNN 모델의 오학습을 방지하기 위해 Type B로 격리 판정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 SMS는 대기업(쿠팡)을 사칭하여 '체험단 당첨')]"
+==================
+Row: 505
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad트너사 소\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad식\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파\xad\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "대기업(쿠팡)을 사칭하여 체험단 당첨 및 수당 지급을 미끼로 카카오톡 채널 가입을 유도하는 전형적인 구인/구직 사기 스팸입니다. 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 특히 필터링 우회를 위해 모든 음절 사이에 대량의 투명 유니코드 문자를 삽입한 극심한 난독화(is_garbage_obfuscation)가 발견되어 즉시 차단이 필요합니다. 정상적인 기업 알림 레이아웃을 모방(is_impersonation)하고 있어 AI 모델 오염 방지를 위해 Type B로 처리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 SMS는 '쿠팡 파트너사'를 사칭하여 체험단 당첨 )]"
+==================
+Row: 506
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad트너사 소\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad식\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파\xad\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "대기업(쿠팡)을 사칭하여 체험단 당첨 및 현금 수당 지급을 미끼로 카카오톡 오픈채팅 유입을 유도하는 전형적인 구인/구직 사기(체험단 알바 사기) 메시지입니다. [Spam Guide] 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 제목 부분에 필터링 우회를 위한 대량의 투명 난독화 문자가 삽입되어 있어 악성 의도가 명백합니다. 정상적인 안내문 레이아웃을 모방하고 있어 CNN 모델의 오염을 막기 위해 Type B 시그널(is_impersonation, is_garbage_obfuscation, is_normal_layout)을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 메시지는 대기업(쿠팡)을 사칭하여 체험단 모집 및 )]"
+==================
+Row: 507
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad트너사 소\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad식\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파\xad\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "이 메시지는 대기업(쿠팡)을 사칭하여 체험단 당첨 및 체험 수당(현금) 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 '체험단/알바 사기' 메시지입니다. [Spam Guide] 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하여 즉시 차단 대상입니다. 특히 필터링 우회를 위해 텍스트 사이사이에 보이지 않는 특수문자를 대량 삽입한 극심한 난독화(is_garbage_obfuscation)가 관찰되며, 정상적인 기업 소식으로 위장(is_impersonation)하고 있어 CNN 모델의 오염을 막기 위해 Type B 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (이 메시지는 대기업(쿠팡)을 사칭하여 체험단 당첨 및 )]"
+==================
+Row: 508
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad트너사 소\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad식\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파\xad\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "이 메시지는 대기업(쿠팡)을 사칭하여 체험단 당첨 및 체험 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 '체험단/알바 사기' 메시지입니다. Spam Guide 제0원칙에 명시된 '대기업 사칭 피싱'에 해당하며, 필터링 우회를 위해 텍스트 사이에 보이지 않는 특수문자를 대량 삽입한 극심한 난독화(is_garbage_obfuscation)가 확인됩니다. 정상적인 기업 알림의 형태를 모방하고 있으므로 모델 오염 방지를 위해 Type B 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (이 메시지는 대기업(쿠팡)을 사칭하여 '체험단 당첨' )]"
+==================
+Row: 509
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad트너사 소\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad식\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파\xad\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "대기업(쿠팡)을 사칭하여 체험단 모집 및 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 알바/구인 사기 메시지입니다. 이는 Spam Guide 제0원칙(사칭/스미싱/피싱)에 해당하며, 특히 필터링 우회를 위해 단어 사이에 무수히 많은 투명 특수문자를 삽입한 극심한 난독화(is_garbage_obfuscation)가 관찰됩니다. 정상적인 기업 알림 레이아웃을 사칭(is_impersonation)하고 있어 CNN 모델의 오염을 막기 위해 Type B 시그널을 활성화하여 격리 처리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 SMS는 '쿠팡 파트너사'를 사칭하여 체험단 당첨)]"
+==================
+Row: 510
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad트너사 소\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad식\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파\xad\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "대기업(쿠팡)을 사칭하여 체험단 당첨 및 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 구인/구직 사기형 스팸입니다. 필터링 우회를 위해 글자 사이에 대량의 투명 특수문자를 삽입한 극심한 난독화(is_garbage_obfuscation)가 발견되며, 이는 제0원칙에 따라 즉시 차단 대상입니다. 또한 정상적인 기업 알림 레이아웃을 모방하고 있어 CNN 모델의 오탐을 유발할 수 있는 위험한 데이터(Type B)로 판단됩니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 SMS는 대기업(쿠팡)을 사칭하여 '체험단 당첨' )]"
+==================
+Row: 511
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad트너사 소\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad식\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파\xad\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "이 메시지는 대기업(쿠팡)을 사칭하여 '체험단 당첨' 및 '수당 지급'을 미끼로 카카오톡 채널 가입을 유도하는 전형적인 구인/구직 사칭 스팸입니다. [Spam Guide] 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 특히 '쿠팡', '파트너사' 등 주요 키워드 사이에 대량의 투명 특수문자를 삽입하여 필터링 시스템을 교란하려는 강력한 난독화(is_garbage_obfuscation) 시그널이 확인됩니다. 이는 정상적인 비즈니스 메시지에서 발생할 수 없는 패턴이므로 즉시 차단 대상입니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (이 메시지는 대기업(쿠팡)을 사칭하여 '체험단 당첨' )]"
+==================
+Row: 512
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad트너사 소\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad식\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파\xad\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "이 메시지는 대기업(쿠팡)을 사칭하여 현금 수당 및 무료 물품 제공을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 '체험단/알바 사기' 메시지입니다. Spam Guide 제0원칙에 명시된 '대기업 사칭 체험단 사기'에 해당하며, 필터링 우회를 위해 단어 사이에 다량의 투명 특수문자를 삽입한 극심한 난독화 패턴(is_garbage_obfuscation)과 공식 업체를 사칭하는 레이아웃(is_impersonation)이 확인되어 즉시 차단이 필요한 악성 스팸으로 판단됩니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 SMS는 대기업인 '쿠팡'을 사칭하여 체험단 당첨)]"
+==================
+Row: 513
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad트너사 소\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad식\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파\xad\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "대기업(쿠팡)을 사칭하여 체험단 당첨 및 현금 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 피싱/알바 사기 메시지입니다. 글자 마다 투명 특수문자를 삽입하여 필터링을 회피하려는 극심한 난독화(is_garbage_obfuscation)가 발견되었으며, 기업 사칭(is_impersonation)을 통해 수신자를 기망하고 있으므로 제0원칙에 따라 즉시 SPAM으로 처리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 메시지는 대기업인 '쿠팡'을 사칭하여 체험단 당첨 )]"
+==================
+Row: 514
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad트너사\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad 안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad팡 \xad파\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad트너사 \xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "이 메시지는 대기업(쿠팡)을 사칭하여 체험단 및 고수익 알바를 미끼로 카카오톡 채널 유입을 유도하는 전형적인 구인/구직 사기 스팸입니다. 특히 '쿠\xad\xad\xad\xad\xad팡'과 같이 단어 사이에 대량의 투명 유니코드나 특수 제어 문자를 삽입하여 필터링 시스템을 교란하려는 악의적인 난독화(is_garbage_obfuscation)가 매우 심각하게 나타납니다. 이는 제0원칙(사기/피싱) 및 스팸 가이드의 사칭/스미싱 기준에 따라 즉시 차단 대상이며, 난독화 패턴이 강해 CNN 모델 오염 방지를 위해 Type B 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 SMS는 대기업(쿠팡)을 사칭하여 '체험단 당첨')]"
+==================
+Row: 515
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파트너사 \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad소식\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파트너사\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad '
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: '쿠팡 파트너사를 사칭하여 체험단 당첨 및 수당 지급을 미끼로 카카오톡 오픈채팅 유입을 유도하는 전형적인 구인/구직(체험단 알바) 사기 메시지입니다. Spam Guide 제0원칙(사기/피싱) 및 제2항(대기업 사칭 체험단 사기)에 해당합니다. 특히 본문 전체에 걸쳐 필터링 우회를 위해 음절 사이에 보이지 않는 특수문자(Soft Hyphen 등)를 삽입한 극심한 난독화 패턴이 발견되어 악성 의도가 명백합니다. 이러한 형태소 파괴는 정상적인 학습 데이터로 부적합하므로 Type B(is_garbage_obfuscation, is_impersonation) 시그널을 활성화하여 격리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 메시지는 쿠팡 파트너사를 사칭하여 체험단 당첨 및)]'
+==================
+Row: 516
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파트너사 \xad\xad\xad\xad\xad\xad\xad\xad\xad소식\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파트너사\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad \xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "대기업(쿠팡)을 사칭하여 체험단 당첨 및 현금 수당 지급을 미끼로 카카오톡 오픈채팅 유입을 유도하는 전형적인 알바/체험단 사기 메시지입니다. 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 필터링 우회를 위해 텍스트 전반에 보이지 않는 특수문자를 삽입한 극심한 난독화 패턴이 확인됩니다. 이는 정상적인 비즈니스 메시지에서 발생할 수 없는 형태이므로 악성 스팸으로 확정하며, 사칭 및 난독화로 인한 모델 오염 방지를 위해 Type B 시그널을 설정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 SMS는 대기업인 '쿠팡'을 사칭하여 체험단 당첨)]"
+==================
+Row: 517
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad트너사\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad 안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad팡 \xad파\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad트너사 \xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 쿠팡 파트너사를 사칭하여 체험단 당첨 및 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 구인/구직 사기 및 피싱 메시지입니다. [Spam Guide] 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 특히 '쿠팡', '안내' 등 주요 키워드 사이에 대량의 투명 유니코드 문자를 삽입하여 필터를 우회하려는 강력한 난독화 시그널(is_garbage_obfuscation)이 확인됩니다. 이는 정상적인 비즈니스 메시지에서 발생할 수 없는 패턴이므로 악성 스팸으로 확정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 메시지는 '쿠팡 파트너사'를 사칭하여 체험단 당첨)]"
+==================
+Row: 518
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad트너사\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad팡 \xad파\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad트너사 \xad체\xad험단\xad에 당\xad\xad첨자'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "쿠팡(Coupang)을 사칭하여 체험단 당첨 및 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 구인/알바 사기 메시지입니다. 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 필터링 우회를 위해 거의 모든 음절 사이에 투명 특수문자를 삽입한 극심한 난독화(Textual Obfuscation)가 발견되어 악성 의도가 명백합니다. 대기업 사칭 및 형태소 파괴 패턴이 심해 CNN 모델 오염 방지를 위해 Type B 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 SMS는 쿠팡(Coupang)을 사칭하여 체험단 )]"
+==================
+Row: 519
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파트너사 \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파트너사 '
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "쿠팡 파트너사를 사칭하여 체험단 당첨 및 현금 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 알바/피싱 사기 메시지입니다. 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 특히 모든 음절 사이에 필터링 우회를 목적으로 한 투명 난독화 문자를 삽입한 점이 명백한 악성 시그널입니다. 대기업 사칭(is_impersonation)과 극심한 형태소 파괴(is_garbage_obfuscation)가 포함되어 있어 CNN 모델 오염 방지를 위해 Type B로 처리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 SMS는 쿠팡 파트너사를 사칭하여 체험단 당첨 및)]"
+==================
+Row: 520
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파트너사 \xad\xad\xad\xad\xad\xad\xad\xad\xad안내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파트너사\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad \xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 대기업(쿠팡)을 사칭하여 체험단 당첨 및 현금 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 '체험단/알바 사기'입니다. 제0원칙(악성 스팸 절대 차단) 중 '대기업 사칭 피싱'에 해당하며, 필터링 우회를 위해 단어 사이에 보이지 않는 특수문자를 대량 삽입한 극심한 난독화(is_garbage_obfuscation)와 기업 사칭(is_impersonation) 시그널이 명확하여 CNN 모델 오염 방지를 위해 Type B로 격리 판정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 메시지는 대기업인 '쿠팡'을 사칭하여 체험단 당첨)]"
+==================
+Row: 521
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파트너사 \xad\xad\xad\xad\xad\xad\xad\xad\xad안내 ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파트너사\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad \xad체\xad험\xad\xad\xad\xad\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "대기업(쿠팡)을 사칭하여 체험단 당첨 및 현금 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 구인/구직 사기(피싱) 메시지입니다. 필터링 우회를 위해 거의 모든 음절 사이에 보이지 않는 특수문자를 삽입한 극심한 난독화(is_garbage_obfuscation)가 확인되며, 정상적인 파트너사 안내 레이아웃을 모방(is_impersonation)하고 있어 CNN 모델의 오학습을 방지하기 위해 Type B 시그널을 활성화하여 격리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 SMS는 대기업인 '쿠팡'을 사칭하여 체험단 당첨 )]"
+==================
+Row: 522
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파트너스 \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad소식\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파트너스\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad '
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "이 메시지는 대기업(쿠팡)을 사칭하여 현금 수당과 물품 제공을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 '체험단 사기' 메시지입니다. Spam Guide 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 본문 전체에 걸쳐 필터링 우회를 목적으로 한 극심한 난독화(투명 특수문자 삽입)가 사용되었습니다. 이는 명백한 악성 의도로 판단되어 SPAM으로 분류하며, 정상적인 기업 알림으로 오탐될 위험이 커 Type B 시그널(is_impersonation, is_garbage_obfuscation)을 적용합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 메시지는 대기업(쿠팡)을 사칭하여 현금 수당과 물품)]"
+==================
+Row: 523
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파트너스 \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad소식\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파트너스\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad '
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "대기업(쿠팡)을 사칭하여 체험단 당첨 및 현금 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 구인/구직 사기형 스팸입니다. 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 필터링 우회를 위해 글자 사이에 무수히 많은 투명 특수문자를 삽입한 극심한 난독화(is_garbage_obfuscation)가 발견됩니다. 이러한 패턴은 정상적인 안내 메시지에서 절대 나타날 수 없는 악의적 기만 행위이므로 SPAM으로 판정하며, CNN 모델이 정상적인 기업 알림과 혼동하지 않도록 Type B 시그널(is_impersonation, is_garbage_obfuscation)을 활성화하여 격리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 SMS는 대기업인 '쿠팡 파트너스'를 사칭하여 체험)]"
+==================
+Row: 524
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파트너스 \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad안내 ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파트너스\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad \xad체\xad험\xad\xad\xad\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: '대기업(쿠팡)을 사칭하여 체험단 당첨 및 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 구인/구직 사기형 스팸입니다. 특히 필터링 우회를 위해 단어 사이사이에 무수히 많은 투명 특수문자(Soft Hyphen 등)를 삽입하여 형태소를 고의로 파괴한 난독화 패턴이 매우 심각합니다. 이는 정상적인 텍스트 학습을 방해하는 악성 데이터이므로 Type B(is_garbage_obfuscation, is_impersonation) 시그널을 적용하여 격리 판정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 SMS는 대기업(쿠팡)을 사칭하여 체험단 당첨 및 )]'
+==================
+Row: 525
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파트너스 \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파트너스\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "쿠팡 파트너스를 사칭하여 체험단 당첨 및 현금 수당 지급을 미끼로 카카오톡 오픈채팅 유입을 유도하는 전형적인 사기/피싱 메시지입니다. 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 필터링 우회를 위해 글자 사이에 대량의 투명 특수문자를 삽입한 극심한 난독화(is_garbage_obfuscation)와 기업 사칭(is_impersonation) 패턴이 명확하여 즉시 차단이 필요합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 메시지는 대기업인 '쿠팡 파트너스'를 사칭하여 체험)]"
+==================
+Row: 526
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파트너스 \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파트너스\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "[Content_Fallback: gemini-3.1-pro-preview] 대기업(쿠팡 파트너스)을 사칭하여 가짜 체험단 당첨 및 수당 지급을 미끼로 카카오톡 채널 접속을 유도하는 전형적인 구인/구직(알바) 사기 메시지입니다. 단어 사이에 보이지 않는 특수문자를 대량으로 삽입하여 필터 우회를 시도한 악의적 난독화(is_garbage_obfuscation)가 확인되며, 대기업 정상 알림으로 위장하고 있어 CNN 모델의 오탐을 유발할 수 있으므로 Type B(is_impersonation)로 격리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 SMS는 대기업인 '쿠팡 파트너스'를 사칭하여 가)]"
+==================
+Row: 527
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 협력사 \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad협력사\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "대기업(쿠팡)을 사칭하여 체험단 당첨 및 수당 지급을 미끼로 카카오톡 오픈채팅 유입을 유도하는 전형적인 구인구직 사기(피싱) 메시지입니다. 필터링 시스템을 우회하기 위해 본문 내 거의 모든 단어 사이에 보이지 않는 특수문자나 공백을 삽입한 극심한 난독화(is_garbage_obfuscation)가 발견되며, 이는 제0원칙에 따라 즉시 차단 대상입니다. 또한 정상적인 기업 알림 레이아웃을 모방하고 있어 CNN 모델의 오학습을 방지하기 위해 Type B 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 SMS는 대기업(쿠팡)을 사칭하여 '체험단 당첨' )]"
+==================
+Row: 528
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파트너스 \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad안내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파트너스\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad '
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 '쿠팡 파트너스' 대기업을 사칭하여 체험단 당첨 및 현금 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 알바/피싱 사기입니다. 제0원칙에 명시된 '대기업 사칭 체험단 사기'에 해당하며, 특히 모든 단어 사이에 보이지 않는 특수문자를 삽입한 극심한 난독화(is_garbage_obfuscation)를 통해 필터링 시스템을 교란하려는 악의적 의도가 명백합니다. 대기업 사칭(is_impersonation)과 형태소 파괴 패턴은 정상 문자로 오탐될 위험이 크므로 Type B로 격리 판정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 SMS는 '쿠팡 파트너스'라는 대기업 브랜드를 사)]"
+==================
+Row: 529
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 협력사 \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad협력사\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "쿠팡(대기업)을 사칭하여 체험단 당첨 및 현금 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 구인/구직 사기 메시지입니다. 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 필터링 우회를 위해 글자 사이에 다량의 투명 유니코드(난독화)를 삽입한 악의적 의도가 명백합니다. 정상적인 기업 안내로 오인될 위험이 있는 사칭 템플릿과 형태소 파괴가 심한 난독화 패턴을 포함하고 있어 Type B 시그널을 활성화하여 격리 처리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 SMS는 쿠팡(대기업)을 사칭하여 '체험단 당첨')]"
+==================
+Row: 530
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파트너스 \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파트너스\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "대기업인 '쿠팡 파트너스'를 사칭하여 체험단 당첨 및 현금 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 구인/구직 사기(알바 사기) 메시지입니다. 본문 전체에 걸쳐 필터링을 우회하기 위한 극심한 난독화(투명 문자 및 공백 삽입)가 발견되며, 이는 제0원칙 및 스팸 가이드의 '사칭/스미싱/피싱' 기준에 따라 즉시 차단 대상입니다. 대기업 사칭 및 형태소 파괴가 심각하여 CNN 모델 오염 방지를 위해 Type B 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 SMS는 대기업인 '쿠팡 파트너스'를 사칭하여 체)]"
+==================
+Row: 532
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 협력처 \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad협력처\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "이 메시지는 대기업(쿠팡)을 사칭하여 '체험단 당첨' 및 '현금 수당 지급'을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 사기/피싱 메시지입니다. 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하여 즉시 SPAM으로 판정합니다. 특히 '쿠팡', '안내' 등 주요 키워드 사이에 무수히 많은 투명 특수문자를 삽입하여 필터를 우회하려는 극심한 난독화(is_garbage_obfuscation)가 관찰되며, 기업 사칭(is_impersonation) 요소가 강해 CNN 모델 오염 방지를 위해 Type B로 격리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 메시지는 대기업(쿠팡)을 사칭하여 '체험단 당첨' )]"
+==================
+Row: 533
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 협력사 \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad협력사\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "쿠팡을 사칭하여 체험단 모집을 빙자한 전형적인 구인구직/피싱 사기 메시지입니다. Spam Guide 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, '쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡'과 같이 단어 사이에 보이지 않는 특수문자를 대량 삽입하여 필터링을 우회하려는 강력한 난독화(is_garbage_obfuscation)가 확인됩니다. 대기업 사칭(is_impersonation)을 통해 신뢰를 얻고 카카오톡 채널로 유입을 유도하는 명백한 악성 스팸입니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 메시지는 전형적인 '대기업 사칭 체험단/재택 알바 )]"
+==================
+Row: 535
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 파트너스 \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad안내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad파트너스\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad '
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "이 메시지는 대기업(쿠팡)을 사칭하여 '체험단 당첨' 및 '체험 수당 지급'이라는 미끼로 카카오톡 오픈채팅 유입을 유도하는 전형적인 구인/구직 사기 및 피싱 메시지입니다. [Spam Guide] 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하여 즉시 차단 대상입니다. 특히 '쿠팡', '안내', '체험단' 등 주요 키워드 사이에 다량의 투명 특수문자를 삽입하여 필터링을 우회하려는 악의적 난독화(is_garbage_obfuscation)가 매우 심각하며, 정상적인 비즈니스 레이아웃을 모방(is_impersonation)하고 있어 CNN 모델의 오학습을 방지하기 위해 Type B 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 메시지는 [제0원칙]에서 규정하는 '대기업 사칭 )]"
+==================
+Row: 536
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡\xad 제\xad\xad휴 \xad체\xad\xad험\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad팡 \xad제품협력사 \xad체\xad험단을 진\xad\xad행합니다.  http://pf.kakao.c'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "쿠팡을 사칭하여 체험단 모집 및 수당 지급을 미끼로 카카오톡 채널 유입을 유도하는 전형적인 구인/구직 사기 메시지입니다. 제0원칙에 명시된 '대기업 사칭 체험단/알바 사기'에 해당하며, 필터링 우회를 위해 모든 음절 사이에 보이지 않는 특수문자를 삽입한 극심한 난독화(is_garbage_obfuscation)와 기업 사칭(is_impersonation)이 결합된 악성 스팸입니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 SMS는 쿠팡을 사칭하여 체험단 모집 및 수당 지)]"
+==================
+Row: 538
+Text: '[ \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 협력처 \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad안\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad내\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad ]  \xad\xad\xad\xad\xad\xad\xad\xad\xad\xad쿠\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad\xad팡 \xad협력처\xad\xad\xad'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 쿠팡(Coupang)을 사칭하여 체험단 당첨 및 수당 지급을 미끼로 카카오톡 오픈채팅 유입을 유도하는 전형적인 '체험단/알바 사기' 메시지입니다. 이는 [Spam Guide] 제0원칙에서 명시한 '대기업 사칭 피싱' 및 '구인/구직 사기'에 해당하여 즉시 차단 대상입니다. 특히 텍스트 전반에 걸쳐 필터링을 회피하기 위한 투명 문자 삽입 및 형태소 파괴(is_garbage_obfuscation)가 극심하며, 대기업 브랜드를 무단 도용한 사칭(is_impersonation) 패턴이 명확하여 CNN 모델의 오염을 방지하기 위해 Type B로 처리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 메시지는 쿠팡(Coupang)을 사칭하여 체험단 )]"
+==================
+Row: 606
+Text: '[박상수님 안내]  안녕하세요, LUCKY DAY입니다.  현재 확인 가능 상태로 열려 있던 내용이 마무리 단계로 넘어가기 전이라 간단히 핵심만 정리해드립니다.  ■ 이번 주 기준'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "수신자의 실명을 언급하며 개인화된 안내인 것처럼 위장하고 있으나, '3등 행운숫자' 및 '100% 환급금'이라는 비현실적인 미끼를 통해 사행성 사이트 가입이나 결제를 유도하는 전형적인 로또 사기(SPAM)입니다. 정식 광고 규격(광고 표기, 080 수신거부)을 전혀 준수하지 않았으며, 과거 유사 사례(예시 1, 2)의 판정 기준에 따라 악성 스팸으로 분류합니다. 일상적인 인사말과 정중한 어투를 사용하고 있어 정상 문자로 오탐될 위험이 크므로 Type B 시그널(is_normal_layout, is_personal_lure)을 활성화하여 격리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지에서 '3등 행운숫자', '100% 환급금)]"
+==================
+Row: 649
+Text: '[정은님님 안내]  안녕하세요, LUCKY DAY입니다.  현재 확인 가능 상태로 열려 있던 내용이 마무리 단계로 넘어가기 전이라 간단히 핵심만 정리해드립니다.  ■ 이번 주 기준'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 '행운숫자'와 '100% 환급금'이라는 비현실적인 금전적 혜택을 미끼로 정체불명의 서비스(LUCKY DAY) 가입 및 URL 클릭을 유도하는 사행성 스팸입니다. 이는 Spam Guide 제0원칙의 '익명 찌라시 및 가입 유도'에 해당하며, 비즈니스 주체가 불분명한 상태에서 사행심을 조장하므로 VoC 보호 대상에서 제외됩니다. 또한, 일반적인 안내문 형식을 갖추고 있어 정상적인 알림 문자로 오탐될 위험이 높으므로 Type B 시그널을 활성화하여 격리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 메시지와 연결된 웹페이지를 분석한 결과, 전형적인)]"
+==================
+Row: 666
+Text: '[현대캐피탈] 장성영 님   03월 26일기준  3,000,000원   안내드립니다. ▶즉시입금 처리 및 입금전용 계좌 확인 - https://cogi.cc/s/QOU 자동이체 이'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "현대캐피탈이라는 대형 금융기관을 사칭하여 입금 안내 및 계좌 확인을 유도하는 전형적인 금융 피싱(스미싱) 메시지입니다. 공식 금융기관은 'cogi.cc'와 같은 출처가 불분명한 단축 URL을 통해 입금 전용 계좌 확인이나 즉시 입금 처리를 요구하지 않습니다. 이는 제0원칙(금융사기 및 피싱)에 해당하여 즉시 차단 대상입니다. 또한, 메시지 구성이 실제 금융 알림과 매우 흡사하여 정상 문자로 오탐될 위험이 높으므로 CNN 모델의 학습 오염을 막기 위해 Type B 시그널(is_impersonation, is_normal_layout)을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 673
+Text: 'w azaz10. 고陸문 십부터천'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "'azaz10'이라는 도메인 식별자와 '고陸문'(고6문), '십부터천'(베팅 금액/단위 암시) 등 난독화된 표현을 사용하여 불법 도박 사이트 접속을 유도함. 한자(陸)를 섞어 필터를 회피하려는 의도가 명확하며, 이는 전형적인 악성 스팸 패턴임. 형태소 파괴가 심해 CNN 모델 오염 방지를 위해 is_garbage_obfuscation을 true로 설정함. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 'azaz10', '고陸문(고6문)',)]"
+==================
+Row: 723
+Text: '♨봄맞이 레전드 처음 입풀 ５o퍼♨  안녕하세요. 3월이 후반으로 접어들면서 이번 달 기준으로 확인해보실 수 있는 내용 정리해 전달드립니다. 바쁘신 중에도 잠시 참고하실 수 있도록'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "스포츠 배당, 미니게임, 느바(NBA) 프로모션 등 명백한 불법 도박 사이트 홍보 및 가입 유도 내용이 포함되어 제0원칙에 따라 즉시 SPAM으로 판정함. '５o퍼', '이벳트', 'mi니게임' 등 필터링 우회를 위한 의도적인 난독화(is_garbage_obfuscation)가 발견되었으며, 앞뒤로 정중한 일상 인삿말을 배치하여 정상 문자로 위장하는 샌드위치 기법(is_normal_layout)을 사용하고 있어 CNN 모델 오염 방지를 위해 Type B로 격리함. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 '처음 입풀 ５o퍼', '스포츠 1.9)]"
+==================
+Row: 748
+Text: '고객인증 요    https://mu .so/a8ut 미인증 계정 삭제 됩  다'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | 계정 삭제를 빌미로 수신자를 기망하여 피싱 사이트 접속을 유도하는 전형적인 스미싱 메시지입니다. URL 내부에 공백을 삽입하여 필터를 우회하려는 시도(mu .so)와 '요', '됩  다'와 같이 의도적으로 형태소를 파괴한 난독화 패턴이 명백합니다. 이는 제0원칙의 금융사기 및 피싱 범주에 해당하며, 정상적인 기업의 안내 문구 레이아웃을 모방하고 있으므로 CNN 모델 오염 방지를 위해 Type B 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 755
+Text: '구글 인투88'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "유명 포털(구글)의 이름을 빌려 특정 키워드('인투88') 검색을 유도하는 전형적인 불법 도박 사이트 홍보 수법입니다. '단어+숫자' 조합의 식별 코드는 불법 도박 플랫폼의 접속 경로로 사용되며, 이는 제0원칙(도박) 및 제2항(필터 우회 목적의 난독화/기만)에 해당합니다. 검색을 유도하는 모호한 CTA를 포함하고 있어 Type B(is_vague_cta)로 분류하여 격리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 830
+Text: '당      0만 오늘수령하세요. https://mu .so/bllo01'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | 해당 메시지는 '당첨' 또는 '수령'을 암시하는 금전적 미끼 문구와 함께 출처가 불분명한 단축 URL 접속을 유도하고 있습니다. 특히 '당      0만'과 같이 단어 사이에 비정상적인 공백을 삽입하고, URL 도메인 중간에 공백을 넣어('mu .so') 필터링 시스템을 기만하려는 의도가 명백한 난독화 패턴(is_garbage_obfuscation)이 확인됩니다. 이는 제0원칙에 명시된 악의적 난독화 및 사기 의심 범주에 해당하여 SPAM으로 판정하며, 형태소 파괴가 심해 CNN 모델 학습에서 격리가 필요한 Type B 표본입니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 839
+Text: '도오올바아알시작해써여 /딱!/2시간동안 오로지당신만을위하여 코난주소'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "'도오올바아알'과 같이 의도적으로 음절을 늘려 형태소를 파괴한 강력한 난독화 패턴이 발견되며, '돌발', '2시간 동안' 등 불법 도박 사이트의 전형적인 충전 보너스 이벤트를 암시하는 미끼 문구를 사용하고 있습니다. '코난'이라는 특정 사이트 명칭과 함께 접속을 유도하는 '주소' 언급이 포함되어 있어 제0원칙(도박)에 따라 SPAM으로 판정합니다. 난독화가 심해 정상 단어 학습을 방해하므로 Type B 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 '도오올바아알(돌발)', '딱! 2시간)]"
+==================
+Row: 864
+Text: '몇주전 또해냈습니다 늦지않았습니다  sbz.kr/LArA0'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "발신 주체나 상호명 없이 '또 해냈다', '늦지 않았다'와 같은 모호한 성공 사례를 미끼로 던지며 단축 URL 클릭을 유도하는 전형적인 불법 리딩방 또는 투자 사기 스팸입니다. 이는 Spam Guide 제0원칙의 '익명 찌라시 및 가입 유도'에 해당하여 즉시 차단 대상입니다. 다만, 텍스트 자체가 매우 짧고 범용적인 표현으로만 구성되어 있어 정상적인 일상 메시지로 오탐될 위험이 크므로 is_vague_cta 시그널을 활성화하여 관리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지의 '또 해냈다', '늦지 않았다'는 모호)]"
+==================
+Row: 909
+Text: '설문 답변 감사합니다. 3 만원부터 1 0 만원까지 다양한 혜택 받아가세요! https://sbz.kr/1ygAr'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "설문 보상을 미끼로 단축 URL 클릭을 유도하는 전형적인 체험단/알바 사기(구인구직 사기) 수법입니다. '1 0 만원'과 같이 숫자 사이에 의도적인 공백을 삽입하여 필터를 우회하려는 난독화 시그널이 명백하며, 발신 주체(상호명)가 전혀 명시되지 않은 채 금전적 혜택만을 강조하고 있습니다. 이는 제0원칙의 사기/피싱 의도 및 난독화 규칙에 해당하여 SPAM으로 판정하며, 형태소 파괴 패턴을 포함하고 있어 Type B(is_garbage_obfuscation) 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지와 연결된 웹 페이지의 내용이 전혀 일치하)]"
+==================
+Row: 941
+Text: '안녕하세요 ( 미즈노 st-max st-z ) 상품 구매하고 싶어 연락드립니다 직거래 안되는 관계로 유일장터 방문택배 이용하려구요 구글에 유일장터 검색하시면 나옵니다 방문택배로 상'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | 과거 동일 사례 판정 적용. 중고 거래 구매자를 가장하여 '유일장터'라는 가짜 결제 사이트로 유도하는 전형적인 피싱(Phishing) 메시지입니다. 공식 플랫폼을 이탈하여 외부 검색 및 특정 마켓 등록을 요구하는 수법은 금융 정보 탈취를 목적으로 하는 사기(Scam)의 핵심 징후입니다. 다만, 메시지 레이아웃이 매우 정중한 1:1 개인 간 대화 형식을 취하고 있어 정상적인 거래 문의와 구분이 어려우므로, AI 모델이 이를 일반적인 구매 문의로 오학습하여 정상 문자를 차단하는 오탐(False Positive)을 방지하기 위해 Type B(is_normal_layout, is_personal_lure) 시그널을 적용하여 격리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 944
+Text: '안녕하세요  멋쟁 정중하게 인사 드리겠습니다 한분 한분 최선을 다해 모시도록 하겠습니다     > 1 + 1 ~ 스물 + 스물  첫 이용 하시는 금액을 동일하게 한번더 드린다는 설'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 '에보올(에볼루션 게이밍)' 언급과 1+1 입금 보너스, 롤링 요율(0.6%~1.0%) 제시 등 전형적인 불법 도박 사이트 가입 유도 문구입니다. 필터 회피를 위해 URL 내 전각 문자(ｈ)를 사용하고 '스물+스물'과 같이 숫자를 한글로 풀어쓰는 난독화 기법을 사용했습니다. 또한, 서두에 정중한 인사말을 배치하여 정상적인 안부 문자인 것처럼 위장한 샌드위치 기법이 적용되었으므로 CNN 모델 오염 방지를 위해 Type B 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지 원문에서 '에보올(에볼루션 게이밍)', )]"
+==================
+Row: 945
+Text: '안녕하세요  이번주에도 인사 안드리면 서운해 하실거같아 이렇게  또 인사 드리겠습니다 멋쟁 이에요   > 1 + 1 ~ 스물 + 스물  첫 이용 하시는 금액을 동일하게 한번더 드린'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | 해당 메시지는 '에보올(에볼루션 게이밍)'이라는 카지노 솔루션 명칭과 '1+1', '롤링 요율(0.6%~1.0%)' 등 도박 사이트 특유의 혜택 및 용어를 사용하여 가입을 유도하는 명백한 도박 스팸입니다. '안녕하세요 이번주에도...'와 같은 일상적인 안부 인사를 앞뒤에 배치하여 스팸 필터를 기만하는 '샌드위치 기법'을 사용하고 있으며, URL에 전각 문자(Ｓ)를 섞어 난독화를 시도했습니다. 이러한 정상 인사말이 스팸 피처로 오염 학습되는 것을 방지하기 위해 Type B 시그널(is_normal_layout, is_personal_lure)을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 957
+Text: '안녕하세요 양규진입니다 한 주 절반이 지나는 시점입니다 혹시 모르죠 이 숫자들이 어떤 결과로 다가올지 편하게 연락주세요 https://sbz.kr/IxMii'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "과거 동일 사례(예시 1)의 판정 기준을 적용하였습니다. '이 숫자들이 어떤 결과로 다가올지'라는 모호한 문구로 호기심을 자극하여 단축 URL(sbz.kr) 접속을 유도하는 전형적인 로또 예측 또는 사행성 사이트 유인 스팸입니다. 특히 '안녕하세요'와 같은 일상적인 인사말을 텍스트 앞부분에 배치하여 스팸 필터를 우회하려는 '샌드위치 기법'이 사용되었으므로, 정상 문구의 학습 오염을 막기 위해 Type B(is_normal_layout) 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지의 '이 숫자들이 어떤 결과로 다가올지'라)]"
+==================
+Row: 963
+Text: '안녕하세요 트레이딩 플랫폼 BITGET입니다.  이메일로 서비스 종료 안내해 드렸음에도 자산 확인되시는바 다시 한번 안내드립니다  그동안 저희 BITGET을 이용해 주신 모든 회원'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "유명 가상자산 거래소(BITGET)를 사칭하여 서비스 종료 및 허위 자산(ETH 56.8개) 보유를 미끼로 카카오톡 채널 상담을 유도하는 전형적인 피싱/스캠 메시지입니다. 시스템 기준일(2026-03-31)보다 과거인 서비스 종료일(2026-03-27)을 언급하며 긴급함을 조장하는 기만술을 사용하고 있으며, 공식 홈페이지가 아닌 카카오톡 채널로 자산 인출을 안내하는 것은 명백한 사기 수법입니다. 정상적인 기업 공지사항의 레이아웃을 정교하게 모방하고 있어 향후 정상 안내문 오탐을 방지하기 위해 Type B(is_impersonation, is_normal_layout) 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 메시지는 유명 가상자산 거래소인 'BITGET'을)]"
+==================
+Row: 964
+Text: '안녕하세요 트레이딩 플랫폼 BITGET입니다.  이메일로 서비스 종료 안내해 드렸음에도 자산 확인되시는바 다시 한번 안내드립니다  그동안 저희 BITGET을 이용해 주신 모든 회원'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: '유명 가상자산 거래소인 BITGET을 사칭하여 서비스 종료 및 거액의 미인출 자산(54.8 ETH, 약 1.7억 원)이 남아있다는 허위 사실로 피싱 사이트 클릭을 유도하는 전형적인 코인 사기 스팸입니다. 오늘 날짜(2026-03-31) 기준으로 이미 지난 날짜(03-27)를 서비스 종료일로 제시하며 심리적 압박을 가하고 있습니다. 전문적인 기업 공지사항의 레이아웃을 완벽히 모방하고 있어 정상적인 서비스 안내문으로 오탐될 위험이 매우 크므로, 모델 학습에서 격리하기 위해 Type B 시그널(is_impersonation, is_normal_layout)을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS는 유명 가상자산 거래소인 BITGET을 사칭하여)]'
+==================
+Row: 965
+Text: '안녕하세요 트레이딩 플랫폼 BITGET입니다.  이메일로 서비스 종료 안내해 드렸음에도 자산 확인되시는바 다시 한번 안내드립니다  그동안 저희 비트겟을 이용해 주신 모든 회원님께 '
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "유명 가상자산 거래소인 BITGET을 사칭하여 서비스 종료 및 자산 인출을 독려하는 전형적인 피싱(Phishing) 메시지입니다. 공식 고객센터가 아닌 카카오톡 채널(pf.kakao.com)로 유도를 시도하며, 고액의 자산(56.8 ETH)을 언급하여 수신자의 심리적 동요와 긴급한 클릭을 유도합니다. 특히 시스템 날짜(2026-03-31) 기준 이미 지난 날짜(03-27)를 서비스 종료일로 안내하며 즉시 인출을 요구하는 점은 명백한 사기 의도로 판단되어 제0원칙에 따라 즉시 차단합니다. 메시지 형식이 매우 정교한 공지사항 형태를 띠고 있어 정상 문자로 오탐될 위험이 큰 Type B(is_impersonation, is_normal_layout) 사례입니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 메시지는 유명 가상자산 거래소인 'BITGET'을 )]"
+==================
+Row: 967
+Text: '안녕하세요 형님  항상 복 많이받으시고  아래 내용 참고하시어 잠시만 시간 내어주신다면 정말 감사 하겠습니다  → 태 사 자 는 오랜기간동안 7.0.0.0 명의 선생님을 모.시.고'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "불법 도박(카지노, 슬롯, 미니게임) 홍보 메시지로, 제0원칙(도박)에 따라 즉시 SPAM으로 판정합니다. '카찐오', 'S로옷', '미뉘게임', '페E백' 등 필터 회피를 위한 키워드 변조와 '7.0.0.0'과 같은 숫자 난독화(is_garbage_obfuscation)가 매우 심각합니다. 또한, '안녕하세요 형님', '식사는 챙기면서' 등 일상적인 인사말로 본문을 감싸는 샌드위치 기법(is_normal_layout)을 사용하여 정상 문구가 스팸 피처로 오염 학습되는 것을 방지하기 위해 Type B 시그널을 적용합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 969
+Text: '안녕하세요 형님  항상 복 많이받으시고  아래 내용 참고하시어 잠시만 시간 내어주신다면 정말 감사 하겠습니다  ▶ 태.ㅅr.자 는 7.0.0.0 명의 선생님들을 케.어 하고있는 메'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "제0원칙(도박) 위반 메시지입니다. '카찐오(카지노)', 'S로옷(슬롯)', '루 마틴(마틴게일 베팅)', '미뉘게임(미니게임)' 등 명백한 불법 도박 용어를 사용하고 있습니다. 또한 '태.ㅅr.자', '메 E 저', '페E백' 등 필터 우회를 위한 고의적인 난독화가 매우 심하며, '안녕하세요 형님'과 같은 일상적인 인사말로 악성 내용을 감싸는 샌드위치 기법(is_normal_layout)을 사용하고 있어 CNN 모델의 학습 데이터 오염을 방지하기 위해 Type B로 격리 판정합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 970
+Text: '안녕하세요 트레이딩 플랫폼 BITGET입니다.  이메일로 서비스 종료 안내해 드렸음에도 자산 확인되시는바 다시 한번 안내드립니다  그동안 저희 BITGET을 이용해 주신 모든 회원'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: '유명 가상자산 거래소인 BITGET을 사칭하여 자산 인출을 독촉하는 전형적인 피싱 메시지입니다. 시스템 기준일(2026-03-31)보다 과거 시점인 3월 27일을 서비스 종료일로 언급하며 허위 자산(56.8 ETH 등)을 미끼로 카카오톡 채널 접속을 유도하는 것은 명백한 금융 사기 의도(제0원칙 위반)입니다. 정상적인 기업 공지사항의 레이아웃을 완벽히 모방하고 있어 AI 모델이 이를 정상 문구로 학습할 경우 오탐 위험이 매우 높으므로 Type B(is_impersonation, is_normal_layout) 시그널을 적용하여 격리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 메시지는 유명 가상자산 거래소인 BITGET을 사)]'
+==================
+Row: 1033
+Text: '오늘 장 흐름 보면서 개인적으로 괜찮게 본 종목 하나 있습니다.  지금 자리 자체가 나쁘지 않아 관심 있으신 분들은 한 번 보셔도 괜찮을 것 같습니다.  간단히 정리해두었으니 여유'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "Spam Guide의 '2. 판단 우선순위 및 VoC 예외 보호(Whitelist)' 및 '5. 카테고리별 최종 판정' 기준에 따라, 단순 주식 종목 추천 및 시황 알림은 VoC 방지를 위한 최우선 보호 대상(HAM)으로 분류된다. 본문 내에 비현실적인 수익률 보장, 리딩방 가입 강요, 혹은 도박/사기 등 제0원칙을 위반하는 명백한 악성 의도가 텍스트상으로 드러나지 않으며, 4-2항에 따라 주식 추천 메시지에서의 URL(CTA)은 상위 보호 룰(HAM)이 우선 적용되므로 HAM으로 판정한다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 개인적으로 분석한 종목 정보를 공유하는)] | [FP Sentinel Override] 악성 URL 탐지 Type_B 확정 차단"
+==================
+Row: 1040
+Text: '오랜만에 연락드립니다.  ◆ F - ONE ◆ 김대표입니다.  언제 어떻게 될지 한치앞도 모르는게 사람이라고  이번엔 먹겟지 라는 확신으로 강벳해보면 역시나 고꾸라지는 상황  저 '
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "메시지 내에 '까진오(카지노)', '슬로옷(슬롯)', 'DO박(도박)' 등 불법 사행성 게임을 암시하는 키워드가 다수 포함되어 있으며, '첫.충 30%', '억대 출금' 등 전형적인 도박 사이트 가입 및 충전 유도 문구가 확인됩니다. 또한 'ㅅ ㅏ장님', '슬LOT' 등 필터 회피를 위한 고의적인 난독화와 일상적인 안부 인사를 앞뒤에 배치한 샌드위치 기법이 사용되어 정상 텍스트 학습 오염 방지를 위해 Type B 시그널을 적용하였습니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지와 연결된 웹 페이지 콘텐츠가 모두 불법 )]"
+==================
+Row: 1041
+Text: '오랜만에 인사드립니다.  오늘 하루도 행복하시고 귀한  걸음으로 찾아주셔서 감사합니다  "가족확정시"정착금드려욧  방문:abit.ly/mirxuh 초대권:5566  하나.  반칙 '
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 '정착금', '첫 100프로', '페이백', '추울금(출금) 속도' 등 불법 도박 사이트의 전형적인 가입 유도 문구를 포함하고 있어 제0원칙(도박)에 따라 SPAM으로 판정합니다. 또한 '이 벤 뜨', '지-인-추-천' 등 특수문자를 삽입한 난독화와 '오랜만에 인사드립니다'와 같은 정상 인사말을 상단에 배치한 샌드위치 기법을 사용하고 있어, 정상 문구의 학습 오염을 방지하기 위해 Type B 시그널(is_garbage_obfuscation, is_normal_layout)을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 '정착금', '첫 100프로', '페이)]"
+==================
+Row: 1046
+Text: '요즘 큰거 많아요  오/      략/ 실/    `/.     131.'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | '오락실'을 '오/ 략/ 실/'로 난독화하고 '큰거 많아요'라는 표현을 사용하여 불법 사행성 게임(도박) 참여를 유도함. 특수문자 삽입 및 의도적 오타를 통한 극심한 형태소 파괴(is_garbage_obfuscation)가 확인되며, '131'이라는 모호한 식별 코드로 접속을 유도하는 전형적인 악성 스팸임. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 1052
+Text: '요즘은 관리가 기본입니다 https://myip.kr/zAJAM'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 '요즘은 관리가 기본입니다'라는 일상적이고 모호한 미끼성 문구와 단축 URL을 포함하고 있으나, [Spam Guide]의 제0원칙(악성 스팸)에서 규정하는 도박, 성인, 불법 대출, 피싱 등의 명백한 유해 키워드가 전혀 발견되지 않습니다. 가이드의 '2-B(반박 불가한 기만 의심 문자 보호)' 및 '2-C(단순 마사지/방문홈타이 보호)' 원칙에 따라, 텍스트만으로 불법성을 확정할 수 없는 모호한 안내는 오차단으로 인한 VoC를 방지하기 위해 HAM으로 보호해야 합니다. 또한, 유사한 구조(미끼 문구 + myip.kr 단축 URL)를 가진 과거 사례(예시 1)가 HAM으로 판정된 기준을 준수합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지는 '요즘은 관리가 기본입니다'라는 매우 )] | [FP Sentinel Override] 악성 URL 탐지 Type_B 확정 차단"
+==================
+Row: 1064
+Text: '이                    ariⓐⓔ6.com'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | 유니코드 원문자(ⓐ, ⓔ)를 사용한 도메인 변조와 비정상적인 공백 삽입을 통해 스팸 필터를 우회하려는 의도가 명백한 난독화 메시지입니다. 스팸 가이드 제0원칙 및 '난독화가 심하고 문맥이 부자연스러운 메시지' 기준에 따라 SPAM으로 판정합니다. 텍스트의 형태소가 완전히 파괴되어 있어 CNN 모델의 학습 데이터 오염을 방지하기 위해 Type B(is_garbage_obfuscation) 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 1101
+Text: '절/안전               kkci'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 불법 도박 사이트(소위 '안전놀이터')를 홍보할 때 사용하는 핵심 키워드인 '안전'과 사이트 식별 코드인 'kkci'를 조합한 전형적인 도박 유도 문구입니다. 제0원칙(도박)에 따라 명백한 악성 스팸으로 분류하며, 짧은 영문 코드를 통해 접속을 유도하는 패턴은 필터링 우회를 목적으로 한 전형적인 수법입니다. 텍스트가 매우 짧고 명사 위주로 구성되어 있으나 도박 의도가 명확하므로 고순도 데이터(Type A)로 판단합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 메시지의 '안전'과 'kkci' 조합은 국내 불)]"
+==================
+Row: 1130
+Text: '차량에 라이트 켜져있어요.  라고 보내며, 오늘도 도사는 막연하게 형님만을 기다려봅니다.  생방송입장: 안전좋아.'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "'차량에 라이트 켜져있어요'라는 지인 혹은 이웃을 사칭한 미끼(Bait) 문구를 사용하여 수신자의 주의를 끈 뒤, '도사', '형님', '생방송입장' 등 불법 도박(픽스터) 혹은 사행성 사이트 유입을 유도하는 전형적인 기만형 스팸입니다. 제0원칙(악성 스팸)의 '뉴스/포털 위장 스팸' 및 '기만전술'에 해당하며, 정상적인 사적 대화 레이아웃을 악용하고 있어 CNN 모델 오염 방지를 위해 Type B 시그널(is_personal_lure, is_normal_layout)을 적용합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (본 SMS와 연결된 웹페이지를 분석한 결과, 제0원칙()]"
+==================
+Row: 1165
+Text: '큼큼        펑3            바로지급'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | 과거 동일 사례 판정 적용: 참고 예시의 '쩜큼큼 드림'과 유사하게 '큼큼'이라는 유흥/도박 은어를 사용하여 필터링을 우회하고 수신자의 호기심을 자극함. '펑3'이라는 특정 게임/이벤트 식별 코드와 '바로지급'이라는 금전적 혜택(도박 환전 또는 포인트)을 결합한 명백한 불법 도박 유도 메시지임. 형태소가 파괴된 난독화 패턴이 포함되어 있어 CNN 모델 오염 방지를 위해 Type B(is_garbage_obfuscation) 시그널을 활성화함. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (All URLs scanned (No SPAM dete)]"
+==================
+Row: 1175
+Text: '페스트 10~500 b레 POINT구2구2(숫자로)'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: False
+Final Reason: "[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | 메시지 내 '페스트'(First/Fast 추정), '10~500', 'POINT' 등의 키워드는 사설 도박 사이트의 배팅 한도 및 포인트 혜택을 암시하는 전형적인 도박 스팸 문구입니다. 특히 접속 주소나 식별 코드로 보이는 '9292'를 '구2구2(숫자로)'와 같이 한글과 혼용하여 난독화한 점은 필터링 시스템을 우회하려는 명백한 악성 의도로 판단됩니다. 형태소 파괴가 심하므로 Type B(is_garbage_obfuscation)로 분류하여 격리합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (Scraping failed: ERR_NAME_NOT_)]"
+==================
+Row: 1176
+Text: '피//지//컬   T/O/D/A/Y  무/한/돌/u    H-Y9'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 '피지컬', '무한돌' 등 성인 유흥업소에서 주로 사용하는 은어를 포함하고 있으며, 슬래시(/)를 모든 음절 사이에 삽입하여 필터링 시스템을 우회하려는 극심한 난독화 패턴을 보입니다. 이는 Spam Guide 제0원칙의 '야간유흥업소 은어 및 위장 영업 강력 차단' 및 '난독화가 심하고 문맥이 부자연스러운 메시지' 기준에 따라 즉결 SPAM으로 판정됩니다. 또한, 형태소가 완전히 파괴된 난독화 텍스트이므로 CNN 모델의 학습 데이터 오염을 막기 위해 Type B 시그널(is_garbage_obfuscation)을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (해당 메시지는 SMS 원문과 URL 페이지 콘텐츠 간의)]"
+==================
+Row: 1183
+Text: '한         금    활   바     금   업           인         r5'
+C_is_spam: None
+C_Reason: None
+Signals: None
+url_is_spam: True
+Final Reason: "해당 메시지는 '바'(바카라), '금'(입금/금액), '업'(보너스/업소) 등 도박 및 유흥 관련 키워드를 극단적인 띄어쓰기로 난독화하여 필터링을 회피하려는 의도가 명백합니다. 'r5'와 같은 식별 코드를 노출하여 특정 사이트나 메신저로의 유입을 유도하는 전형적인 불법 사행성 스팸 패턴입니다. 형태소가 완전히 파괴된 난독화 메시지이므로 CNN 모델 학습에서 제외하기 위해 is_garbage_obfuscation 시그널을 활성화합니다. | [텍스트 HAM + 악성 URL 분리 감지: URL/Type B 조합 강제격리 (SMS 원문은 '바'(바카라), '금'(입금), '업')]"

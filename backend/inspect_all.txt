@@ -1,0 +1,89 @@
+Total Len: 88
+[0] row=2 type=TRAP msg=(광고) 2026년 365플러스내과 
+[1] row=3 type=TRAP msg=02 : 국민의힘 동구청장 여론조사 
+[2] row=4 type=TRAP msg=(광고)행복드림 오사플라워 마음이 닿
+[3] row=5 type=TRAP msg=(광고) 현대제철문화센터치과  ★긴급
+[4] row=6 type=TRAP msg=자동차보험이 곧 만기되어요  신*숙 
+[5] row=7 type=TRAP msg=주민과 함께 ◀새로운 동구 건설▶ 확
+[6] row=8 type=TRAP msg=승강기 운영규정 시행 동의  안녕하세
+[7] row=9 type=TRAP msg=우리카드(6687)매출접수 이*혜님 
+[8] row=10 type=TRAP msg=[CJ대한통운_배송출발]  반갑습니다
+[9] row=11 type=KISA msg=관리비 미납금 안내 ☞https://
+[10] row=12 type=KISA msg=고객님이 주문하신상품 박종혁사위님께 
+[11] row=13 type=KISA msg=성현출 (남구청장 출마예정자) 새해 
+[12] row=14 type=KISA msg=(광고)★일반분양★1억3천만원 할인분
+[13] row=15 type=KISA msg=장가 20퍼센트 ※D0I※ ※BAI※
+[14] row=16 type=KISA msg=[배송예정] 출입방법을 입력해주세요 
+[15] row=17 type=KISA msg=iu ong99. Vip 用 看看 玩
+[16] row=18 type=KISA msg=Telegram code: 73324
+[17] row=19 type=KISA msg=이제 Apple iForgot 웹사이
+[18] row=20 type=KISA msg=새해맞이고등수번호 https://sb
+[19] row=21 type=KISA msg=김재호 고객님을 위한 상품비교설명 확
+[20] row=22 type=KISA msg=비/상/금/비/대/면 :
+[21] row=23 type=KISA msg=(광고)■ 청주 CTX 바로옆 대단지
+[22] row=24 type=KISA msg=(광고)[BC카드] 오산 세교 우미 
+[23] row=25 type=KISA msg=대한법률구조공단위치안내홈페이지연결 h
+[24] row=26 type=KISA msg=무조건 도와주는 사람한테 집을 줄것이
+[25] row=27 type=KISA msg=두 ♨ .com
+[26] row=28 type=KISA msg=Паспорт. Айди с 2 ст
+[27] row=29 type=KISA msg=금마련
+[28] row=30 type=KISA msg=다날 김철님 귀하의 금융거래 제한 [
+[29] row=31 type=KISA msg=김준호님 우편발송예정 미납금 270,
+[30] row=32 type=KISA msg=(광고)광천▶힐스농성현대 ■ 1200
+[31] row=33 type=KISA msg=(광고) 당근카 중고차 맛집!! 중고
+[32] row=34 type=KISA msg=(광고) < 금토 할인행사 > 제주동
+[33] row=35 type=KISA msg=(ca) :OO/ O:OO o% 1 
+[34] row=36 type=KISA msg=e e m 계정 호 증 요청 다시 인
+[35] row=37 type=KISA msg=01년.생.강수지 개.씨.발.새.끼 
+[36] row=38 type=KISA msg=ㅈㅣ속적인 연락두절은 ㅅㅏ기 지유신
+[37] row=39 type=KISA msg=(광고) LG/KT/SK 개별 인터넷
+[38] row=40 type=KISA msg=New + +@P Code: 6229
+[39] row=41 type=KISA msg=꾸움 바로줘
+[40] row=42 type=KISA msg=1234님 확인 바랍니다 https:
+[41] row=43 type=KISA msg=강은정님 확인 바랍니다 https:/
+[42] row=44 type=KISA msg=삼성 신년 행사진행중입니다 www.s
+[43] row=45 type=KISA msg=어디서나 부.결이라는 통지만받으셔서 
+[44] row=46 type=KISA msg=전제척으로 요즘 경기가 너무 힘듭니다
+[45] row=47 type=KISA msg=PM: 룰렛을 돌려 최대 226,00
+[46] row=48 type=KISA msg=미결제확인:https://myyder
+[47] row=49 type=KISA msg=삼성 25년 감사 행사 삼성전자 10
+[48] row=50 type=KISA msg=최진섭 ㅁI./성./년./음./란물 
+[49] row=51 type=KISA msg=인천거주20대남 여중생강X하고도주중인
+[50] row=52 type=KISA msg=이용내역보고문자드렸습니다 POINT 
+[51] row=53 type=KISA msg=송해섭 삼전에서 안내드립니다. 기업명
+[52] row=54 type=KISA msg=UN tr.ee/97pFqY 수요깜짝
+[53] row=55 type=KISA msg=충전하면 당일 현금캐시백! 오직 여기
+[54] row=56 type=KISA msg=<사기꾼수배> 원금도안주는 사기꾼 조
+[55] row=57 type=KISA msg=8489님, 오늘 기준 맞춤번호와 흐
+[56] row=58 type=KISA msg=확실하게 보여드리겠습니다. 들어오셔서
+[57] row=59 type=KISA msg=삼성전자 공매도 안내 기업명 : 삼성
+[58] row=60 type=KISA msg=_ 묵직한 명절 선물 준비하였습니다 
+[59] row=61 type=KISA msg=안녕하세요 고객님 차량 문의로 연락 
+[60] row=62 type=KISA msg=엄마 나핸드폰번호 바f어 메세지 받으
+[61] row=63 type=KISA msg=날씨가 쌀쌀해졌습니다. 감기 조심하시
+[62] row=64 type=KISA msg=안녕하세요. 강남맛집 외식 체험신청 
+[63] row=65 type=KISA msg=토 매 주 월 요 일 주 간 정 산
+[64] row=66 type=KISA msg=(광고)[NH]쉿!!일일 1900만 
+[65] row=67 type=KISA msg=선물:50000[원]불 사 조 출 현
+[66] row=68 type=KISA msg=(광고)상위1%재무설계참가전원127%
+[67] row=69 type=KISA msg=(광고)사장님 1차수령금만족하셨져?h
+[68] row=70 type=KISA msg=(광고)초롱이잎@플1+1 2+2 3+
+[69] row=71 type=KISA msg=인생을 바꿀 수 있는 단 하나의 비법
+[70] row=72 type=KISA msg=(광고) "토이" 랜덤 2만-20만 
+[71] row=73 type=KISA msg=C.S.K님 염승환의 정보방 안내 ▽
+[72] row=74 type=KISA msg=(광고)나이키  대체불가♥토지노 성공
+[73] row=75 type=KISA msg=(광고) 최상위 VIP 리딩방 폭등주
+[74] row=76 type=KISA msg=(광고) 안전 메이저 토지노! 가입즉
+[75] row=77 type=KISA msg=김팀장님, 어제 주간 회의 때 말씀해
+[76] row=78 type=KISA msg=(광고) [긴급속보] 2026년 상반
+[77] row=79 type=KISA msg=이                   
+[78] row=80 type=KISA msg=안녕하세요 형님  항상 복 많이받으시
+[79] row=81 type=TRAP msg=(광고) 2026년 365플러스내과 
+[80] row=82 type=TRAP msg=02 : 국민의힘 동구청장 여론조사 
+[81] row=83 type=TRAP msg=(광고)행복드림 오사플라워 마음이 닿
+[82] row=84 type=TRAP msg=(광고) 현대제철문화센터치과  ★긴급
+[83] row=85 type=TRAP msg=자동차보험이 곧 만기되어요  신*숙 
+[84] row=86 type=TRAP msg=주민과 함께 ◀새로운 동구 건설▶ 확
+[85] row=87 type=TRAP msg=승강기 운영규정 시행 동의  안녕하세
+[86] row=88 type=TRAP msg=우리카드(6687)매출접수 이*혜님 
+[87] row=89 type=TRAP msg=[CJ대한통운_배송출발]  반갑습니다

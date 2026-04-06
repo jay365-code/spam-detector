@@ -449,8 +449,12 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                              break
                              
                      if all_are_bare_or_corrupt:
-                         final["drop_url"] = True
-                         final["drop_url_reason"] = "bare_or_corrupt_domain_sync"
+                         # 명백히 스팸으로 판정된 증거라면 예외적으로 보존
+                         if final.get("red_group") or final.get("is_spam") or final.get("malicious_url_extracted"):
+                             pass 
+                         else:
+                             final["drop_url"] = True
+                             final["drop_url_reason"] = "bare_or_corrupt_domain_sync"
                  except Exception:
                      pass
                   

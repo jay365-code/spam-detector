@@ -1,0 +1,250 @@
+[
+  {
+    "excel_row_number": 4,
+    "message": "\"     \"             +ㅂㅐ        FF4844 ㄷㅂㅋㅈㄴ",
+    "result": {
+      "is_spam": true,
+      "spam_probability": 1,
+      "classification_code": "2",
+      "reason": "초성('ㄷㅂㅋㅈㄴ' - 도박카지노)과 변칙 표기('+ㅂㅐ' - 배팅)를 사용하여 불법 도박 의도를 드러내면서, 극단적인 공백과 특수문자로 필터링을 우회하려 함. 형태소 파괴가 심해 AI 모델 오염 방지를 위해 garbage_obfuscation 시그널을 활성화함. | [URL SPAM: SMS 메시지는 필터링 우회를 위해 극단적인 공백과 초성('ㄷㅂㅋㅈㄴ' - 도박카지노), 변칙 표기('+ㅂㅐ' - 배팅)를 사용하여 도박 홍보 의도를 숨기고 있습니다. 연결된 웹 페이지(Casino.com)를 분석한 결과, 다양한 온라인 카지노 사이트의 가입 보너스 홍보, 슬롯 게임 유도, 카지노 리뷰 등 명백한 도박 관련 콘텐츠를 제공하고 있음이 확인되었습니다. 이는 제0원칙(악성 스팸 절대 차단) 중 '도박' 항목에 해당하며, SMS의 은어와 웹 페이지의 콘텐츠가 '도박'이라는 문맥에서 완벽히 일치하므로 SPAM으로 판정합니다.] | [FP Sentinel Override] 도메인 난독화(Type_B) 보호: 잘못된 URL 필터 오염 방지를 위해 강제 드롭",
+      "signals": {
+        "harm_anchor": true,
+        "route_or_cta": false,
+        "is_impersonation": false,
+        "is_vague_cta": false,
+        "is_personal_lure": false,
+        "is_garbage_obfuscation": true,
+        "is_normal_layout": false,
+        "is_safe_url_injection": false
+      },
+      "obfuscated_urls": [
+        "casino.com"
+      ],
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "url_result": {
+        "is_spam": true,
+        "spam_probability": 1,
+        "classification_code": "2",
+        "reason": "SMS 메시지는 필터링 우회를 위해 극단적인 공백과 초성('ㄷㅂㅋㅈㄴ' - 도박카지노), 변칙 표기('+ㅂㅐ' - 배팅)를 사용하여 도박 홍보 의도를 숨기고 있습니다. 연결된 웹 페이지(Casino.com)를 분석한 결과, 다양한 온라인 카지노 사이트의 가입 보너스 홍보, 슬롯 게임 유도, 카지노 리뷰 등 명백한 도박 관련 콘텐츠를 제공하고 있음이 확인되었습니다. 이는 제0원칙(악성 스팸 절대 차단) 중 '도박' 항목에 해당하며, SMS의 은어와 웹 페이지의 콘텐츠가 '도박'이라는 문맥에서 완벽히 일치하므로 SPAM으로 판정합니다.",
+        "details": {
+          "popup_count": 1,
+          "captcha_detected": false,
+          "depth": 0,
+          "extracted_url": "http://casino.com",
+          "final_url": "http://casino.com",
+          "attempted_urls": [
+            "http://casino.com"
+          ],
+          "is_broken_short_url": false
+        }
+      },
+      "ibse_signature": "ㅂㅐFF4844ㄷㅂㅋㅈㄴ",
+      "ibse_len": 20,
+      "drop_url": true,
+      "drop_url_reason": "obfuscation",
+      "semantic_class": "Type_B (SIGNATURE)",
+      "learning_label": "HAM",
+      "duration_seconds": 50.07
+    },
+    "timestamp": "2026-03-27T08:14:02.349Z"
+  },
+  {
+    "excel_row_number": 9,
+    "message": "\"     \"             +ㅂㅐ        FF4844 ㅂㄹㅌㅈㄴ",
+    "result": {
+      "is_spam": true,
+      "spam_probability": 1,
+      "classification_code": "2",
+      "reason": "공백, 따옴표, 초성(ㅂㄹㅌㅈㄴ)만을 사용한 극단적인 난독화 메시지입니다. '+ㅂㅐ'(Bet/배)와 특정 식별 코드(FF4844)의 조합으로 보아 불법 도박 사이트(베팅존 등) 유입을 목적으로 하는 악성 스팸으로 판단됩니다. 형태소가 완전히 파괴되어 정상적인 문장 구조를 갖추고 있지 않으므로, CNN 모델의 텍스트 학습 데이터 오염을 방지하기 위해 is_garbage_obfuscation 시그널을 true로 설정합니다. | [URL SPAM: SMS 메시지는 초성('ㅂㄹㅌㅈㄴ' - 베팅존 추정)과 특수기호('+ㅂㅐ' - 배팅 추정)를 사용한 전형적인 불법 도박 스팸의 난독화 형태를 띠고 있습니다. 반면, 연결된 웹페이지는 도메인 판매 및 브랜딩 업체(Telepathy)의 공식 페이지로, SMS가 주장하는 내용과 웹페이지 콘텐츠 간의 문맥적 일치성이 전혀 없습니다. 이는 스팸 차단 시스템의 탐지를 피하기 위해 정상적인 기업의 페이지나 도메인 판매 리스트를 랜딩 페이지로 악용하는 전형적인 '회피(Evasion)' 수법입니다. SMS 원문의 형태소가 완전히 파괴되어 있고 불법 도박 유입 의도가 명확하므로, Content Agent의 판정을 유지하여 SPAM으로 확정합니다.] | [FP Sentinel Override] 도메인 난독화(Type_B) 보호: 잘못된 URL 필터 오염 방지를 위해 강제 드롭",
+      "signals": {
+        "harm_anchor": true,
+        "route_or_cta": false,
+        "is_impersonation": false,
+        "is_vague_cta": false,
+        "is_personal_lure": false,
+        "is_garbage_obfuscation": true,
+        "is_normal_layout": false,
+        "is_safe_url_injection": false
+      },
+      "obfuscated_urls": [
+        "bettingzone.com",
+        "betzone.com",
+        "brtzn.com",
+        "베팅존.com"
+      ],
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "url_result": {
+        "is_spam": true,
+        "spam_probability": 1,
+        "classification_code": "2",
+        "reason": "SMS 메시지는 초성('ㅂㄹㅌㅈㄴ' - 베팅존 추정)과 특수기호('+ㅂㅐ' - 배팅 추정)를 사용한 전형적인 불법 도박 스팸의 난독화 형태를 띠고 있습니다. 반면, 연결된 웹페이지는 도메인 판매 및 브랜딩 업체(Telepathy)의 공식 페이지로, SMS가 주장하는 내용과 웹페이지 콘텐츠 간의 문맥적 일치성이 전혀 없습니다. 이는 스팸 차단 시스템의 탐지를 피하기 위해 정상적인 기업의 페이지나 도메인 판매 리스트를 랜딩 페이지로 악용하는 전형적인 '회피(Evasion)' 수법입니다. SMS 원문의 형태소가 완전히 파괴되어 있고 불법 도박 유입 의도가 명확하므로, Content Agent의 판정을 유지하여 SPAM으로 확정합니다.",
+        "details": {
+          "popup_count": 0,
+          "captcha_detected": false,
+          "depth": 0,
+          "extracted_url": "http://bettingzone.com",
+          "final_url": "http://bettingzone.com",
+          "attempted_urls": [
+            "http://bettingzone.com"
+          ],
+          "is_broken_short_url": false
+        }
+      },
+      "ibse_signature": "ㅂㅐFF4844ㅂㄹㅌㅈㄴ",
+      "ibse_len": 20,
+      "drop_url": true,
+      "drop_url_reason": "obfuscation",
+      "semantic_class": "Type_B (SIGNATURE)",
+      "learning_label": "HAM",
+      "duration_seconds": 56.88
+    },
+    "timestamp": "2026-03-27T08:14:09.327Z"
+  },
+  {
+    "excel_row_number": 10,
+    "message": "\"     \"             +ㅂㅐ        KGM488",
+    "result": {
+      "is_spam": true,
+      "spam_probability": 0.98,
+      "classification_code": "2",
+      "reason": "'+ㅂㅐ'(Bet/벳 음차 추정)와 식별 코드 'KGM488'을 극심한 공백 및 특수문자 난독화와 결합하여 발송한 전형적인 불법 도박 사이트 유도 메시지입니다. 필터링 시스템을 무력화하려는 의도가 명백하며, 정상적인 일상 대화나 광고 규격을 완전히 무시한 악성 스팸입니다. (Type B 사유: 극심한 형태소 파괴 및 난독화로 인해 정상 데이터 학습을 방해할 위험이 큼) | [URL: Inconclusive (All URLs scanned (No SPAM detected) | 마지막 시도: Scraping failed: ERR_NAME_NOT_RESOLVED (Inconclusive))] | [FP Sentinel Override] 모호한 CTA 스팸(Type_B) 처리 (학습 보호)",
+      "signals": {
+        "harm_anchor": true,
+        "route_or_cta": true,
+        "is_impersonation": false,
+        "is_vague_cta": true,
+        "is_personal_lure": false,
+        "is_garbage_obfuscation": true,
+        "is_normal_layout": false,
+        "is_safe_url_injection": false
+      },
+      "obfuscated_urls": [
+        "KGM488.com"
+      ],
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "url_result": {
+        "is_spam": false,
+        "spam_probability": 0,
+        "classification_code": null,
+        "reason": "All URLs scanned (No SPAM detected) | 마지막 시도: Scraping failed: ERR_NAME_NOT_RESOLVED (Inconclusive)",
+        "details": {
+          "popup_count": 0,
+          "captcha_detected": false,
+          "depth": 0,
+          "extracted_url": "http://KGM488.com",
+          "final_url": "http://KGM488.com",
+          "attempted_urls": [
+            "http://KGM488.com"
+          ],
+          "is_broken_short_url": false
+        }
+      },
+      "ibse_signature": "+ㅂㅐKGM488",
+      "ibse_len": 11,
+      "semantic_class": "Type_B (SIGNATURE)",
+      "learning_label": "HAM",
+      "duration_seconds": 39.1
+    },
+    "timestamp": "2026-03-27T08:13:51.382Z"
+  },
+  {
+    "excel_row_number": 14,
+    "message": "'  '   '   '       `    mgw7     `     so",
+    "result": {
+      "is_spam": true,
+      "spam_probability": 0.98,
+      "classification_code": "0",
+      "reason": "해당 메시지는 무분별한 공백과 백틱(`) 기호를 사용하여 도메인(mgw7.so)을 은닉하고 시스템 필터를 우회하려는 의도가 명백한 난독화 패턴을 보입니다. 이는 [Spam Guide]의 '텍스트 난독화(Textual Obfuscation)' 기준에 따라 가장 강력한 필터 회피 시그널로 간주됩니다. 구체적인 업종을 명시하지 않았으나 악의적 유입 유도 목적이 확실하므로 SPAM으로 판정하며, 형태소가 완전히 파괴된 쓰레기 데이터이므로 CNN 모델 오염 방지를 위해 Type B(is_garbage_obfuscation) 시그널을 활성화합니다. | [URL: Inconclusive (All URLs scanned (No SPAM detected) | 마지막 시도: Scraping failed: ERR_NAME_NOT_RESOLVED (Inconclusive))] | [FP Sentinel Override] 모호한 CTA 스팸(Type_B) 처리 (학습 보호)",
+      "signals": {
+        "harm_anchor": true,
+        "route_or_cta": true,
+        "is_impersonation": false,
+        "is_vague_cta": true,
+        "is_personal_lure": false,
+        "is_garbage_obfuscation": true,
+        "is_normal_layout": false,
+        "is_safe_url_injection": false
+      },
+      "obfuscated_urls": [
+        "mgw7.so"
+      ],
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "url_result": {
+        "is_spam": false,
+        "spam_probability": 0,
+        "classification_code": null,
+        "reason": "All URLs scanned (No SPAM detected) | 마지막 시도: Scraping failed: ERR_NAME_NOT_RESOLVED (Inconclusive)",
+        "details": {
+          "popup_count": 0,
+          "captcha_detected": false,
+          "depth": 0,
+          "extracted_url": "http://mgw7.so",
+          "final_url": "http://mgw7.so",
+          "attempted_urls": [
+            "http://mgw7.so"
+          ],
+          "is_broken_short_url": false
+        }
+      },
+      "ibse_signature": "''''`mgw7`so",
+      "ibse_len": 12,
+      "semantic_class": "Type_B (SIGNATURE)",
+      "learning_label": "HAM",
+      "duration_seconds": 88.5
+    },
+    "timestamp": "2026-03-27T08:14:40.790Z"
+  },
+  {
+    "excel_row_number": 76,
+    "message": "(광고) ★시암  야/구 이/벤/트 개.시 !! 베/팅 만 해도 3만 g급 + 배/민 2마안 g급  ★입/금 계/좌 정,상,화★  시.암.주.소.커엄 무료거부:0801336172",
+    "result": {
+      "is_spam": true,
+      "spam_probability": 1,
+      "classification_code": "2",
+      "reason": "해당 메시지는 '야구', '베팅', '입금 계좌' 등 불법 도박 사이트의 전형적인 특징을 담고 있으며, 배달의 민족 혜택을 미끼로 가입을 유도하는 제0원칙(도박) 위반 사례입니다. 특히 '야/구', '베/팅', '시.암.주.소.커엄' 등 단어 사이에 특수문자를 삽입하고 도메인을 한글로 난독화하여 필터링을 우회하려는 의도가 명백하므로 SPAM으로 판정합니다. 형태소 파괴가 심각하여 정상적인 텍스트 학습을 방해할 수 있으므로 is_garbage_obfuscation 시그널을 활성화하여 격리합니다. | [URL SPAM: 해당 SMS는 '야구', '베팅', '입금 계좌' 등 불법 도박 사이트의 전형적인 키워드를 포함하고 있으며, '야/구', '베/팅', '시.암.주.소.커엄'과 같이 특수문자와 한글 난독화를 이용해 필터링 시스템을 우회하려는 의도가 명백합니다. 제0원칙(도박)에 따라, 웹 페이지의 구체적인 콘텐츠 확인 여부와 상관없이 SMS 원문 자체에서 드러나는 불법 도박 홍보 및 형태소 파괴 행위만으로도 명백한 악성 스팸으로 판단됩니다. 따라서 해당 건은 도박 스팸(코드 2)으로 확정합니다.] | [FP Sentinel Override] 도메인 난독화(Type_B) 보호: 잘못된 URL 필터 오염 방지를 위해 강제 드롭",
+      "signals": {
+        "harm_anchor": true,
+        "route_or_cta": true,
+        "is_impersonation": false,
+        "is_vague_cta": false,
+        "is_personal_lure": false,
+        "is_garbage_obfuscation": true,
+        "is_normal_layout": false,
+        "is_safe_url_injection": false
+      },
+      "obfuscated_urls": [
+        "시암주소.com",
+        "siam.com"
+      ],
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "url_result": {
+        "is_spam": true,
+        "spam_probability": 1,
+        "classification_code": "2",
+        "reason": "해당 SMS는 '야구', '베팅', '입금 계좌' 등 불법 도박 사이트의 전형적인 키워드를 포함하고 있으며, '야/구', '베/팅', '시.암.주.소.커엄'과 같이 특수문자와 한글 난독화를 이용해 필터링 시스템을 우회하려는 의도가 명백합니다. 제0원칙(도박)에 따라, 웹 페이지의 구체적인 콘텐츠 확인 여부와 상관없이 SMS 원문 자체에서 드러나는 불법 도박 홍보 및 형태소 파괴 행위만으로도 명백한 악성 스팸으로 판단됩니다. 따라서 해당 건은 도박 스팸(코드 2)으로 확정합니다.",
+        "details": {
+          "popup_count": 0,
+          "captcha_detected": false,
+          "depth": 0,
+          "extracted_url": "http://xn--9l4b1xg8c8vf.com",
+          "final_url": "http://xn--9l4b1xg8c8vf.com",
+          "attempted_urls": [
+            "http://xn--9l4b1xg8c8vf.com"
+          ],
+          "is_broken_short_url": false
+        }
+      },
+      "drop_url": true,
+      "drop_url_reason": "obfuscation",
+      "semantic_class": "Type_B (NONE)",
+      "learning_label": "HAM",
+      "duration_seconds": 156.32
+    },
+    "timestamp": "2026-03-27T08:16:36.890Z"
+  }
+]

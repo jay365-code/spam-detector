@@ -1,0 +1,4 @@
+(68, '(광고)상위1%재무설계참가전원127%↑손익OKyoutube-dm.com재무상담무료거부0801560', '손익OKyoutube-dm.com', 20)
+(75, '(광고) 최상위 VIP 리딩방 폭등주 적중!! 무료체험방 입장전 아래 경제 기사 확인바랍니다. https://n.news.naver.com/mnews/article/001/00145678 거부 0808889999', 'n.news', 6)
+(76, '(광고) 안전 메이저 토지노! 가입즉시 5만포인트 꽁머니 지급!! 환수율 99% 보장. 아래 영상 클릭 https://www.youtube.com/watch?v=kYxbgEUzZ9g 거부 0801234567', 'www.youtube', 11)
+(78, '(광고) [긴급속보] 2026년 상반기 최고 실적 달성! 300% 수익 보장! 아래 링크에서 확인하세요. https://www.youtube.com/watch?v=kYxbgEUzZ9g 거부 0801234567', 'www.youtube', 11)

@@ -1059,7 +1059,9 @@ class ExcelHandler:
                                 parsed_u = urllib.parse.urlparse(test_u)
                                 # path가 없거나 "/"뿐이고, query도 없으면 단독 도메인 -> 제외
                                 if (not parsed_u.path or parsed_u.path == "/") and not parsed_u.query:
-                                    continue
+                                    # [FIX] 명백히 스팸 혐의(Red Group, Spam 증거)로 선정된 도메인이면 보존
+                                    if not (result.get("is_spam") or result.get("red_group") or result.get("malicious_url_extracted")):
+                                        continue
                                 # 본문 추출 유도를 위해 파손된 단축 URL로 판단된 형태(괄호, 별표 등 포함) 배제 
                                 # (한글은 합법적인 커스텀 URL 슬러그일 수 있으므로 허용)
                                 if bool(re.search(r'[\[\]\*\(\)\{\}\<\>]', parsed_u.path)):
