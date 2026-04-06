@@ -1618,7 +1618,7 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
             
             # Base counters
             kisa_row_count = 0 
-            trap_row_count = 0
+            trap_row_count = 0단축
             
             input_path_kisa = None
             input_path_trap = None
@@ -1733,300 +1733,286 @@ class ExcelRowUpdate(BaseModel):
 
 @app.put("/api/excel/update-row")
 async def update_excel_row(update: ExcelRowUpdate):
-    """엑셀 파일의 특정 행을 업데이트 + URL중복제거/문자문장차단등록 시트 동기화"""
+    """엑셀 파일의 모든 메인 시트 행을 업데이트 + 부가 시트(URL/시그니처)의 연쇄 동기화(삭제 등) 수행"""
     import re
     from openpyxl import load_workbook
+    from openpyxl.styles import PatternFill, Alignment
     
     file_path = os.path.join(OUTPUT_DIR, update.filename)
-    
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail=f"File not found: {update.filename}")
     
-    # URL 추출 헬퍼 함수
     def extract_urls_from_message(message: str) -> list:
-        """메시지에서 URL 추출 (short URL 제외)"""
         url_pattern = r'(?:https?://|www\.)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
         urls = re.findall(url_pattern, message)
-        
-        # Short URL 도메인 목록
         shortener_domains = [
             "bit.ly", "goo.gl", "tinyurl.com", "ow.ly", "t.co", 
             "is.gd", "buff.ly", "adf.ly", "bit.do", "mcaf.ee", 
             "me2.do", "naver.me", "kakaolink.com", "buly.kr", 
             "vo.la", "url.kr", "zrr.kr", "yun.kr", "han.gl",
-            "shorter.me", "shrl.me"
+            "shorter.me", "shrl.me", "link24.kr", "myip.kr",
+            "sbz.kr", "tne.kr", "dokdo.in", "uto.kr",
+            "rb.gy", "short.io", "dub.co", "bl.ink", "tiny.cc", 
+            "t.ly", "tr.ee", "reurl.kr", "abit.ly", "blow.pw", 
+            "c11.kr", "di.do", "koe.kr", "lrl.kr", "muz.so", 
+            "t2m.kr", "ouo.io", "adfoc.us",
+            "ii.ad", "vvd.bz", "vvd.im", "gooal.kr", "ko.gl", "qrco.de", "linktr.ee",
+            "goo.su", "cogi.cc", "shorturl.at", "horturl.at", "iii.ad", "a.to",
+            "clic.ke", "t.me", "coupa.ng"
         ]
-        
         result = []
         for url in urls:
             url = url.rstrip('.,;!?)]}"\'')
             clean_url = re.sub(r'^https?://', '', url.lower())
             clean_url = re.sub(r'^www\.', '', clean_url)
-            
             is_short = any(clean_url.startswith(domain) for domain in shortener_domains)
             if not is_short and url:
                 result.append(url)
         return result
     
     def _lenb(text: str) -> int:
-        """CP949 바이트 길이 계산"""
         if not isinstance(text, str):
             text = str(text) if text is not None else ""
         try:
             return len(text.encode('cp949'))
         except UnicodeEncodeError:
             return len(text.encode('utf-8'))
-    
+            
+    def sanitize(val):
+        if isinstance(val, str) and val.startswith(('=', '+', '-', '@')):
+             return "'" + val
+        return val
+
     try:
         wb = load_workbook(file_path)
         
-        # Select correct sheet based on is_trap
-        if update.is_trap and "TRAP.시뮬결과전체" in wb.sheetnames:
-            ws = wb["TRAP.시뮬결과전체"]
-        elif not update.is_trap and "시뮬결과전체" in wb.sheetnames:
-            ws = wb["시뮬결과전체"]
-        else:
-            ws = wb.active
-        
-        # 헤더 찾기
-        headers = [cell.value for cell in ws[1]]
-        
-        def get_col_idx(name):
-            try:
-                return headers.index(name) + 1
-            except ValueError:
-                return None
-        
-        msg_col = get_col_idx("메시지")
-        gubun_col = get_col_idx("구분")
-        code_col = get_col_idx("분류")
-        prob_col = get_col_idx("Probability")
-        reason_col = get_col_idx("Reason")
-        
-        if not msg_col:
-            raise HTTPException(status_code=400, detail="'메시지' column not found in Excel")
-        
-        # 행 번호로 직접 접근 + 검증
-        found_row = update.excel_row_number
-        
-        # 검증 1: 행 번호 범위 확인
-        if found_row < 2 or found_row > ws.max_row:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid row number: {found_row} (valid range: 2-{ws.max_row})"
-            )
-        
-        # 검증 2: 메시지 일치 확인
-        cell_value = ws.cell(row=found_row, column=msg_col).value
-        if not cell_value or str(cell_value).strip() != update.message.strip():
-            logger.warning(f"Row {found_row} mismatch. Verification failed. Expected: '{update.message[:30]}...', Found: '{str(cell_value)[:30] if cell_value else 'None'}...'")
-            logger.info("Attempting to find the correct row by message content scan...")
+        # 1. 대상 메인 시트 탐침 (원천 데이터 + 결과 데이터)
+        target_sheet_names = ["TRAP.육안분석(시뮬결과35_150)", "TRAP.시뮬결과전체"] if update.is_trap else ["육안분석(시뮬결과35_150)", "시뮬결과전체"]
+        valid_sheets = [wb[name] for name in target_sheet_names if name in wb.sheetnames]
+        if not valid_sheets:
+            valid_sheets = [wb.active] # Fallback
             
-            # [Smart Recovery] Scan entire file for ALL matches and pick the CLOSEST one
-            candidates = []
-            for r in range(2, ws.max_row + 1):
-                r_msg = ws.cell(row=r, column=msg_col).value
-                if r_msg and str(r_msg).strip() == update.message.strip():
-                    candidates.append(r)
-            
-            if candidates:
-                # Find the candidate row closest to the requested row (handling slight shifts/duplicates)
-                best_match = min(candidates, key=lambda r: abs(r - found_row))
-                dist = abs(best_match - found_row)
-                
-                # Safety Check: If deviation is too large, it might be a different instance (ambiguous)
-                # But since content is identical, "closest" is the best logical guess for "the row the user clicked"
-                logger.info(f"Recovered! Found {len(candidates)} matches. Closest is {best_match} (dist: {dist})")
-                found_row = best_match
-            else:
-                # Still not found -> Fatal Error
-                logger.error("Recovery failed. Message not found in any row.")
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Row {found_row} message mismatch AND message not found in file. Expected: '{update.message[:50]}...', Found: '{str(cell_value)[:50] if cell_value else 'None'}...'"
-                )
+        global_was_spam = False
+        global_new_code = ""
+        global_old_code = ""
+        global_urls_in_message = extract_urls_from_message(update.message)
+        sync_run = False
         
-        logger.info(f"Updating Excel row {found_row}: {update.message[:50]}...")
-        
-        # 현재 상태 저장
-        was_spam = False
-        old_code = ""
-        if gubun_col:
-            gubun_val = ws.cell(row=found_row, column=gubun_col).value
-            was_spam = (gubun_val == "o")
-        if code_col:
-            old_code = str(ws.cell(row=found_row, column=code_col).value or "")
-        
-        # 새 코드 값 계산
-        if update.is_spam:
-            match = re.search(r'\d+', str(update.classification_code))
-            new_code = match.group(0) if match else update.classification_code
-        else:
-            new_code = ""
-        
-        # Helper for sanitization
-        def sanitize(val):
-            if isinstance(val, str) and val.startswith(('=', '+', '-', '@')):
-                 return "'" + val
-            return val
-
-        # ========== 메인 시트 업데이트 ==========
-        if gubun_col:
-            ws.cell(row=found_row, column=gubun_col, value=sanitize("o" if update.is_spam else ""))
-        
-        if code_col:
-            ws.cell(row=found_row, column=code_col, value=sanitize(new_code))
-        
-        if prob_col:
-            prob_val = f"{int(update.spam_probability * 100)}%"
-            ws.cell(row=found_row, column=prob_col, value=sanitize(prob_val))
-        
-        if reason_col:
-            ws.cell(row=found_row, column=reason_col, value=sanitize(update.reason))
-        
-        # ========== 메시지 셀 채우기 색 업데이트 ==========
-        from openpyxl.styles import PatternFill, Alignment
         spam_fill = PatternFill(start_color="FFE699", end_color="FFE699", fill_type="solid")
         no_fill = PatternFill(fill_type=None)
         wrap_vcenter_align = Alignment(wrap_text=True, vertical='center')
         
-        if msg_col:
-            cell = ws.cell(row=found_row, column=msg_col)
-            if not was_spam and update.is_spam:
-                # HAM → SPAM: 황금색 채우기 적용
-                cell.fill = spam_fill
-                cell.alignment = wrap_vcenter_align
-            elif was_spam and not update.is_spam:
-                # SPAM → HAM: 채우기 제거
-                cell.fill = no_fill
-                cell.alignment = wrap_vcenter_align
+        final_row_idx = update.excel_row_number
         
-        # ========== URL중복제거 시트 동기화 ==========
-        urls_in_message = extract_urls_from_message(update.message)
-        url_sheet_name = "URL중복 제거"
-        
-        if url_sheet_name in wb.sheetnames and urls_in_message:
-            url_ws = wb[url_sheet_name]
+        # 2. 메인 데이터 업데이트 및 정렬
+        for ws in valid_sheets:
+            headers = [cell.value for cell in ws[1]]
+            def get_col_idx(name):
+                try: return headers.index(name) + 1
+                except ValueError: return None
             
-            if was_spam and not update.is_spam:
-                # SPAM → HAM: URL 삭제 (다른 SPAM이 사용하지 않는 경우만)
-                # 먼저 다른 SPAM 메시지들의 URL 수집
-                other_spam_urls = set()
+            msg_col = get_col_idx("메시지")
+            gubun_col = get_col_idx("구분")
+            code_col = get_col_idx("분류")
+            prob_col = get_col_idx("Probability")
+            reason_col = get_col_idx("Reason")
+            
+            if not msg_col: continue
+            
+            # 행 번호 복구(Smart Recovery)
+            found_row = update.excel_row_number
+            if found_row < 2 or found_row > ws.max_row: found_row = None
+            if found_row is not None:
+                cell_value = ws.cell(row=found_row, column=msg_col).value
+                if not cell_value or str(cell_value).strip() != update.message.strip():
+                    found_row = None
+            if found_row is None:
+                candidates = []
+                for r in range(2, ws.max_row + 1):
+                    r_msg = ws.cell(row=r, column=msg_col).value
+                    if r_msg and str(r_msg).strip() == update.message.strip():
+                        candidates.append(r)
+                if candidates:
+                    found_row = min(candidates, key=lambda r: abs(r - update.excel_row_number))
+                else: continue
+            
+            # 상태 기록 (첫 시트 기준)
+            if not sync_run:
+                gubun_val = ws.cell(row=found_row, column=gubun_col).value if gubun_col else None
+                global_was_spam = (gubun_val == "o")
+                global_old_code = str(ws.cell(row=found_row, column=code_col).value or "") if code_col else ""
+                
+                if update.is_spam:
+                    match = re.search(r'\d+', str(update.classification_code))
+                    global_new_code = match.group(0) if match else update.classification_code
+                else:
+                    global_new_code = ""
+
+            # 메인 값 변경 (SPAM 처리)
+            if gubun_col: ws.cell(row=found_row, column=gubun_col, value=sanitize("o" if update.is_spam else ""))
+            if code_col: ws.cell(row=found_row, column=code_col, value=sanitize(global_new_code))
+            if prob_col: ws.cell(row=found_row, column=prob_col, value=sanitize(f"{int(update.spam_probability * 100)}%"))
+            if reason_col: ws.cell(row=found_row, column=reason_col, value=sanitize(update.reason))
+            
+            # 메인 값 셀 채우기(황금색/투명) 변환
+            if msg_col:
+                cell = ws.cell(row=found_row, column=msg_col)
+                if not global_was_spam and update.is_spam:
+                    cell.fill, cell.alignment = spam_fill, wrap_vcenter_align
+                elif global_was_spam and not update.is_spam:
+                    cell.fill, cell.alignment = no_fill, wrap_vcenter_align
+
+            # [메인 시트 재정렬] - 오직 구분(o) 기준
+            if global_was_spam != update.is_spam and gubun_col:
+                data_rows = []
                 for row_idx in range(2, ws.max_row + 1):
-                    if row_idx == found_row:
-                        continue
-                    gubun_val = ws.cell(row=row_idx, column=gubun_col).value if gubun_col else None
-                    if gubun_val == "o":  # 다른 SPAM 메시지
-                        other_msg = ws.cell(row=row_idx, column=msg_col).value
-                        if other_msg:
-                            other_spam_urls.update(extract_urls_from_message(str(other_msg)))
+                    row_data = []
+                    for col_idx in range(1, ws.max_column + 1):
+                        row_data.append(ws.cell(row=row_idx, column=col_idx).value)
+                    data_rows.append(row_data)
                 
-                # URL 시트에서 삭제할 행 찾기 (역순으로 삭제)
-                rows_to_delete = []
-                for url_row in range(2, url_ws.max_row + 1):
-                    url_val = url_ws.cell(row=url_row, column=1).value  # URL(중복제거) 컬럼
-                    if url_val and url_val in urls_in_message and url_val not in other_spam_urls:
-                        rows_to_delete.append(url_row)
+                def sort_key(row):
+                    g_val = row[gubun_col - 1] if len(row) >= gubun_col else ""
+                    return 0 if g_val == "o" else 1
+                data_rows.sort(key=sort_key)
                 
-                for row in sorted(rows_to_delete, reverse=True):
-                    url_ws.delete_rows(row)
+                for i, row_data in enumerate(data_rows):
+                    r_idx = i + 2
+                    for c_idx, value in enumerate(row_data, start=1):
+                        ws.cell(row=r_idx, column=c_idx, value=value)
+                
+                # 재정렬 후 색상 서식 보정
+                for r_idx in range(2, ws.max_row + 1):
+                    g_val = ws.cell(row=r_idx, column=gubun_col).value
+                    if msg_col:
+                        cell = ws.cell(row=r_idx, column=msg_col)
+                        cell.fill = spam_fill if g_val == "o" else no_fill
+                        cell.alignment = wrap_vcenter_align
+
+            sync_run = True
+
+        # =======================================================
+        # 3. 부가 시트(URL/시그니처) 연쇄 동기화 (루프 밖 1회)
+        # =======================================================
+        
+        # 3.1) URL 중복 제거 시트 동기화
+        url_sheet_names = ["TRAP.URL중복 제거"] if update.is_trap else ["URL중복 제거"]
+        for u_sheet in url_sheet_names:
+            if u_sheet in wb.sheetnames and global_urls_in_message:
+                url_ws = wb[u_sheet]
+                
+                if global_was_spam and not update.is_spam: # SPAM -> HAM (URL 삭제)
+                    # 타 스팸 메시지의 URL 점유 여부 확인
+                    other_spam_urls = set()
+                    for check_ws in valid_sheets:
+                        h = [c.value for c in check_ws[1]]
+                        if "구분" in h and "메시지" in h:
+                            c_g, c_m = h.index("구분") + 1, h.index("메시지") + 1
+                            for r_idx in range(2, check_ws.max_row + 1):
+                                if check_ws.cell(row=r_idx, column=c_g).value == "o":
+                                    o_msg = check_ws.cell(row=r_idx, column=c_m).value
+                                    if o_msg: other_spam_urls.update(extract_urls_from_message(str(o_msg)))
                     
-            elif not was_spam and update.is_spam:
-                # HAM → SPAM: URL 추가
-                existing_urls = set()
-                for url_row in range(2, url_ws.max_row + 1):
-                    url_val = url_ws.cell(row=url_row, column=1).value
-                    if url_val:
-                        existing_urls.add(url_val)
-                
-                for url in urls_in_message:
-                    if url not in existing_urls:
-                        url_ws.append([url, _lenb(url), new_code])
+                    rows_to_delete = []
+                    for r in range(2, url_ws.max_row + 1):
+                        val = url_ws.cell(row=r, column=1).value
+                        if val and val in global_urls_in_message and val not in other_spam_urls:
+                            rows_to_delete.append(r)
+                    for r in sorted(rows_to_delete, reverse=True):
+                        url_ws.delete_rows(r)
                         
-            elif was_spam and update.is_spam and old_code != new_code:
-                # SPAM 코드 변경: 분류 컬럼 업데이트
-                for url_row in range(2, url_ws.max_row + 1):
-                    url_val = url_ws.cell(row=url_row, column=1).value
-                    if url_val and url_val in urls_in_message:
-                        url_ws.cell(row=url_row, column=3, value=new_code)  # 분류 컬럼
+                elif not global_was_spam and update.is_spam: # HAM -> SPAM (URL 추가)
+                    existing_urls = set(url_ws.cell(row=r, column=1).value for r in range(2, url_ws.max_row + 1) if url_ws.cell(row=r, column=1).value)
+                    for url in global_urls_in_message:
+                        if url not in existing_urls:
+                            url_ws.append([url, _lenb(url), global_new_code])
+                            
+                elif global_was_spam and update.is_spam and global_old_code != global_new_code:
+                    for r in range(2, url_ws.max_row + 1):
+                        val = url_ws.cell(row=r, column=1).value
+                        if val and val in global_urls_in_message:
+                            url_ws.cell(row=r, column=3, value=global_new_code)
+
+        # 3.2) 시그니처 연쇄 동기화 (문자문장차단 + 문자열 + 문장열)
+        clean_msg = re.sub(r'[ \t\r\n\f\v]+', '', update.message)
+        bl_sheet_name = "TRAP.문자문장차단등록" if update.is_trap else "문자문장차단등록"
         
-        # ========== 문자문장차단등록 시트 동기화 ==========
-        blocklist_sheet_name = "문자문장차단등록"
-        clean_msg = re.sub(r'[ \t\r\n\f\v]+', '', update.message)  # 공백 제거된 메시지
+        signatures_to_remove = set()
         
-        if blocklist_sheet_name in wb.sheetnames:
-            bl_ws = wb[blocklist_sheet_name]
+        if bl_sheet_name in wb.sheetnames:
+            bl_ws = wb[bl_sheet_name]
             
-            if was_spam and not update.is_spam:
-                # SPAM → HAM: 블록리스트에서 삭제
+            if global_was_spam and not update.is_spam: # SPAM -> HAM (차단등록 삭제 및 시그니처 확보)
                 rows_to_delete = []
-                for bl_row in range(2, bl_ws.max_row + 1):
-                    bl_msg = bl_ws.cell(row=bl_row, column=1).value  # 메시지 컬럼
+                for r in range(2, bl_ws.max_row + 1):
+                    bl_msg = bl_ws.cell(row=r, column=1).value
                     if bl_msg and str(bl_msg).strip() == clean_msg.strip():
-                        rows_to_delete.append(bl_row)
-                
-                for row in sorted(rows_to_delete, reverse=True):
-                    bl_ws.delete_rows(row)
+                        s_str = bl_ws.cell(row=r, column=2).value
+                        s_sen = bl_ws.cell(row=r, column=4).value
+                        if s_str: signatures_to_remove.add(str(s_str))
+                        if s_sen: signatures_to_remove.add(str(s_sen))
+                        rows_to_delete.append(r)
+                for r in sorted(rows_to_delete, reverse=True):
+                    bl_ws.delete_rows(r)
                     
-            elif was_spam and update.is_spam and old_code != new_code:
-                # SPAM 코드 변경: 분류 컬럼 업데이트
-                for bl_row in range(2, bl_ws.max_row + 1):
-                    bl_msg = bl_ws.cell(row=bl_row, column=1).value
+            elif global_was_spam and update.is_spam and global_old_code != global_new_code:
+                for r in range(2, bl_ws.max_row + 1):
+                    bl_msg = bl_ws.cell(row=r, column=1).value
                     if bl_msg and str(bl_msg).strip() == clean_msg.strip():
-                        bl_ws.cell(row=bl_row, column=6, value=new_code)  # 변경: 6번째 컬럼으로 수정 (분류)
+                        bl_ws.cell(row=r, column=6, value=global_new_code) # 분류 업데이트
+                        s_str = bl_ws.cell(row=r, column=2).value
+                        s_sen = bl_ws.cell(row=r, column=4).value
+                        if s_str: signatures_to_remove.add(str(s_str))
+                        if s_sen: signatures_to_remove.add(str(s_sen))
+
+        # 3.3) 문자열/문장열 순수 중복제거 시트 동기화 (연쇄 삭제)
+        if signatures_to_remove:
+            derive_sheets = [
+                "TRAP.문자열 중복제거" if update.is_trap else "문자열중복제거",
+                "TRAP.문장 중복제거" if update.is_trap else "문장중복제거"
+            ]
             
-            # HAM → SPAM: 블록리스트 추가 불가 (ibse_signature 없음)
+            # 삭제 전: 타 스팸이 이 시그니처를 쓰고 있는지 확인(문자문장차단등록 시트 스캔)
+            other_signatures = set()
+            if bl_sheet_name in wb.sheetnames:
+                for r in range(2, wb[bl_sheet_name].max_row + 1):
+                    o_str = wb[bl_sheet_name].cell(row=r, column=2).value
+                    o_sen = wb[bl_sheet_name].cell(row=r, column=4).value
+                    if o_str: other_signatures.add(str(o_str))
+                    if o_sen: other_signatures.add(str(o_sen))
+            
+            for d_sheet in derive_sheets:
+                if d_sheet in wb.sheetnames:
+                    d_ws = wb[d_sheet]
+                    if global_was_spam and not update.is_spam: # 연쇄 삭제 적용
+                        rows_to_delete = []
+                        for r in range(2, d_ws.max_row + 1):
+                            key_val = d_ws.cell(row=r, column=1).value
+                            if key_val and str(key_val) in signatures_to_remove and str(key_val) not in other_signatures:
+                                rows_to_delete.append(r)
+                        for r in sorted(rows_to_delete, reverse=True):
+                            d_ws.delete_rows(r)
+                            
+                    elif global_was_spam and update.is_spam and global_old_code != global_new_code:
+                        for r in range(2, d_ws.max_row + 1):
+                            key_val = d_ws.cell(row=r, column=1).value
+                            if key_val and str(key_val) in signatures_to_remove:
+                                d_ws.cell(row=r, column=3, value=global_new_code)
         
-        # ========== SPAM↔HAM 변경 시 시트 재정렬 ==========
-        if was_spam != update.is_spam and gubun_col:
-            # 모든 데이터 행 읽기 (헤더 제외)
-            data_rows = []
-            for row_idx in range(2, ws.max_row + 1):
-                row_data = []
-                for col_idx in range(1, ws.max_column + 1):
-                    row_data.append(ws.cell(row=row_idx, column=col_idx).value)
-                data_rows.append(row_data)
-            
-            # 구분 컬럼 기준 정렬 (SPAM "o" 먼저, HAM "" 나중)
-            def sort_key(row):
-                gubun_val = row[gubun_col - 1] if len(row) >= gubun_col else ""
-                return 0 if gubun_val == "o" else 1
-            
-            data_rows.sort(key=sort_key)
-            
-            # 정렬된 데이터로 다시 쓰기
-            for i, row_data in enumerate(data_rows):
-                row_idx = i + 2  # 헤더가 1행이므로 2행부터
-                for col_idx, value in enumerate(row_data, start=1):
-                    ws.cell(row=row_idx, column=col_idx, value=value)
-            
-            # 재정렬 후 서식 재적용 (채우기 색)
-            for row_idx in range(2, ws.max_row + 1):
-                gubun_val = ws.cell(row=row_idx, column=gubun_col).value
-                if msg_col:
-                    cell = ws.cell(row=row_idx, column=msg_col)
-                    if gubun_val == "o":  # SPAM
-                        cell.fill = spam_fill
-                    else:  # HAM
-                        cell.fill = no_fill
-                    cell.alignment = wrap_vcenter_align
-        
-        # 저장
+        # 4. 저장 및 결과 반환
         wb.save(file_path)
         
-        # 동기화 결과 로깅
         sync_info = []
-        if was_spam != update.is_spam:
-            sync_info.append(f"{'SPAM→HAM' if was_spam else 'HAM→SPAM'}")
-        if was_spam and update.is_spam and old_code != new_code:
-            sync_info.append(f"Code: {old_code}→{new_code}")
-        
+        if global_was_spam != update.is_spam:
+            sync_info.append(f"{'SPAM→HAM' if global_was_spam else 'HAM→SPAM'}")
+        if global_was_spam and update.is_spam and global_old_code != global_new_code:
+            sync_info.append(f"Code: {global_old_code}→{global_new_code}")
+            
         return {
             "success": True,
-            "message": f"Row {found_row} updated successfully",
-            "row": found_row,
+            "message": f"Row updated successfully across sheets",
             "sync": sync_info if sync_info else None,
-            "urls_affected": len(urls_in_message) if urls_in_message else 0
+            "urls_affected": len(global_urls_in_message)
         }
         
     except HTTPException:

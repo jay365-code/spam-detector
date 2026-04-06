@@ -67,8 +67,9 @@ class ExcelHandler:
             "t.ly", "tr.ee", "reurl.kr", "abit.ly", "blow.pw", 
             "c11.kr", "di.do", "koe.kr", "lrl.kr", "muz.so", 
             "t2m.kr", "ouo.io", "adfoc.us",
-            "ii.ad", "vvd.bz", "gooal.kr", "ko.gl", "qrco.de", "linktr.ee",
-            "goo.su", "cogi.cc", "shorturl.at", "iii.ad"
+            "ii.ad", "vvd.bz", "vvd.im", "gooal.kr", "ko.gl", "qrco.de", "linktr.ee",
+            "goo.su", "cogi.cc", "shorturl.at", "horturl.at", "iii.ad", "a.to",
+            "clic.ke", "t.me", "coupa.ng"
         }
         
         # 외부 클론잡 동작용 txt 파일이 존재하면 정적으로 병합 구성
