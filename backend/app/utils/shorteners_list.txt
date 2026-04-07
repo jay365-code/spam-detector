@@ -40,6 +40,7 @@
 9mp.com
 9splay.store
 a.189.cn
+a.to
 a360.co
 aarp.info
 ab.co
@@ -52,6 +53,7 @@ abc7ne.ws
 abcn.ws
 abe.ma
 abelinc.me
+abit.ly
 abnb.me
 abr.ai
 abre.ai
@@ -65,6 +67,7 @@ act.gp
 acus.org
 adaymag.co
 adbl.co
+adf.ly
 adfoc.us
 adm.to
 adobe.ly
@@ -150,9 +153,11 @@ bigfi.sh
 biggo.tw
 biibly.com
 binged.it
+bit.do
 bit.ly
 bitly.com
 bitly.is
+bitly.kr
 bitly.lc
 bityl.co
 bl.ink
@@ -161,6 +166,7 @@ blbrd.cm
 blck.by
 blizz.ly
 bloom.bg
+blow.pw
 blstg.news
 blur.by
 bmai.cc
@@ -188,6 +194,7 @@ btm.li
 btwrdn.com
 budurl.com
 buff.ly
+buly.kr
 bung.ie
 bwnews.pr
 by2.io
@@ -239,6 +246,7 @@ clc.to
 clck.ru
 cle.clinic
 cli.re
+clic.ke
 clickmeter.com
 clicky.me
 clr.tax
@@ -254,6 +262,7 @@ cnn.it
 cnnmon.ie
 cnvrge.co
 cockroa.ch
+cogi.cc
 comca.st
 come.ac
 conta.cc
@@ -278,6 +287,7 @@ cultm.ac
 cup.org
 cut.lu
 cut.pe
+cutt.it
 cutt.ly
 cvent.me
 cvs.co
@@ -301,6 +311,7 @@ dell.to
 deloi.tt
 dems.me
 dhk.gg
+di.do
 di.sn
 dibb.me
 dis.gd
@@ -320,12 +331,14 @@ dmdi.pl
 dmreg.co
 do.co
 dockr.ly
+dokdo.in
 dopice.sk
 dpmd.ai
 dpo.st
 dssurl.com
 dtdg.co
 dtsx.io
+dub.co
 dub.sh
 dv.gd
 dvrv.ai
@@ -443,6 +456,7 @@ gldr.co
 glmr.co
 glo.bo
 gma.abc
+gmarket.it
 gmj.tw
 go-link.ru
 go.aws
@@ -479,6 +493,7 @@ goo.by
 goo.gl
 goo.gle
 goo.su
+gooal.kr
 goolink.cc
 goolnk.com
 gosm.link
@@ -516,6 +531,7 @@ histori.ca
 hmt.ai
 hnsl.mn
 homes.jp
+horturl.at
 hp.care
 hpe.to
 hrbl.me
@@ -549,7 +565,9 @@ ifix.gd
 ift.tt
 iherb.co
 ihr.fm
+ii.ad
 ii1.su
+iii.ad
 iii.im
 il.rog.gg
 ilang.in
@@ -586,6 +604,7 @@ itsh.bo
 itvty.com
 ity.im
 ix.sk
+j.mp
 ja.cat
 ja.ma
 jb.gg
@@ -596,6 +615,7 @@ jp.rog.gg
 jpeg.ly
 jz.rs
 k-p.li
+kakaolink.com
 kas.pr
 kask.us
 katzr.net
@@ -617,6 +637,7 @@ klck.me
 kli.cx
 klmf.ly
 ko.gl
+koe.kr
 kortlink.dk
 kotl.in
 kp.org
@@ -665,6 +686,7 @@ lin0.de
 link.ac
 link.infini.fr
 link.tubi.tv
+link24.kr
 linkbun.com
 linkd.in
 linkjust.com
@@ -672,6 +694,7 @@ linko.page
 linkopener.co
 links2.me
 linkshare.pro
+linktr.ee
 linkye.net
 livemu.sc
 livestre.am
@@ -696,6 +719,7 @@ lonerwolf.co
 loom.ly
 low.es
 lprk.co
+lrl.kr
 lru.jp
 lsdl.es
 lstu.fr
@@ -718,12 +742,14 @@ mapfan.to
 mayocl.in
 mbapp.io
 mbayaq.co
+mcaf.ee
 mcafee.ly
 mcd.to
 mcgam.es
 mck.co
 mcys.co
 me.sv
+me2.do
 me2.kr
 meck.co
 meetu.ps
@@ -759,10 +785,12 @@ mstr.cl
 mttr.io
 mub.me
 munbyn.biz
+muz.so
 mvmtwatch.co
 my.mtr.cool
 mybmw.tw
 myglamm.in
+myip.kr
 mylt.tv
 mypoya.com
 myppt.cc
@@ -965,6 +993,7 @@ renew.ge
 replug.link
 rethinktw.cc
 reurl.cc
+reurl.kr
 reut.rs
 rev.cm
 revr.ec
@@ -1012,6 +1041,7 @@ samcart.me
 sbird.co
 sbux.co
 sbux.jp
+sbz.kr
 sc.mp
 sc.org
 sched.co
@@ -1043,6 +1073,7 @@ sho.pe
 shope.ee
 shorl.com
 short.gy
+short.io
 shorten.asia
 shorten.ee
 shorten.is
@@ -1056,6 +1087,8 @@ shorturl.at
 shorturl.com
 shorturl.gg
 shp.ee
+shrl.me
+shrtco.de
 shrtm.nu
 sht.moe
 shutr.bz
@@ -1143,10 +1176,14 @@ synd.co
 syw.co
 t-bi.link
 t-mo.co
+t.co
 t.iotex.me
 t.libren.ms
+t.ly
+t.me
 t1p.de
 t2m.io
+t2m.kr
 ta.co
 tabsoft.co
 taiwangov.com
@@ -1197,6 +1234,7 @@ tlrk.it
 tmblr.co
 tmsnrt.rs
 tmz.me
+tne.kr
 tnne.ws
 tnsne.ws
 tnvge.co
@@ -1226,6 +1264,7 @@ trymongodb.com
 tsbk.tw
 tsta.rs
 tt.vg
+tuney.kr
 tvote.org
 tw.rog.gg
 tw.sv
@@ -1269,6 +1308,7 @@ urbn.is
 url.cn
 url.cy
 url.ie
+url.kr
 url2.fr
 urla.ru
 urlgeni.us
@@ -1288,7 +1328,9 @@ usanet.tv
 usat.ly
 utm.to
 utn.pl
+uto.kr
 utraker.com
+v.gd
 v.redd.it
 vbly.us
 vd55.com
@@ -1314,6 +1356,8 @@ vrnda.us
 vtns.io
 vur.me
 vurl.com
+vvd.bz
+vvd.im
 vvnt.co
 vxn.link
 vypij.bar
@@ -1402,6 +1446,7 @@ yourwish.es
 youtu.be
 yubi.co
 yun.ir
+yun.kr
 z23.ru
 zaya.io
 zc.vg
@@ -1423,6 +1468,7 @@ zoho.to
 zopen.to
 zovpart.com
 zpr.io
+zrr.kr
 zuki.ie
 zuplo.link
 zurb.us

@@ -1746,7 +1746,7 @@ async def update_excel_row(update: ExcelRowUpdate):
     def extract_urls_from_message(message: str) -> list:
         url_pattern = r'(?:https?://|www\.)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
         urls = re.findall(url_pattern, message)
-        shortener_domains = [
+        shortener_domains = {
             "a.to", "abit.ly", "adf.ly", "adfoc.us", "aka.ms", "amzn.to", "apple.co", "asq.kr", 
             "bit.do", "bit.ly", "bitly.com", "bitly.kr", "bl.ink", "blow.pw", "buff.ly", "buly.kr", 
             "c11.kr", "clic.ke", "cogi.cc", "coupa.ng", "cutt.it", "cutt.ly", 
@@ -1764,13 +1764,25 @@ async def update_excel_row(update: ExcelRowUpdate):
             "qrco.de", 
             "rb.gy", "rebrand.ly", "reurl.kr", 
             "sbz.kr", "short.io", "shorter.me", "shorturl.at", "shrl.me", "shrtco.de", 
-            "t.co", "t.ly", "t.me", "t2m.kr", "tiny.cc", "tinyurl.com", "tne.kr", "tny.im", "tr.ee", 
+            "t.co", "t.ly", "t.me", "t2m.kr", "tiny.cc", "tinyurl.com", "tne.kr", "tny.im", "tr.ee", "tuney.kr",
             "url.kr", "uto.kr", 
             "v.gd", "vo.la", "vvd.bz", "vvd.im", 
             "wp.me", 
             "youtu.be", "yun.kr", 
             "zrr.kr"
-        ]
+        }
+        
+        try:
+            list_path = os.path.join(os.path.dirname(__file__), "utils", "shorteners_list.txt")
+            if os.path.exists(list_path):
+                with open(list_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip().lower()
+                        if line and not line.startswith("#"):
+                            shortener_domains.add(line)
+        except Exception as e:
+            logger.warning(f"Failed to load shorteners_list.txt in main.py: {e}")
+            
         result = []
         for url in urls:
             url = url.rstrip('.,;!?)]}"\'')

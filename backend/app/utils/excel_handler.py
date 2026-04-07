@@ -74,7 +74,7 @@ class ExcelHandler:
             "qrco.de", 
             "rb.gy", "rebrand.ly", "reurl.kr", 
             "sbz.kr", "short.io", "shorter.me", "shorturl.at", "shrl.me", "shrtco.de", 
-            "t.co", "t.ly", "t.me", "t2m.kr", "tiny.cc", "tinyurl.com", "tne.kr", "tny.im", "tr.ee", 
+            "t.co", "t.ly", "t.me", "t2m.kr", "tiny.cc", "tinyurl.com", "tne.kr", "tny.im", "tr.ee", "tuney.kr",
             "url.kr", "uto.kr", 
             "v.gd", "vo.la", "vvd.bz", "vvd.im", 
             "wp.me", 
@@ -299,11 +299,11 @@ class ExcelHandler:
             
             # 메시지 컬럼: 세로 중앙 (자동줄바꿈 해제)
             if msg_col:
-                ws.cell(row=row_idx, column=msg_col).alignment = Alignment(vertical='center')
+                ws.cell(row=row_idx, column=msg_col).alignment = Alignment(vertical='center', wrap_text=False)
             
             # Reason 컬럼: VCenter만 적용 (자동줄바꿈 해제)
             if reason_col:
-                ws.cell(row=row_idx, column=reason_col).alignment = Alignment(vertical='center')
+                ws.cell(row=row_idx, column=reason_col).alignment = Alignment(vertical='center', wrap_text=False)
             
             # SPAM(o), Type_B, TEXT+URL분리인 경우 메시지 셀 채우기 적용
             if gubun_col and msg_col:
@@ -319,7 +319,7 @@ class ExcelHandler:
                     is_separated = True
 
                 cell = ws.cell(row=row_idx, column=msg_col)
-                vcenter_align = Alignment(vertical='center')
+                vcenter_align = Alignment(vertical='center', wrap_text=False)
                 if is_separated: # TEXT-HAM + URL-SPAM
                     # 사용자 요청: 텍스트 HAM + 악성 URL 분리 감지 오버라이딩은 기존 Type B 처리 방식(FFCCCC) 유지
                     type_b_fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
@@ -947,7 +947,10 @@ class ExcelHandler:
             for idx, r_dict in enumerate(rows):
                 msg = r_dict["message"]
                 url = r_dict.get("url", "")
-                sim_ws.cell(row=start_row + idx, column=1, value=self._sanitize_cell_value(msg))
+                
+                msg_cell = sim_ws.cell(row=start_row + idx, column=1, value=self._sanitize_cell_value(msg))
+                msg_cell.alignment = Alignment(vertical='center', wrap_text=False)
+                
                 sim_ws.cell(row=start_row + idx, column=2, value=self._sanitize_cell_value(url))
                 # column 3 (구분) -> 빈칸
                 sim_ws.cell(row=start_row + idx, column=4, value=self._lenb(msg))
