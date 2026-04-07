@@ -243,8 +243,8 @@ class ExcelHandler:
         wrap_vcenter_align = Alignment(wrap_text=True, vertical='center')
         from openpyxl.styles import Border, Side, Font
         # 폰트 스타일 정의
-        base_font = Font(size=10)
-        msg_font = Font(size=10)
+        base_font = Font(size=10.5)
+        msg_font = Font(size=10.5)
         
         # 강조 (Gold, Accent 4, Lighter 80%) = FFF2CC
         spam_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
@@ -372,8 +372,8 @@ class ExcelHandler:
         
         # Style Definition
         header_font = Font(bold=True, size=10)
-        base_font = Font(size=10)
-        msg_font = Font(size=10)
+        base_font = Font(size=10.5)
+        msg_font = Font(size=10.5)
         header_align = Alignment(horizontal='center', vertical='center')
         header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid") # Light Grey
         
@@ -442,8 +442,8 @@ class ExcelHandler:
         
         # Styling
         header_font = Font(bold=True, size=10)
-        base_font = Font(size=10)
-        msg_font = Font(size=10)
+        base_font = Font(size=10.5)
+        msg_font = Font(size=10.5)
         msg_fill = PatternFill(start_color="D8EFD3", end_color="D8EFD3", fill_type="solid")
         
         header_align = Alignment(horizontal='center', vertical='center')

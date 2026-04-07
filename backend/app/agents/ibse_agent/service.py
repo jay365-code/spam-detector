@@ -10,7 +10,8 @@ logger = logging.getLogger(__name__)
 
 class IBSEAgentService:
     def __init__(self):
-        pass
+        # [NEW] 실시간 시그니처 글로벌 캐시
+        self.signature_cache = []
 
     from typing import Callable, Optional
 
@@ -26,6 +27,22 @@ class IBSEAgentService:
             
         if status_callback: status_callback("텍스트 전처리 중...")
         match_text = preprocess_text(text)
+        
+        # 시스템 메모리 캐시 체크 (LLM 호출 방지 및 완벽한 파편화 제어)
+        import re
+        spaceless_text = re.sub(r'[ \t\r\n\f\v]+', '', match_text)
+        for cached_sig in self.signature_cache:
+            if cached_sig in spaceless_text:
+                if status_callback: status_callback(f"캐시 매칭 완료: {cached_sig}")
+                logger.info(f"IBSE Cache Hit for {message_id}: {cached_sig}")
+                return {
+                    "message_id": message_id,
+                    "decision": "use_string (cached)",
+                    "signature": cached_sig,
+                    "reason": "사전 추출된 시그니처 캐시 매칭으로 LLM 호출 생략 및 통일화",
+                    "byte_len": len(cached_sig.encode('cp949', errors='ignore')),
+                    "candidates_count": 0
+                }
         
         # (URL 감지 시 IBSE 추출을 생략하던 Pre-LLM Optimization 제거됨)
         
@@ -111,6 +128,15 @@ class IBSEAgentService:
             "byte_len": final.get("byte_len_cp949", 0),
             "candidates_count": c_count
         }
+        
+        # 성공적으로 추출된 시그니처를 캐시에 등록 (추후 재사용 위해)
+        sig_val = result.get("signature")
+        # 단, 예외 판정("unextractable", "NONE", 빈값)은 캐시하지 않음
+        if sig_val and str(sig_val).strip() and str(sig_val).upper() != "NONE":
+            # 중복 등록 방지
+            if sig_val not in self.signature_cache:
+                self.signature_cache.append(sig_val)
+                logger.info(f"IBSE Cache Added: {sig_val}")
         
         logger.info(f"IBSE Result for {message_id}: decision={result['decision']}, sig={result['signature']}, len={result['byte_len']}")
         return result

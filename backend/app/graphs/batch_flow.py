@@ -69,19 +69,19 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 
                 # 주요 단축 URL 서비스 식별
                 shortener_domains = [
-                    "bit.ly", "goo.gl", "buly.kr", "vo.la", "han.gl", 
-                    "ko.gl", "tuney.kr", "sbz.kr", "me2.do", "vvd.bz", 
-                    "url.kr", "m.site.naver.com", "vdo.kr"
+                   "bit.ly", "goo.gl", "buly.kr", "vo.la", "han.gl", 
+                   "ko.gl", "tuney.kr", "sbz.kr", "me2.do", "vvd.bz", 
+                   "url.kr", "m.site.naver.com", "vdo.kr"
                 ]
                 
                 is_short = any(d in domain for d in shortener_domains)
                 if is_short:
-                    # 경로 부재 (길이 1 이하) OR 괄호/별표/한글 등 파손 문자 포함 여부 검사
-                    if len(path) <= 1 or bool(re.search(r'[\[\]\*\(\)\{\}\<\>가-힣]', path)):
-                        # KISA의 파싱 오류로 단축 도메인만 잘려나온 경우, 파라미터를 버리고 원문 본문에서 다시 URL 전체를 강제 추출하도록 유도
-                        logger.warning(f"[URL Agent 단축 URL 필터] 원본 URL 필드가 훼손된 단축 URL({pre_parsed_url})로 판명되어 이를 무시하고 본문 추출 모드로 전환합니다.")
-                        pre_parsed_url = None
-                        pre_parsed_only_mode = False
+                   # 경로 부재 (길이 1 이하) OR 괄호/별표/한글 등 파손 문자 포함 여부 검사
+                   if len(path) <= 1 or bool(re.search(r'[\[\]\*\(\)\{\}\<\>가-힣]', path)):
+                       # KISA의 파싱 오류로 단축 도메인만 잘려나온 경우, 파라미터를 버리고 원문 본문에서 다시 URL 전체를 강제 추출하도록 유도
+                       logger.warning(f"[URL Agent 단축 URL 필터] 원본 URL 필드가 훼손된 단축 URL({pre_parsed_url})로 판명되어 이를 무시하고 본문 추출 모드로 전환합니다.")
+                       pre_parsed_url = None
+                       pre_parsed_only_mode = False
             except Exception:
                 pass
                 
@@ -145,35 +145,35 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 parsed = urllib.parse.urlparse(test_url)
                 domain_parts = parsed.netloc.lower().split(':')[0]
                 if domain_parts.startswith("www."):
-                    domain_parts = domain_parts[4:]
+                   domain_parts = domain_parts[4:]
                 if not domain_parts:
-                    return False
+                   return False
                 # IP 주소 형태 배제 (오탐 방지)
                 if re.match(r'^\d{1,3}(\.\d{1,3}){3}$', domain_parts):
-                    fake_ips_detected.add(domain_parts)
-                    return False
-                    
+                   fake_ips_detected.add(domain_parts)
+                   return False
+                   
                 # 퓨니코드(Punycode) 변환: xn-- 형태인 경우 본문 매칭을 위해 한글로 복원
                 korean_domain = domain_parts
                 if domain_parts.startswith('xn--'):
-                    try:
-                        korean_domain = domain_parts.encode("ascii").decode("idna")
-                    except Exception:
-                        pass
-                        
+                   try:
+                       korean_domain = domain_parts.encode("ascii").decode("idna")
+                   except Exception:
+                       pass
+                       
                 # KISA 입력 파라미터 보존
                 pre_parsed = state.get("pre_parsed_url")
                 if pre_parsed and (domain_parts in pre_parsed.lower() or korean_domain in pre_parsed.lower()):
-                    return True
+                   return True
                 
                 # 원문, 디코딩문, 혹은 띄어쓰기 제거된 문자열에 도메인이 존재하는지 검증
                 return (
-                    (domain_parts in original_msg.lower()) or 
-                    (korean_domain in original_msg.lower()) or
-                    (domain_parts in decoded_tmp.lower()) or
-                    (korean_domain in decoded_tmp.lower()) or
-                    (domain_parts in re.sub(r'\s+', '', original_msg.lower())) or
-                    (korean_domain in re.sub(r'\s+', '', original_msg.lower()))
+                   (domain_parts in original_msg.lower()) or 
+                   (korean_domain in original_msg.lower()) or
+                   (domain_parts in decoded_tmp.lower()) or
+                   (korean_domain in decoded_tmp.lower()) or
+                   (domain_parts in re.sub(r'\s+', '', original_msg.lower())) or
+                   (korean_domain in re.sub(r'\s+', '', original_msg.lower()))
                 )
             except Exception:
                 return False
@@ -204,14 +204,14 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 p = p.strip()
                 clean_p = p.replace("http://", "").replace("https://", "").rstrip("/")
                 if clean_p in c_obf_clean or (p and is_url_in_message(p, raw_msg, decoded_text)):
-                    valid_extracted_urls.add(p)
-                    
+                   valid_extracted_urls.add(p)
+                   
         attempted_list = u_details.get("attempted_urls") or []
         for attempt in attempted_list:
             clean = attempt.replace("http://", "").replace("https://", "").strip().rstrip("/")
             if clean in c_obf_clean or (attempt and is_url_in_message(attempt, raw_msg, decoded_text)):
                 if clean:
-                    valid_extracted_urls.add(clean)
+                   valid_extracted_urls.add(clean)
                 
         # 환각이나 검열로 인해 최종적으로 남은 유효 URL이 "전혀" 없다면 URL Agent의 결과(u_res) 기각.
         # 단, 파기하기 전에 가짜 IP로 식별되었다면 원본 URL(pre_parsed_url 등) 삭제 명령 하달
@@ -232,14 +232,14 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 # 중복 제거
                 unique_rejected = list(dict.fromkeys(rejected_urls))
                 u_res = {
-                    "details": {
-                        "extracted_url": ", ".join(unique_rejected),
-                        "attempted_urls": unique_rejected
-                    }
+                   "details": {
+                       "extracted_url": ", ".join(unique_rejected),
+                       "attempted_urls": unique_rejected
+                   }
                 }
                 if not final.get("drop_url"):
-                    final["drop_url"] = True
-                    final["drop_url_reason"] = "hidden_url"
+                   final["drop_url"] = True
+                   final["drop_url_reason"] = "hidden_url"
             else:
                 u_res = {}
             
@@ -261,63 +261,63 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              
              # Case 1: 완전 정상 텍스트 + 악성 단검(URL)
              if has_input_url and is_pure_content_ham and url_is_spam:
-                 # [수정] 텍스트가 정상(배송 등)이고 URL도 그에 연관된 정상적인 상거래(성인용품점 등)라면 면책 발동.
-                 if u_res.get("is_consistently_transactional") == True:
-                     force_red_group = False
-                     url_is_spam = False # 방어: 최종 판정에서 SPAM으로 넘어가지 않도록 변경
-                     final["reason"] = f"{existing_reason} | [정보성/거래성 완전 일치: 면책특권 발동되어 URL 정상(HAM) 처리]"
-                 else:
-                     force_red_group = True
-                 
+                # [수정] 텍스트가 정상(배송 등)이고 URL도 그에 연관된 정상적인 상거래(성인용품점 등)라면 면책 발동.
+                if u_res.get("is_consistently_transactional") == True:
+                    force_red_group = False
+                    url_is_spam = False # 방어: 최종 판정에서 SPAM으로 넘어가지 않도록 변경
+                    final["reason"] = f"{existing_reason} | [정보성/거래성 완전 일치: 면책특권 발동되어 URL 정상(HAM) 처리]"
+                else:
+                    force_red_group = True
+                
              if force_red_group:
-                 # 붉은색 채우기 그룹 특수 처리 로직 (단순 URL 스팸 처리)
-                 final["is_spam"] = True
-                 final["reason"] = f"{existing_reason} | [텍스트 HAM + 악성 URL 분리 감지: 단순 URL 스팸 격리 ({url_reason[:30]})]"
-                 final["malicious_url_extracted"] = True
-                 final["url_spam_code"] = url_code
-                 final["red_group"] = True  # 명시적인 Red Group 카테고리 플래그 추가
+                # 붉은색 채우기 그룹 특수 처리 로직 (단순 URL 스팸 처리)
+                final["is_spam"] = True
+                final["reason"] = f"{existing_reason} | [텍스트 HAM + 악성 URL 분리 감지: 단순 URL 스팸 격리 ({url_reason[:30]})]"
+                final["malicious_url_extracted"] = True
+                final["url_spam_code"] = url_code
+                final["red_group"] = True  # 명시적인 Red Group 카테고리 플래그 추가
              else:
-                 # Red Group에 해당하지 않는 경우의 기존 처리
-                 if is_inconclusive:
-                     # Inconclusive -> Trust Content Verdict
-                     if 'All URLs scanned' in url_reason:
-                         final["reason"] = f"{existing_reason} | [URL: Inconclusive ({url_reason})]"
-                     else:
-                         final["reason"] = f"{existing_reason} | [URL: Suspected but Inconclusive ({url_reason})]"
-                 elif url_is_spam:
-                     # Case 1: 본문이 비록 HAM이었더라도 URL이 SPAM이면 전체를 SPAM으로 격상. (단, Red Group 시각적 표기만 생략됨)
-                     final["is_spam"] = True
-                     final["spam_probability"] = u_res.get("spam_probability", 0.95)
-                     final["reason"] = f"{existing_reason} | [URL SPAM: {url_reason}]"
-                     if url_code and str(url_code) != "0":
-                         final["classification_code"] = url_code
-                 else:
-                     # Case 3: URL(Safe) -> 명백히 안전한 사이트(CONFIRMED SAFE)인 경우, 본문과 어긋난 위장방패막이(Mismatched)인지 확인
-                     is_confirmed_safe = u_res.get("is_confirmed_safe", False)
-                     if is_confirmed_safe:
-                         if final.get("is_spam"):
-                             is_mismatched = u_res.get("is_mismatched", False)
-                             spam_prob = final.get("spam_probability", 0.0)
-                             
-                             if is_mismatched:
-                                 # 확실한 역이용/방패막이로 판정된 경우만 SPAM 유지
-                                 final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE 판독되나, 본문-웹 명백한 불일치(위장/방패막이). SPAM 유지]"
-                             else:
-                                 # 본문과 웹 내용이 어느 정도 일치하고 안전한 웹사이트라면, 단순 낚시성 홍보일 확률이 높으므로 HAM으로 억울함을 풀어줌
-                                 final["is_spam"] = False
-                                 final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE & Content Matched (오탐 방어 Override)]"
-                             # Do NOT wipe final["classification_code"] to preserve Content Agent's original intent
-                     else:
-                        is_transactional_match = u_res.get("is_consistently_transactional", False)
-                        if is_transactional_match and final.get("is_spam"):
-                            # URL Agent가 '놀라운 연관성' 등 거래성 일치를 확신한 경우, Content Agent의 스미싱 오탐을 HAM으로 덮어씀
-                            final["is_spam"] = False
-                            final["reason"] = f"{existing_reason} | [URL: 상거래 완벽 일치(Transactional Match). 본문 스미싱/스팸 오탐 방어 Override]"
-                        else:
-                            # URL에 스팸 증거가 없어 HAM 판정되었으나, 명백히 안전하다는 증거(대형포털 등)도 없는 상태 (가입 유도, 빈 페이지 등)
-                            # -> 기존 Content Agent 결과(SPAM)를 존중하여 덮어쓰지 않음
-                            short_url_reason = url_reason[:80] + "..." if len(url_reason) > 80 else url_reason
-                            final["reason"] = f"{existing_reason} | [URL 무혐의(원본 판단 유지) 요약: {short_url_reason}]"
+                # Red Group에 해당하지 않는 경우의 기존 처리
+                if is_inconclusive:
+                    # Inconclusive -> Trust Content Verdict
+                    if 'All URLs scanned' in url_reason:
+                        final["reason"] = f"{existing_reason} | [URL: Inconclusive ({url_reason})]"
+                    else:
+                        final["reason"] = f"{existing_reason} | [URL: Suspected but Inconclusive ({url_reason})]"
+                elif url_is_spam:
+                    # Case 1: 본문이 비록 HAM이었더라도 URL이 SPAM이면 전체를 SPAM으로 격상. (단, Red Group 시각적 표기만 생략됨)
+                    final["is_spam"] = True
+                    final["spam_probability"] = u_res.get("spam_probability", 0.95)
+                    final["reason"] = f"{existing_reason} | [URL SPAM: {url_reason}]"
+                    if url_code and str(url_code) != "0":
+                        final["classification_code"] = url_code
+                else:
+                    # Case 3: URL(Safe) -> 명백히 안전한 사이트(CONFIRMED SAFE)인 경우, 본문과 어긋난 위장방패막이(Mismatched)인지 확인
+                    is_confirmed_safe = u_res.get("is_confirmed_safe", False)
+                    if is_confirmed_safe:
+                        if final.get("is_spam"):
+                            is_mismatched = u_res.get("is_mismatched", False)
+                            spam_prob = final.get("spam_probability", 0.0)
+                            
+                            if is_mismatched:
+                                # 확실한 역이용/방패막이로 판정된 경우만 SPAM 유지
+                                final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE 판독되나, 본문-웹 명백한 불일치(위장/방패막이). SPAM 유지]"
+                            else:
+                                # 본문과 웹 내용이 어느 정도 일치하고 안전한 웹사이트라면, 단순 낚시성 홍보일 확률이 높으므로 HAM으로 억울함을 풀어줌
+                                final["is_spam"] = False
+                                final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE & Content Matched (오탐 방어 Override)]"
+                            # Do NOT wipe final["classification_code"] to preserve Content Agent's original intent
+                    else:
+                       is_transactional_match = u_res.get("is_consistently_transactional", False)
+                       if is_transactional_match and final.get("is_spam"):
+                           # URL Agent가 '놀라운 연관성' 등 거래성 일치를 확신한 경우, Content Agent의 스미싱 오탐을 HAM으로 덮어씀
+                           final["is_spam"] = False
+                           final["reason"] = f"{existing_reason} | [URL: 상거래 완벽 일치(Transactional Match). 본문 스미싱/스팸 오탐 방어 Override]"
+                       else:
+                           # URL에 스팸 증거가 없어 HAM 판정되었으나, 명백히 안전하다는 증거(대형포털 등)도 없는 상태 (가입 유도, 빈 페이지 등)
+                           # -> 기존 Content Agent 결과(SPAM)를 존중하여 덮어쓰지 않음
+                           short_url_reason = url_reason[:80] + "..." if len(url_reason) > 80 else url_reason
+                           final["reason"] = f"{existing_reason} | [URL 무혐의(원본 판단 유지) 요약: {short_url_reason}]"
 
         # Ensure malicious_url_extracted is explicitly in the final dict if set
         if "malicious_url_extracted" in final and final["malicious_url_extracted"] is True:
@@ -331,13 +331,13 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              i_err = i_res.get("error")
              sig_val = i_res.get("signature") if not i_err else None
              if sig_val and str(sig_val).strip().upper() != "NONE":
-                 final["ibse_signature"] = sig_val
-                 final["ibse_len"] = i_res.get("byte_len_cp949", i_res.get("byte_len"))
+                final["ibse_signature"] = sig_val
+                final["ibse_len"] = i_res.get("byte_len_cp949", i_res.get("byte_len"))
              else:
-                 final["ibse_signature"] = None
+                final["ibse_signature"] = None
              
              final["ibse_category"] = i_res.get("decision")
-                 
+                
              # [Broken URL Drop Logic]
              # IBSE Agent extracts a contextual sentence instead of the broken URL.
              # We must drop the URL from the final output to fulfill "URL : 없음" requirement.
@@ -350,38 +350,38 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # [숫자 난독화 / 가짜 IP 방어]
              extracted_for_check = str(u_details.get("extracted_url") or "")
              if extracted_for_check and not is_broken:
-                 import re, urllib.parse
-                 # 콤마로 여러 개가 연결되어 올 수 있으므로 분리해서 검사
-                 valid_url_parts = []
-                 for url_part in extracted_for_check.split(","):
-                     url_part = url_part.strip()
-                     if not url_part: continue
-                     
-                     parsed = urllib.parse.urlparse(url_part)
-                     domain = parsed.netloc or parsed.path
-                     # remove 'http://' or 'https://' from path if netloc was empty
-                     if domain.startswith('//'):
-                         domain = domain[2:]
-                     domain = domain.split('/')[0].split(':')[0]
-                     
-                     is_ip_format = bool(re.match(r'^\d{1,3}(\.\d{1,3}){3}$', domain))
-                     if is_ip_format:
-                         # 사용자 요청안: 공인/사설 여부와 상관없이 모든 IP 형태(예: 1.4.7.9)는 URL 추출에서 강제 배제 (버전, 일반 숫자 나열 오탐 방지)
-                         continue
-                         
-                     # [단독 도메인 (Bare Domain) 배제]
-                     # 단축URL, .com, .net 등 어떠한 도메인이든 패스(path)나 파라미터가 없는 단독 도메인 형태면 엑셀 추출에서 100% 배제
-                     if (not parsed.path or parsed.path == "/") and not parsed.query:
-                         continue
-                     
-                     valid_url_parts.append(url_part)
-                 
-                 # 만약 가짜 IP들을 걸러내고 남은 정상 URL이 있다면 그것만 살린다
-                 if len(valid_url_parts) > 0:
-                     u_details["extracted_url"] = ", ".join(valid_url_parts)
-                 else:
-                     # 모든 파편이 다 가짜 IP였다면 fake ip 처리
-                     is_fake_ip = True
+                import re, urllib.parse
+                # 콤마로 여러 개가 연결되어 올 수 있으므로 분리해서 검사
+                valid_url_parts = []
+                for url_part in extracted_for_check.split(","):
+                    url_part = url_part.strip()
+                    if not url_part: continue
+                    
+                    parsed = urllib.parse.urlparse(url_part)
+                    domain = parsed.netloc or parsed.path
+                    # remove 'http://' or 'https://' from path if netloc was empty
+                    if domain.startswith('//'):
+                        domain = domain[2:]
+                    domain = domain.split('/')[0].split(':')[0]
+                    
+                    is_ip_format = bool(re.match(r'^\d{1,3}(\.\d{1,3}){3}$', domain))
+                    if is_ip_format:
+                        # 사용자 요청안: 공인/사설 여부와 상관없이 모든 IP 형태(예: 1.4.7.9)는 URL 추출에서 강제 배제 (버전, 일반 숫자 나열 오탐 방지)
+                        continue
+                        
+                    # [단독 도메인 (Bare Domain) 배제]
+                    # 단축URL, .com, .net 등 어떠한 도메인이든 패스(path)나 파라미터가 없는 단독 도메인 형태면 엑셀 추출에서 100% 배제
+                    if (not parsed.path or parsed.path == "/") and not parsed.query:
+                        continue
+                    
+                    valid_url_parts.append(url_part)
+                
+                # 만약 가짜 IP들을 걸러내고 남은 정상 URL이 있다면 그것만 살린다
+                if len(valid_url_parts) > 0:
+                    u_details["extracted_url"] = ", ".join(valid_url_parts)
+                else:
+                    # 모든 파편이 다 가짜 IP였다면 fake ip 처리
+                    is_fake_ip = True
              
              # User requested fix: Drop URL if Safe URL Injection is detected.
              # This is flagged by fp_sentinel_node setting final["drop_url"] = True later,
@@ -397,21 +397,21 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # [단독 도메인 오탐 방어 로직 제거]
              # 앞선 루프에서 모든 단독 도메인을 일괄 삭제하므로 이중 검증 불필요
              if is_injection or is_fake_ip or is_filtered_short or is_dead_domain:
-                 final["drop_url"] = True
-                 if is_fake_ip:
-                     final["drop_url_reason"] = "empty_or_fake_ip"
-                 elif is_filtered_short:
-                     final["drop_url_reason"] = "filtered_short_url"
-                 elif is_dead_domain:
-                     final["drop_url_reason"] = "dead_domain"
-                     final["reason"] = f"[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | {final.get('reason', '')}"
-                 else:
-                     final["drop_url_reason"] = "safe_injection"
-                 
-                 # Drop the URL explicitly
-                 if "details" in u_res:
-                     u_res["details"]["extracted_url"] = None
-                 valid_extracted_urls.clear()
+                final["drop_url"] = True
+                if is_fake_ip:
+                    final["drop_url_reason"] = "empty_or_fake_ip"
+                elif is_filtered_short:
+                    final["drop_url_reason"] = "filtered_short_url"
+                elif is_dead_domain:
+                    final["drop_url_reason"] = "dead_domain"
+                    final["reason"] = f"[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | {final.get('reason', '')}"
+                else:
+                    final["drop_url_reason"] = "safe_injection"
+                
+                # Drop the URL explicitly
+                if "details" in u_res:
+                    u_res["details"]["extracted_url"] = None
+                valid_extracted_urls.clear()
 
              # 3. User Requested: If unextractable AND no URL was found, drop completely from Excel
              # If is_broken is True, treat it as no URL.
@@ -425,42 +425,50 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              pre_url = state.get("pre_parsed_url")
              
              if not pre_url:
-                 # KISA 원본에 URL이 없는 경우, 
-                 # excel_handler.py 에서는 Red Group(is_separated) 조건이 아닐 때 무조건 빈칸으로 저장하므로 UI도 이를 똑같이 따라간다.
-                 is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in str(final.get("reason", ""))
-                 if not is_separated:
-                     final["drop_url"] = True
-                     final["drop_url_reason"] = "empty_pre_parsed_url_sync"
-                     
+                # KISA 원본에 URL이 없는 경우, 
+                # excel_handler.py 에서는 Red Group(is_separated) 조건이 아닐 때 무조건 빈칸으로 저장하므로 UI도 이를 똑같이 따라간다.
+                is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in str(final.get("reason", ""))
+                if not is_separated:
+                    final["drop_url"] = True
+                    final["drop_url_reason"] = "empty_pre_parsed_url_sync"
+                    
              elif pre_url and not final.get("drop_url"):
-                 import urllib.parse
-                 try:
-                     # 엑셀 핸들러와 동일하게, 전체 URL이 단독 도메인들로만 구성되었거나 파손된 URL인지 검증
-                     all_are_bare_or_corrupt = True
-                     for u in pre_url.split(","):
-                         u = u.strip()
-                         if not u: continue
-                         test_u = u if "://" in u else "http://" + u
-                         parsed_u = urllib.parse.urlparse(test_u)
-                         
-                         # 파손된 형태 검사 (괄호, 별표 등. 단, 한글은 합법적인 커스텀 URL 슬러그일 수 있으므로 허용)
-                         is_corrupt = bool(re.search(r'[\[\]\*\(\)\{\}\<\>]', parsed_u.path))
-                         is_bare = (not parsed_u.path or parsed_u.path == "/") and not parsed_u.query
-                         
-                         if not is_bare and not is_corrupt:
-                             all_are_bare_or_corrupt = False
-                             break
-                             
-                     if all_are_bare_or_corrupt:
-                         # 명백히 스팸으로 판정된 증거라면 예외적으로 보존
-                         if final.get("red_group") or final.get("is_spam") or final.get("malicious_url_extracted"):
-                             pass 
-                         else:
-                             final["drop_url"] = True
-                             final["drop_url_reason"] = "bare_or_corrupt_domain_sync"
-                 except Exception:
-                     pass
-                  
+                import urllib.parse
+                try:
+                    # 엑셀 핸들러와 동일하게, 전체 URL이 단독 도메인들로만 구성되었거나 파손된 URL인지 검증
+                    all_are_bare_or_corrupt = True
+                    for u in pre_url.split(","):
+                        u = u.strip()
+                        if not u: continue
+                        test_u = u if "://" in u else "http://" + u
+                        parsed_u = urllib.parse.urlparse(test_u)
+                        
+                        # 파손된 형태 검사 (괄호, 별표 등. 단, 한글은 합법적인 커스텀 URL 슬러그일 수 있으므로 허용)
+                        is_corrupt = bool(re.search(r'[\[\]\*\(\)\{\}\<\>]', parsed_u.path))
+                        is_bare = (not parsed_u.path or parsed_u.path == "/") and not parsed_u.query
+                        
+                        if not is_bare and not is_corrupt:
+                            all_are_bare_or_corrupt = False
+                            break
+                            
+                    if all_are_bare_or_corrupt:
+                        # 명백히 스팸으로 판정된 증거라면 예외적으로 보존
+                        if final.get("red_group") or final.get("is_spam") or final.get("malicious_url_extracted"):
+                            pass 
+                        else:
+                            final["drop_url"] = True
+                            final["drop_url_reason"] = "bare_or_corrupt_domain_sync"
+                except Exception:
+                    pass
+                 
+        # [NEW] 단축 URL 이중 추출(엑셀 중복 등재) 방지
+        # 유효한 URL 파편이 존재하고 최종적으로 폐기(drop_url)되지 않을 예정이라면,
+        # URL중복제거 시트에서 이미 차단되므로 IBSE 문자열 시그니처는 무효화(None) 처리합니다.
+        if valid_extracted_urls and not final.get("drop_url"):
+            if final.get("ibse_signature"):
+                final["ibse_signature"] = None
+                final["ibse_category"] = "unextractable (URL Deduplication Active)"
+                
         return {"final_result": final}
 
     def fp_sentinel_node(state: BatchState):
