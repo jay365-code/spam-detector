@@ -72,7 +72,7 @@ class ExcelHandler:
             "naver.me", 
             "ouo.io", "ow.ly", 
             "qrco.de", 
-            "rb.gy", "rebrand.ly", "reurl.kr", 
+            "rb.gy", "rebrand.ly", "reurl.kr", "rul.kr",
             "sbz.kr", "short.io", "shorter.me", "shorturl.at", "shrl.me", "shrtco.de", 
             "t.co", "t.ly", "t.me", "t2m.kr", "tiny.cc", "tinyurl.com", "tne.kr", "tny.im", "tr.ee", "tuney.kr",
             "url.kr", "uto.kr", 
@@ -1168,7 +1168,8 @@ class ExcelHandler:
                             sig_len = result.get("ibse_len", self._lenb(clean_sig))
                         else:
                             clean_sig = clean_msg  # 진성 URL 없는 스팸 본문 전체를 시그니처로 사용
-                            # 엑셀 규격 오류(50바이트 풍선효과) 방지: 원문이 너무 길면 40바이트로 강제 절삭
+                            # 1단계: 원문이 너무 길면 문장 제한인 40바이트로 강제 절삭
+                            # (40바이트(약 20글자)는 충분한 엔트로피를 가지므로 절삭해도 유니크함이 어느정도 보장됨)
                             if self._lenb(clean_sig) > 40:
                                 valid_len = 0
                                 for i in range(1, len(clean_sig) + 1):
@@ -1177,7 +1178,20 @@ class ExcelHandler:
                                     else:
                                         break
                                 clean_sig = clean_sig[:valid_len]
+                                
                             sig_len = self._lenb(clean_sig)
+                            
+                            # 2단계: 핵심 방어 로직 (유니크함 보호 및 차단 시스템 데드존 회피)
+                            # 사용자의 지적대로 21~38바이트 시그니처를 억지로 20바이트로 자르면
+                            # 앞부분만 남아 유니크함이 훼손되고 오탐(False Positive)의 위험이 커짐.
+                            # KISA/통신사 규격상 21~38바이트는 등록 자체가 불가능한 데드존이므로,
+                            # LLM이 이미 추출을 포기(unextractable)한 상태라면 과감히 차단 등록을 포기(Drop)함.
+                            if 20 < sig_len < 39:
+                                continue
+                            
+                            # 3단계: 9바이트 미만이면 효용성이 없으므로 등록 포기
+                            if sig_len < 9:
+                                continue
                         
                         blocklist_data.append({
                             "msg": clean_msg, 

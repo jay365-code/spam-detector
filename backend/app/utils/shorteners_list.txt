@@ -1482,3 +1482,9 @@ zynga.my
 zywv.us
 zzb.bz
 zzu.info
+
+bitly.cx
+ko.fm
+agshort.link
+
+rul.kr
