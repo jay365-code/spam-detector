@@ -257,6 +257,43 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # [수정] Red Group 판정은 KISA 원본(입력 파라미터)에 URL 필드가 명시적으로 존재할 때만 발동
              has_input_url = bool(state.get("pre_parsed_url"))
              
+             # --- [URL 단독 메시지 보호 강화] ---
+             raw_msg_str = str(state.get("raw_message") or "")
+             decoded_text_str = str(state.get("decoded_kisa_text") or raw_msg_str).strip()
+             cleaned_text = decoded_text_str
+             
+             all_urls_to_remove = set(valid_extracted_urls)
+             if has_input_url:
+                 all_urls_to_remove.update([p.strip() for p in str(state.get("pre_parsed_url", "")).split(",") if p.strip()])
+                 
+             for u in all_urls_to_remove:
+                 if u:
+                     cleaned_text = cleaned_text.replace(u, "")
+             
+             import re
+             cleaned_alpha = re.sub(r'[\s\[\]\(\)<>\'"\-\|:;,]', '', cleaned_text)
+             # "오직 URL만 남은 상황이거나", Content Agent의 판단 사유에 "URL 단독"이 포함되어 있거나
+             is_url_only_msg = (len(cleaned_alpha) <= 3) or ("URL 단독" in str(final.get("reason", "")))
+             
+             if is_url_only_msg and is_pure_content_ham and url_is_spam:
+                 # 도박, 마약, 성매매, 성인물, 피싱, 스미싱 등 무조건적 차단(맹독성) 키워드가 포함되었는지 검사
+                 # (코드 2번에 주식과 도박이 혼재되어 있어 세밀한 키워드 필터링 적용)
+                 toxic_keywords = ["도박", "카지노", "바카라", "마약", "성매매", "음란", "불법약물", "피싱", "스미싱", "성인용품", "토토", "사행성"]
+                 is_toxic = False
+                 reason_lower = str(url_reason).lower()
+                 if any(k in reason_lower for k in toxic_keywords):
+                     is_toxic = True
+                 if str(url_code) == "1":  # 1(성인)은 무조건 치명적 유흥/성인물
+                     is_toxic = True
+                     
+                 if not is_toxic:
+                     # (예: 카카오/네이버 방초대, 주식 정보방, 단순 마케팅 링크 등) 사용자를 믿고 HAM(정상)으로 처리합니다.
+                     url_is_spam = False
+                     u_res["is_spam"] = False
+                     url_reason = f"[URL 단독보호] 맹독성 스팸키워드 없음 (방초대 의심) -> HAM 전환 | " + str(url_reason)
+                     u_res["reason"] = url_reason
+             # -----------------------------------
+             
              force_red_group = False
              
              # Case 1: 완전 정상 텍스트 + 악성 단검(URL)
