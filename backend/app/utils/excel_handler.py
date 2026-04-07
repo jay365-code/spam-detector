@@ -57,8 +57,8 @@ class ExcelHandler:
     def _load_shortener_domains(self) -> set:
         # 기본 하드코딩된 단축 도메인 세트
         domains = {
-            "a.to", "abit.ly", "adf.ly", "adfoc.us", "aka.ms", "amzn.to", "apple.co", "asq.kr", 
-            "bit.do", "bit.ly", "bitly.com", "bitly.kr", "bl.ink", "blow.pw", "buff.ly", "buly.kr", 
+            "a.to", "abit.ly", "adf.ly", "adfoc.us", "agshort.link", "aka.ms", "amzn.to", "apple.co", "asq.kr", 
+            "bit.do", "bit.ly", "bitly.com", "bitly.cx", "bitly.kr", "bl.ink", "blow.pw", "buff.ly", "buly.kr", 
             "c11.kr", "clic.ke", "cogi.cc", "coupa.ng", "cutt.it", "cutt.ly", 
             "di.do", "dokdo.in", "dub.co", 
             "fb.me", 
@@ -66,7 +66,7 @@ class ExcelHandler:
             "han.gl", "horturl.at", 
             "ii.ad", "iii.ad", "instagr.am", "is.gd", 
             "j.mp", 
-            "kakaolink.com", "ko.gl", "koe.kr", 
+            "kakaolink.com", "ko.fm", "ko.gl", "koe.kr", 
             "link24.kr", "linktr.ee", "lrl.kr", 
             "mcaf.ee", "me2.do", "muz.so", "myip.kr", 
             "naver.me", 
