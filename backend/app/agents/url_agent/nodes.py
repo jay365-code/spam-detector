@@ -285,6 +285,7 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
                     )
                     try:
                         response = await asyncio.wait_for(llm.ainvoke([message]), timeout=45.0)
+                        key_manager.extract_and_add_tokens(provider, response)
                         key_manager.report_success(provider)
                         return response
                     except asyncio.TimeoutError as timeout_e:
@@ -315,6 +316,7 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
                                 response = await asyncio.wait_for(fallback_llm.ainvoke([message]), timeout=45.0)
                                 if hasattr(response, 'content') and isinstance(response.content, str):
                                     response.content = f"__FALLBACK_{sub_model}__\n" + response.content
+                                key_manager.extract_and_add_tokens("GEMINI", response)
                                 key_manager.report_success("GEMINI")
                                 return response
                             except Exception as fallback_e:
@@ -760,6 +762,12 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
             
     logger.info(f"[URL Agent] Extracted URLs: {unique_urls}")
     
+    status_cb = state.get("status_callback")
+    if status_cb:
+        count = len(unique_urls)
+        url_list = ", ".join(unique_urls[:2]) + ("..." if count > 2 else "") if count > 0 else "None"
+        await status_cb(f"🔗 [URL 추출] {count}개의 URL 대조 ({url_list})")
+    
     return {
         "target_urls": unique_urls,
         "current_url": unique_urls[0] if unique_urls else None,
@@ -777,6 +785,11 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
     """
     url = state.get("current_url")
     logger.info(f"[URL Agent] Scraping URL: {url}")
+    
+    status_cb = state.get("status_callback")
+    if status_cb and url:
+        await status_cb(f"🌐 [URL 스크래핑] 목적지 접속 및 캡처 중: {url}")
+        
     if not url:
         return {"reason": "No URL to scrape"}
     
@@ -951,6 +964,11 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                 is_broken_short_url = True
 
         logger.warning(f"스크래핑 실패: {scraped.get('error')}")
+        
+        status_cb = state.get("status_callback")
+        if status_cb:
+            await status_cb(f"⚠️ [URL 스크래핑 실패] 목적지 접속 불가 (사유: {scraped.get('error')})")
+            
         return {
             "is_spam": None, 
             "reason": f"Scraping failed: {scraped.get('error')}{fallback_text}",
@@ -969,6 +987,11 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     # 신뢰 도메인 체크 (Google, Naver, Play Store 등)
     if is_trusted_domain(current_url):
         logger.info(f"Trusted domain 검출 | URL={current_url} → Auto HAM (Continuing to next URL)")
+        
+        status_cb = state.get("status_callback")
+        if status_cb:
+            await status_cb("✅ [도메인 검증] 인가/신뢰 도메인으로 확인되어 상세 분석 생략")
+            
         return {
             "is_spam": False,
             "spam_probability": 0.0,
@@ -999,11 +1022,12 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     - 판정: {content_label}
     - 근거: {content_reason}
     
-    **당신의 임무**: SMS 메시지와 URL 페이지 내용을 **비교 분석(Crosscheck)**하여 **문맥 일치(Consistency)** 여부와 **스팸 의도**를 판단하세요.
+    **당신의 임무**: SMS 메시지와 URL 페이지 내용을 **비교 분석(Crosscheck)**하여 **문맥 일치(Consistency)** 여부를 판단하세요.
     
     **핵심 판단 기준**: 
     1. SMS가 주장하는 내용(예: 대출, 배송, 상품)과 URL 페이지 내용이 **일치**하는가?
-    2. URL 페이지가 SMS 내용을 숨기기 위한 **회피용(Evasion)** 페이지(단축기, 봇 체크 등)인가?
+    2. URL 페이지가 SMS 내용을 숨기기 위한 **필터 회피용(Evasion) 방패막이(뉴스, 일반 블로그 등)**인가?
+    *(주의: 회피용 방패막이 링크임이 감지될 경우, URL 자체를 스팸으로 오탐하지 말고 가이드에 따라 `is_mismatched=true`를 반드시 활성화할 것)*
     """
     
     prompt = f"""
@@ -1040,6 +1064,11 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         if "403" in preview_text and ("Forbidden" in preview_text or "denied" in preview_text.lower()):
             logger.warning(f"⚠️ [URL Agent] Scraper Blocked (403 Forbidden)! Site may have bot protection. Falling back to content-only analysis where possible.")
         logger.info(f"[URL Agent] Scraped Content Preview (100 chars): {preview_text}...")
+        
+        status_cb = state.get("status_callback")
+        if status_cb:
+            await status_cb("🧠 [시각적 분석] 캡처된 랜딩 페이지 구조 및 텍스트 검증 중...")
+            
         llm = get_llm()
         
         @retry(
@@ -1059,6 +1088,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
             try:
                 # [Phase 1] 45s Timeout added to prevent hangs
                 response = await asyncio.wait_for(llm.ainvoke(prompt), timeout=45.0)
+                key_manager.extract_and_add_tokens(provider, response)
                 key_manager.report_success(provider)
                 return response
             except asyncio.TimeoutError as e:
@@ -1083,6 +1113,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                         response = await asyncio.wait_for(fallback_llm.ainvoke(prompt), timeout=45.0)
                         if hasattr(response, 'content') and isinstance(response.content, str):
                             response.content = f"__FALLBACK_{sub_model}__\n" + response.content
+                        key_manager.extract_and_add_tokens("GEMINI", response)
                         return response
                     except Exception as fallback_e:
                         logger.error(f"[URL Agent Fallback] Sub model failed: {fallback_e}")
@@ -1168,9 +1199,15 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         if is_inconclusive and screenshot_b64:
             logger.info("Text분석 Inconclusive → Vision 분석 시도")
             
+            if status_cb:
+                await status_cb("👁️ [정밀 시각 분석] 텍스트 부족으로 인한 스크린샷 Vision 추론 진행 중...")
+                
             # Vision 분석 호출
             vision_result = await analyze_with_vision(screenshot_b64, current_url, page_title, content_context)
             
+            if status_cb:
+                await status_cb("✅ [정밀 시각 분석] 완료")
+                
             # Vision 분석 성공 시 결과 사용
             if vision_result.get("analysis_type") == "vision" and vision_result.get("is_spam") is not None:
                 logger.info("Vision 분석 완료 → Vision 결과 사용")
@@ -1192,6 +1229,9 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                 logger.warning("Vision 분석 실패/불확실 → Text 결과 유지")
                 reason = f"{reason} | [Vision 분석 시도했으나 판단 불가]"
         
+        if status_cb and not is_inconclusive:
+            await status_cb("✅ [시각적 분석] 완료")
+            
         # 1차 분석 결과 반환 (확정 판단 또는 Vision 실패 시)
         # SPAM이면 즉시 종료 (is_final=True)
         # HAM/Inconclusive면 다음 URL 확인 (is_final=False)
@@ -1242,6 +1282,11 @@ async def select_link_node(state: SpamState) -> Dict[str, Any]:
             
     if next_url:
         logger.info(f"[URL Agent] Next URL selected: {next_url}")
+        
+        status_cb = state.get("status_callback")
+        if status_cb:
+            await status_cb(f"🔄 [심층 추적] 숨겨진 경로 발굴, 재전송 시도: {next_url}")
+            
         return {
             "current_url": next_url,
             "depth": depth + 1,

@@ -298,6 +298,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                             else:
                                 raise Exception("Async LLM Timeout (No fallback key)") from e
                         
+                        key_manager.extract_and_add_tokens(provider, response)
                         content = _normalize_llm_content(response.content)
                         
                         # Gemini Safety Filter Block 처리
@@ -325,6 +326,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                     
                     llm = self._get_cached_client(provider, current_api_key, model_name)
                     response = await llm.ainvoke([HumanMessage(content=prompt)])
+                    key_manager.extract_and_add_tokens(provider, response)
                     content = _normalize_llm_content(response.content)
                     
                 else: # OPENAI
@@ -333,6 +335,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                     
                     llm = self._get_cached_client(provider, current_api_key, model_name)
                     response = await llm.ainvoke([HumanMessage(content=prompt)])
+                    key_manager.extract_and_add_tokens(provider, response)
                     content = _normalize_llm_content(response.content)
                 # All providers
                 key_manager.report_success(provider)
@@ -652,25 +655,16 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
 
 [CRITICAL INSTRUCTIONS] 
 1. 텍스트 분석 집중: 오직 텍스트 문맥과 구조만 분석하라. URL의 실제 접속 가능성이나 목적지는 고려하지 않는다.
-2. 텍스트 난독화(Textual Obfuscation): 정상적인 단어 사이에 특수문자가 무분별하게 삽입되거나, 기이하게 띄어쓰기가 되어 있는 등 의도적으로 형태소를 파괴한 패턴은 가장 강력한 필터 회피 시그널(Textual Signal)로 간주한다.
-3. 외국어 처리: 러시아어(키릴 문자), 중국어 등 외국어로 쓰여진 텍스트 자체를 난독화나 쓰레기 토큰으로 오해하지 마라. 번역했을 때 악의적 URL이나 명백한 사기/협박 맥락이 없는 일상/업무 대화(예: 여권/비자 사진 파일 요청 등)라면 안전한 HAM이다. 외국어라는 이유만으로 SPAM이나 is_garbage_obfuscation으로 간주하는 것을 절대 금지한다.
-4. 뉴스/오피니언/정치 캠페인 예외: 공직선거법에 따른 기존 정당/후보자의 선거 운동뿐만 아니라, 단순히 특정 인물(예: 정치인, 사회인사)의 이름을 언급하며 뉴스 기사 링크를 공유하거나, 감정적인 비판 및 개인적 의견("이건 아니지 않습니까!")을 강하게 표출하는 여론 조장 메시지(네거티브 캠페인 포함)는 금융 사기나 불법 도박이 아니므로 **안전한 HAM**이다. 텍스트가 짧고 모호하더라도 불법적인 유인(대출, 주식, 도박, 피싱) 목적이 보이지 않는 단순 여론/뉴스 공유라면 악당(스팸)으로 오탐하지 말고 무조건 HAM으로 판정하라.
+2. 가이드 절대 준수: 위 제공된 [Spam Guide] 문서의 규칙(제0원칙 및 예외 보호 등)과 판단 우선순위를 어떠한 경우에도 최우선 기준으로 확고히 적용하라.
+
 [PROCEDURE]
-Step 1. [제0원칙: 악성 스팸 절대 차단 (Supreme Principle)]
-   - 위 [Spam Guide] 문서의 '1. 최우선 원칙(제0원칙)'을 먼저 꼼꼼히 대조하라.
-   - 메시지 내에 제0원칙에 명시된 악성 스팸 파괴 행위(도박, 피싱, 리딩방 구체적 사기 등)가 하나라도 포함되어 있다면, 그 어떤 VoC 예외 조항을 주장하더라도 **모든 예외 보호를 즉시 박탈(Override)**하고 최우선적으로 SPAM (label="SPAM")으로 확정하라.
-
-Step 2. [VoC 예외 보호 검토 (Whitelist 적용)]
-   - Step 1의 명백한 악성 의도가 **전혀 없는 상태**에서만 적용한다.
-   - 위 [Spam Guide] 문서의 '2. 판단 우선순위 및 VoC 예외 보호 (Whitelist)'를 확인하라. 명시된 제한적 보호 범주(A)나 반박 불가한 사칭 문자(B) 요건에 해당하는 경우, 오차단에 따른 치명적 고객 불만(VoC)을 방지하기 위해 절대 SPAM으로 잡지 말고 무조건 HAM(label="HAM")으로 판정하라.
-
-Step 3. 시그널 1차 판정:
-   - harm_anchor: 도박/성인/사기/피싱/리딩방/불법 등 치명적 위해성(Step 1 악성 스팸 여부)이 있는지 (`true` / `false`)
+Step 1. 시그널 1차 판정:
+   - harm_anchor: 도박/성인/사기/피싱/리딩방/불법 등 치명적 위해성(가이드의 최우선 스팸 기준)이 있는지 (`true` / `false`)
    - route_or_cta: 수신자의 행동(클릭, 전화, 오픈채팅 가입 등)을 강하게 유도하는지 (`true` / `false`)
 
-Step 4. 의도 명확도 산출: 최종 스팸 확률을 spam_probability(0.0~1.0)로 산출하라.
+Step 2. 의도 명확도 산출: 최종 스팸 확률을 spam_probability(0.0~1.0)로 산출하라.
 
-Step 5. [암묵적 도메인 (Covert Domain) 추론 및 추출]
+Step 3. [암묵적 도메인 (Covert Domain) 추론 및 추출]
    - 만약 메시지 내에 "도박, 스포츠토토, 카지노, 성인 유흥" 등을 암시하는 불법적인 문맥이 존재하거나, 접속을 유도하는 기이한 텍스트 구조가 있을 경우 다음과 같이 숨겨진 URL을 복원하여 `obfuscated_urls`에 넣는다.
    - ① 고의 확장자 누락/잘림: `NH1245`, `메인337`처럼 독립된 식별 코드나, `nike26. `처럼 확장자 직전까지만 쓰여진 경우 무조건 `.com`을 붙여 복원하라 (예: `NH1245.com`, `nike26.com`).
    - ② 한글음차/변형 확장자: `.com`을 `점켬`, `점컴`, `쩜컴`, `닷컴` 등으로 변형한 경우 `.com`으로 복원하여 추출하라 (예: `TOY9898 점켬` -> `TOY9898.com`).
@@ -678,7 +672,7 @@ Step 5. [암묵적 도메인 (Covert Domain) 추론 및 추출]
    - ④ 영문 번역/음차 유추: 단독 한글 코드가 영단어 발음인 경우(예: `메인337`), 한글과 영어를 각각 추출하라 (`메인337.com`, `main337.com`).
    - 단, 악성 의도가 없는 완전 정상/일상 대화, 일반적인 금융 인증번호 등에는 절대 `.com`을 붙이지 마라.
 
-Step 6. 최종 판정 (label 확정):
+Step 4. 최종 판정 (label 확정):
    - Guide 기준에 따라 완벽한 정상문자면 HAM. 
    - Guide 기준 SPAM 사유에 해당하면 무조건 SPAM. SPAM일 경우 spam_code (0, 1, 2, 3 중 택1)를 반드시 Guide의 3항(분류 코드 선택) 기준에 맞게 지정하라.
 
@@ -1120,6 +1114,8 @@ Step 6. 최종 판정 (label 확정):
                         else:
                             raise Exception("Async Summary LLM Timeout") from e
                         
+                        
+                    key_manager.extract_and_add_tokens(provider, response)
                     key_manager.report_success(provider)
                     return response
                 except Exception as e:
@@ -1174,6 +1170,8 @@ Step 6. 최종 판정 (label 확정):
                             else:
                                 raise Exception("Async Summary LLM Timeout after rotation") from e
                             
+                            
+                        key_manager.extract_and_add_tokens(provider, response)
                         key_manager.report_success(provider)
                         return response
                         

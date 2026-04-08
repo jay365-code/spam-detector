@@ -36,3 +36,6 @@ class SpamState(TypedDict):
     
     # [Infrastructure] Localized Browser Manager (Prevent Global State Issues)
     playwright_manager: Optional[Any] # PlaywrightManager Instance passed from caller
+    
+    # UI Stream
+    status_callback: Optional[Any]  # status update callback

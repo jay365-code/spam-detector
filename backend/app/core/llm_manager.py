@@ -42,6 +42,7 @@ class LLMKeyManager:
             self._quota_exhausted[p] = False
             self._last_rotation_time[p] = 0.0
             self._consecutive_failures[p] = 0
+            self._token_usage = {"GEMINI": {"in": 0, "out": 0}, "OPENAI": {"in": 0, "out": 0}, "CLAUDE": {"in": 0, "out": 0}}
             
             if keys:
                 logger.info(f"[KeyManager] Initialized {p} with {len(keys)} key(s).")
@@ -205,6 +206,43 @@ class LLMKeyManager:
             "current_index": self._current_index.get(provider, 0),
             "has_rotation": len(keys) > 1
         }
+
+    def add_tokens(self, model: str, in_tokens: int, out_tokens: int):
+        """Add tokens to the usage tracker per model."""
+        if not hasattr(self, '_token_usage'):
+            self._token_usage = {}
+            
+        with self._lock:
+            if model not in self._token_usage:
+                self._token_usage[model] = {"in": 0, "out": 0}
+            self._token_usage[model]["in"] += (in_tokens or 0)
+            self._token_usage[model]["out"] += (out_tokens or 0)
+                
+    def extract_and_add_tokens(self, provider: str, response):
+        """Helper to extract usage_metadata from LangChain AIMessage and add to totals"""
+        if not response:
+            return
+        usage = getattr(response, 'usage_metadata', None)
+        if usage:
+            response_metadata = getattr(response, 'response_metadata', {})
+            model_name = response_metadata.get('model_name') or response_metadata.get('model') or provider.upper()
+            
+            # OpenAI sometimes prefixes model strings
+            if isinstance(model_name, str):
+                model_name = model_name.replace("models/", "")
+                
+            self.add_tokens(model_name, usage.get('input_tokens', 0), usage.get('output_tokens', 0))
+
+    def get_token_usage(self) -> dict:
+        """Get the current global token usage."""
+        if hasattr(self, '_token_usage'):
+            return self._token_usage
+        return {}
+        
+    def reset_token_usage(self):
+        """Reset global token tracking."""
+        with self._lock:
+            self._token_usage = {}
 
 # 싱글톤 인스턴스
 key_manager = LLMKeyManager()

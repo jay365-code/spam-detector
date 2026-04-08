@@ -83,7 +83,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ ws, hitlRequest, o
                 setMessages(prev => {
                     const lastMsg = prev[prev.length - 1];
                     if (lastMsg && lastMsg.role === 'assistant') {
-                        return [...prev.slice(0, -1), { ...lastMsg, isStreaming: false, processStatus: null }];
+                        return [...prev.slice(0, -1), { 
+                            ...lastMsg, 
+                            isStreaming: false, 
+                            processStatus: null,
+                            tokenUsage: data.token_usage 
+                        }];
                     }
                     return prev;
                 });
@@ -288,6 +293,27 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ ws, hitlRequest, o
                                             <div className="font-sans text-[15px]">
                                                 <ReactMarkdown>{msg.content}</ReactMarkdown>
                                             </div>
+                                            {msg.tokenUsage && (
+                                                <div className="mt-3 flex gap-2 text-[10px] text-slate-400 border-t border-slate-700/50 pt-2 flex-wrap">
+                                                    <span className="font-bold flex items-center pr-1 border-r border-slate-700">토큰 사용량</span>
+                                                    {Object.entries(msg.tokenUsage).map(([provider, usage]: [string, any]) => {
+                                                        if (!usage.in && !usage.out) return null;
+                                                        const tIn = (usage.in / 1000).toFixed(1) + 'k';
+                                                        const tOut = (usage.out / 1000).toFixed(1) + 'k';
+                                                        const colors: any = {
+                                                            'GEMINI': 'text-blue-400',
+                                                            'OPENAI': 'text-green-400',
+                                                            'CLAUDE': 'text-purple-400'
+                                                        };
+                                                        return (
+                                                            <span key={provider} className="flex gap-1 items-center bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700">
+                                                                <span className={`font-bold ${colors[provider] || 'text-slate-300'} text-[9px]`}>{provider}</span>
+                                                                <span>IN: {tIn} | OUT: {tOut}</span>
+                                                            </span>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}

@@ -7,6 +7,7 @@ interface StatusPanelProps {
     isProcessing: boolean;
     startTime?: number | null; // Start Time
     endTime?: number | null;   // [New] End Time
+    tokenUsage?: any;          // [New] Token Usage Data
     downloadUrl: string | null;
     onDownload?: () => void;
     isCancelling?: boolean;
@@ -20,6 +21,7 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
     isProcessing,
     startTime,
     endTime,
+    tokenUsage,
     downloadUrl,
     onDownload,
     isCancelling = false,
@@ -58,8 +60,9 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
     };
 
     return (
-        <div className="relative w-full h-[78px] bg-slate-800 border border-slate-700 rounded-xl shadow-xl px-4 flex items-center animate-fade-in">
-            <div className="flex-1 mr-4">
+        <div className="flex items-center gap-3 w-full">
+            <div className="relative flex-1 min-h-[78px] py-3 bg-slate-800 border border-slate-700 rounded-xl shadow-xl px-4 flex items-center animate-fade-in">
+                <div className="flex-1 mr-4 flex flex-col justify-center">
                 <div className="flex justify-between items-center text-xs text-slate-400 mb-1.5">
                     <span className="flex items-center gap-2 font-medium text-slate-300">
                         {isProcessing ? (
@@ -89,7 +92,7 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
                     <span className="font-mono">{current} / {total} ({percentage}%)</span>
                 </div>
 
-                <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                <div className="w-full justify-between items-center bg-slate-700 rounded-full h-2 overflow-hidden mb-1">
                     <div
                         className={`h-2 rounded-full transition-all duration-300 ease-out ${isCancelling
                             ? 'bg-gradient-to-r from-red-500 to-orange-500'
@@ -131,6 +134,35 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
                     <Download className="w-4 h-4" />
                     Download
                 </button>
+            )}
+            </div>
+            
+            {/* Token Usage UI (Completely Outside Main Box) */}
+            {tokenUsage && Object.keys(tokenUsage).length > 0 && (
+                <div className="flex items-center flex-col gap-1 min-w-[140px] max-h-[78px] overflow-y-auto custom-scrollbar bg-slate-800/60 border border-slate-700/60 p-2 rounded-xl shadow-md">
+                    {Object.entries(tokenUsage).map(([model, usage]: [string, any]) => {
+                        if (!usage.in && !usage.out) return null;
+                        const tIn = (usage.in / 1000).toFixed(1) + 'k';
+                        const tOut = (usage.out / 1000).toFixed(1) + 'k';
+                        
+                        let colorClass = 'text-slate-300';
+                        const modelLower = model.toLowerCase();
+                        if (modelLower.includes('gemini')) colorClass = 'text-blue-400';
+                        else if (modelLower.includes('gpt')) colorClass = 'text-green-400';
+                        else if (modelLower.includes('claude')) colorClass = 'text-purple-400';
+
+                        return (
+                            <div key={model} className="flex flex-col w-full bg-slate-900/80 border border-slate-700/80 px-2 py-1 rounded">
+                                <span className={`font-bold ${colorClass} text-[10px] truncate max-w-[120px]`} title={model}>{model}</span>
+                                <div className="flex gap-1 text-[9px] text-slate-400 font-mono tracking-tighter">
+                                    <span>I:{tIn}</span>
+                                    <span className="text-slate-600">|</span>
+                                    <span>O:{tOut}</span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             )}
         </div>
     );

@@ -107,6 +107,7 @@ function App() {
   const [downloadFilename, setDownloadFilename] = useState<string | null>(null);
   const [kisaFilename, setKisaFilename] = useState<string>('MAIN');
   const [trapFilename, setTrapFilename] = useState<string>('TRAP');
+  const [tokenUsage, setTokenUsage] = useState<any>(null); // [New] Token Usage Tracking
 
   // Cancellation State
   const [isCancelling, setIsCancelling] = useState(false);
@@ -555,6 +556,11 @@ function App() {
                 }
               }
             }
+            
+            // [New] Update token usage state if available
+            if (data.token_usage) {
+              setTokenUsage(data.token_usage);
+            }
   
             // If this is just the initial broadcast, skip adding an empty log row
             if (data.status === 'started') {
@@ -701,6 +707,7 @@ function App() {
     setKisaFilename('MAIN');
     setTrapFilename('TRAP');
     setHitlRequest(null);
+    setTokenUsage(null); // Reset token usage
     setActiveReportName(null); // 분석 시작 시 보고서 모드 해제
     setActiveReportFileName(null);
     // Reset cancellation state
@@ -890,6 +897,7 @@ function App() {
                   isProcessing={isProcessing}
                   startTime={startedAt} // [New] Pass Start Time
                   endTime={endTime} // [New] Pass End Time
+                  tokenUsage={tokenUsage} // [New] Pass Token Usage
                   downloadUrl={downloadUrl}
                   onDownload={handleExcelSaveAs}
                   isCancelling={isCancelling}

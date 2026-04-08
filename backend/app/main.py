@@ -44,6 +44,7 @@ from app.agents.content_agent.agent import ContentAnalysisAgent
 from app.agents.url_agent.agent import UrlAnalysisAgent
 from app.utils.excel_handler import ExcelHandler
 from app.core.constants import SPAM_CODE_MAP
+from app.core.llm_manager import key_manager
 
 # Custom Exception for Cancellation
 class CancellationException(Exception):
@@ -830,6 +831,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     user_msg = data.get("content", "")
                     mode = data.get("mode", "Unified") # Default to Unified "Smart" Mode
                     
+                    # 🔹 Reset token tracking purely for this chat run
+                    key_manager.reset_token_usage()
+                    
                     logger.info(f"\n{'='*60}\n[Chat] Mode: {mode}\n[Chat] 메시지 원문:\n  {user_msg}\n{'='*60}")
                     
                     if user_msg:
@@ -963,7 +967,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                     # Signal End of Stream
                                     await manager.send_personal_message({
                                         "type": "CHAT_STREAM_END",
-                                        "content": ""
+                                        "content": "",
+                                        "token_usage": key_manager.get_token_usage()
                                     }, client_id)
                                     continue
                                 
@@ -1016,7 +1021,11 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 msg_text = f"✅ **정상 문자** - {s1_code}. {code_desc}\n- 사유: {s1_reason}\n\n"
                                 await send_text_chunk(msg_text)
                                 
-                                await manager.send_personal_message({"type": "CHAT_STREAM_END", "content": ""}, client_id)
+                                await manager.send_personal_message({
+                                    "type": "CHAT_STREAM_END", 
+                                    "content": "",
+                                    "token_usage": key_manager.get_token_usage()
+                                }, client_id)
                                 continue
 
                             # Step B: LangGraph Execution (Stage 2+)
@@ -1071,7 +1080,10 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 elif final_is_spam is None:
                                     msg_text = f"⚠️ **판단 보류 (HITL)**\n- **사유**: {reason}\n"
                                 else:
-                                    msg_text = f"✅ **정상 문자**\n- **사유**: {reason}\n"
+                                    if "Override" in reason or "무죄 추정" in reason:
+                                        msg_text = f"🛡️ **정상 문자 (시스템 오탐 방어 발동 - Override)**\n- **사유**: {reason}\n"
+                                    else:
+                                        msg_text = f"✅ **정상 문자**\n- **사유**: {reason}\n"
                                 
                                 await send_text_chunk(msg_text)
                                 
@@ -1108,16 +1120,21 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                     summary = await run_with_cancellation(rag_filter.generate_final_summary(user_msg, final_res, url_res))
                                     await send_text_chunk(summary)
 
+                                # Send final success status
+                                await send_status("🎉 통합 분석 완료")
+
                             except CancellationException:
                                 logger.info(f"Unified Chat cancellation confirmed for {client_id}")
                                 await manager.send_personal_message({"type": "CHAT_STREAM_CHUNK", "content": "\n🚫 **사용자에 의해 분석이 중지되었습니다.**\n"}, client_id)
                             except Exception as graph_err:
                                 logger.error(f"Chat Graph Execution Error: {graph_err}")
                                 await send_text_chunk(f"\n⚠️ **시스템 분석 오류**: {graph_err}\n")
+                        
                         # Signal End of Stream
                         await manager.send_personal_message({
                             "type": "CHAT_STREAM_END",
-                            "content": ""
+                            "content": "",
+                            "token_usage": key_manager.get_token_usage()
                         }, client_id)
 
             except Exception as e:
@@ -1268,6 +1285,10 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
                     
                     # [JIT Optimization] Global pre-processing removed to eliminate startup delay.
                     # Context will be prepared individually within process_single_item.
+                    
+                    from app.core.llm_manager import key_manager
+                    if hasattr(key_manager, 'reset_token_usage'):
+                        key_manager.reset_token_usage()
 
                     # A. Define Single Item Processing Function (Wraps Content + URL Logic per item)
                     from app.graphs.batch_flow import create_batch_graph
@@ -1445,7 +1466,8 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
                                         "result": ws_res,
                                         "current": start_index + completed_count, # Monotonic progress
                                         "total": total_count, # Total rows in file
-                                        "is_trap": is_trap
+                                        "is_trap": is_trap,
+                                        "token_usage": getattr(key_manager, 'get_token_usage', lambda: {})()
                                     }, client_id), loop
                                 )
                             except Exception as ws_ex:

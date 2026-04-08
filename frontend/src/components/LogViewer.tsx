@@ -101,9 +101,16 @@ export const LogViewer: React.FC<LogViewerProps> = ({ logs, isOpen, onToggle }) 
                                             <AlertCircle className="w-3 h-3" /> SPAM ({Math.round(log.result.spam_probability * 100)}%) - {getCodeDescription(log.result.classification_code)}
                                         </span>
                                     ) : (
-                                        <span className="text-green-400 flex items-center gap-1 bg-green-400/10 px-1.5 rounded">
-                                            <CheckCircle className="w-3 h-3" /> HAM
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-green-400 flex items-center gap-1 bg-green-400/10 px-1.5 rounded">
+                                                <CheckCircle className="w-3 h-3" /> HAM
+                                            </span>
+                                            {(log.result.reason?.includes('Override') || log.result.reason?.includes('무죄 추정')) && (
+                                                <span className="text-purple-300 flex items-center gap-1 bg-purple-500/20 font-bold px-2 py-0.5 rounded shadow-[0_0_8px_rgba(168,85,247,0.4)] border border-purple-400/50">
+                                                    🛡️ 오탐 방어 (OVERRIDE)
+                                                </span>
+                                            )}
+                                        </div>
                                     )
                                 ) : (
                                     <span className="text-blue-400">Processing...</span>

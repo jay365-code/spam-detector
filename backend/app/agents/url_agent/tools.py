@@ -634,8 +634,11 @@ class PlaywrightManager:
                                 if any(k in lower_text for k in captcha_keywords):
                                      result["captcha_detected"] = True # 여전히 캡차면 True 유지
 
-                        result["text"] = text_content[:5000] # 너무 길면 자름
-                        
+                        # 너무 길면 자름 (단, 풋터의 사업자 정보 유실을 막기 위해 앞/뒤 내용을 조합)
+                        if len(text_content) > 5000:
+                            result["text"] = text_content[:3000] + "\n\n...[중략: CONTENT OMITTED]...\n\n" + text_content[-2000:]
+                        else:
+                            result["text"] = text_content                        
                         # 4. 스크린샷 캡처
                         logger.debug("Capturing screenshot...")
                         screenshot_bytes = await page.screenshot(type="jpeg", quality=60, full_page=False)

@@ -257,41 +257,10 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # [수정] Red Group 판정은 KISA 원본(입력 파라미터)에 URL 필드가 명시적으로 존재할 때만 발동
              has_input_url = bool(state.get("pre_parsed_url"))
              
-             # --- [URL 단독 메시지 보호 강화] ---
-             raw_msg_str = str(state.get("raw_message") or "")
-             decoded_text_str = str(state.get("decoded_kisa_text") or raw_msg_str).strip()
-             cleaned_text = decoded_text_str
-             
-             all_urls_to_remove = set(valid_extracted_urls)
-             if has_input_url:
-                 all_urls_to_remove.update([p.strip() for p in str(state.get("pre_parsed_url", "")).split(",") if p.strip()])
-                 
-             for u in all_urls_to_remove:
-                 if u:
-                     cleaned_text = cleaned_text.replace(u, "")
-             
-             import re
-             cleaned_alpha = re.sub(r'[\s\[\]\(\)<>\'"\-\|:;,]', '', cleaned_text)
-             # "오직 URL만 남은 상황이거나", Content Agent의 판단 사유에 "URL 단독"이 포함되어 있거나
-             is_url_only_msg = (len(cleaned_alpha) <= 3) or ("URL 단독" in str(final.get("reason", "")))
-             
-             if is_url_only_msg and is_pure_content_ham and url_is_spam:
-                 # 도박, 마약, 성매매, 성인물, 피싱, 스미싱 등 무조건적 차단(맹독성) 키워드가 포함되었는지 검사
-                 # (코드 2번에 주식과 도박이 혼재되어 있어 세밀한 키워드 필터링 적용)
-                 toxic_keywords = ["도박", "카지노", "바카라", "마약", "성매매", "음란", "불법약물", "피싱", "스미싱", "성인용품", "토토", "사행성"]
-                 is_toxic = False
-                 reason_lower = str(url_reason).lower()
-                 if any(k in reason_lower for k in toxic_keywords):
-                     is_toxic = True
-                 if str(url_code) == "1":  # 1(성인)은 무조건 치명적 유흥/성인물
-                     is_toxic = True
-                     
-                 if not is_toxic:
-                     # (예: 카카오/네이버 방초대, 주식 정보방, 단순 마케팅 링크 등) 사용자를 믿고 HAM(정상)으로 처리합니다.
-                     url_is_spam = False
-                     u_res["is_spam"] = False
-                     url_reason = f"[URL 단독보호] 맹독성 스팸키워드 없음 (방초대 의심) -> HAM 전환 | " + str(url_reason)
-                     u_res["reason"] = url_reason
+             # --- [URL 단독 메시지 보호 강화 기능 제거] ---
+             # URL Agent가 가이드라인(url_spam_guide.md)에 따라 익명 오픈채팅/방초대 등을 정확히 SPAM으로 식별하므로,
+             # 파이프라인 단에서 키워드 기반으로 무조건 HAM으로 덮어쓰는(Override) 하드코딩된 보호 로직을 제거함.
+             # 이를 통해 URL 에이전트의 최종 판단(is_spam)이 온전히 상위 노드로 전달되도록 함.
              # -----------------------------------
              
              force_red_group = False
@@ -374,6 +343,12 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 final["ibse_signature"] = None
              
              final["ibse_category"] = i_res.get("decision")
+             
+             # [수정] IBSE 결정이 unextractable인 경우, 수작업 무죄 추정(HAM) 룰 적용하여 오탐 방어!
+             if final["ibse_category"] == "unextractable" and final.get("is_spam") is True:
+                 final["is_spam"] = False
+                 existing_reason = final.get("reason", "")
+                 final["reason"] = f"[HAM Override: 시그니처 추출 애매/불가로 인한 무죄 추정] | {existing_reason}"
                 
              # [Broken URL Drop Logic]
              # IBSE Agent extracts a contextual sentence instead of the broken URL.
@@ -576,7 +551,13 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         logic_str = "\n".join(logic_steps) if logic_steps else "- 특이사항 없이 Content Agent 판정 유지"
         
         # 최종 판정 직관화
-        final_verdict_str = "🚫 SPAM (스팸)" if final.get("is_spam") else "✅ HAM (정상)"
+        if final.get("is_spam"):
+            final_verdict_str = "🚫 SPAM (스팸)"
+        else:
+            if "Override" in logic_str or "무죄 추정" in logic_str:
+                final_verdict_str = "🛡️ HAM Override (시스템 오탐 방어 적용)"
+            else:
+                final_verdict_str = "✅ HAM (정상)"
         
         # 다중행 문자열 조립
         formatted_reason = (

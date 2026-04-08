@@ -173,7 +173,8 @@ class UrlAnalysisAgent:
             "max_depth": 2, 
             "is_final": False,
             "content_context": content_context,  # Content Agent 결과 전달
-            "playwright_manager": playwright_manager
+            "playwright_manager": playwright_manager,
+            "status_callback": status_callback
         }
         
         try:
@@ -188,35 +189,7 @@ class UrlAnalysisAgent:
                     # Update simple state accumulator
                     if isinstance(node_output, dict):
                         final_state.update(node_output)
-                    
-                    # Status messages based on node
-                    log_msg = f"Completed node: {node_name}"
-                    user_msg = f"Processing: {node_name}..."
-                    
-                    if node_name == "extract":
-                        urls = node_output.get('target_urls', [])
-                        count = len(urls)
-                        url_list = ", ".join(urls[:2]) + ("..." if count > 2 else "") if count > 0 else "None"
-                        user_msg = f"🔗 [URL 추출] {count}개의 URL 대조 ({url_list})"
-                    elif node_name == "scrape":
-                        scraped = node_output.get('scraped_data', {})
-                        url = scraped.get('url', 'Unknown')
-                        # Scrape fallback or error detection
-                        err = scraped.get('error')
-                        if err:
-                            user_msg = f"⚠️ [URL 스크래핑 실패/재시도] {url} (사유: {err})"
-                        else:
-                            user_msg = f"🌐 [URL 스크래핑] 목적지 접속 및 캡처 중: {url}"
-                    elif node_name == "analyze":
-                        user_msg = f"🧠 [시각적 분석] 캡처된 랜딩 페이지 구조 및 텍스트 검증 중..."
-                    elif node_name == "select_link":
-                        curr = node_output.get('current_url', 'Unknown')
-                        user_msg = f"🔄 [심층 추적] 숨겨진 경로 발굴, 재전송 시도: {curr}"
-
-                    logger.info(f"[ISAA] {node_name.upper()} -> {log_msg}")
-                    
-                    if status_callback:
-                        await status_callback(user_msg)
+                    logger.info(f"[ISAA] Completed node: {node_name}")
 
             # Use final_state for result
             result_state = final_state
