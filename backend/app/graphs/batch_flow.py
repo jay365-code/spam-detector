@@ -344,11 +344,12 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              
              final["ibse_category"] = i_res.get("decision")
              
-             # [수정] IBSE 결정이 unextractable인 경우, 수작업 무죄 추정(HAM) 룰 적용하여 오탐 방어!
+             # [NEW] 시그니처 추출 실패(unextractable) 조건으로 인해 정상 판단된 스팸을 무죄(HAM)로 덮어쓰는(Override) 악성 방어 로직 제거
+             # URL Agent가 명백한 스팸으로 결정한 경우 우선순위를 지키기 위해 이 오버라이드 조건문은 폐기합니다.
              if final["ibse_category"] == "unextractable" and final.get("is_spam") is True:
-                 final["is_spam"] = False
+                 # SPAM 판정을 유지하되 내역만 남김
                  existing_reason = final.get("reason", "")
-                 final["reason"] = f"[HAM Override: 시그니처 추출 애매/불가로 인한 무죄 추정] | {existing_reason}"
+                 final["reason"] = f"{existing_reason} | [IBSE: 시그니처 추출 불가(unextractable)이나 SPAM 판정 유지]"
                 
              # [Broken URL Drop Logic]
              # IBSE Agent extracts a contextual sentence instead of the broken URL.
@@ -481,6 +482,17 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 final["ibse_signature"] = None
                 final["ibse_category"] = "unextractable (URL Deduplication Active)"
                 
+        # [NEW] 최종 안전망 (무죄 추정의 원칙)
+        # 만약 판단된 SPAM 메시지이나, 유효한 URL이 없고(또는 drop_url 처리됨) IBSE 시그니처마저 추출 실패(unextractable)했다면,
+        # 필터링 및 차단에 사용할 기술적 근거(지표)가 완벽히 소실된 상태이므로 강제로 HAM으로 오버라이드하여 오탐을 방지합니다.
+        if final.get("is_spam") is True and str(final.get("ibse_category", "")).startswith("unextractable"):
+            has_valid_url = bool(valid_extracted_urls and not final.get("drop_url"))
+            if not has_valid_url:
+                final["is_spam"] = False
+                existing_reason = final.get("reason", "")
+                final["reason"] = f"[HAM Override: 유효 URL 부재 및 시그니처 추출 불가로 인한 무죄 추정] | {existing_reason}"
+
+                
         return {"final_result": final}
 
     def fp_sentinel_node(state: BatchState):
@@ -492,10 +504,8 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         
         ibse_category = final.get("ibse_category")
         
-        # [NEW] 안전장치 해제: 시그니처 추출이 불가능한 경우(unextractable)라도
-        # 사용자 요청에 의해 강제 HAM 강등(Override)을 하지 않고 원본 SPAM 판정을 유지함
-        if final.get("is_spam") is True and ibse_category == "unextractable":
-             final["reason"] = final.get("reason", "") + " | [FP Sentinel] 시그니처 추출 불가능(unextractable)이나 SPAM 판정 유지 (Override 해제)"
+        # [Old Legacy] 안전장치 해제 로그는 aggregator_node에서 처리하므로 삭제
+        pass
 
         # Rulset 2: Type_A (Pure Spam)
         if final.get("is_spam") is True:
