@@ -185,11 +185,25 @@ obfuscated_urls: {obfuscated_urls}
                         _kwargs["temperature"] = 0.0
                     response = await asyncio.wait_for(client_instance.chat.completions.create(**_kwargs), timeout=45.0)
                     content = response.choices[0].message.content
+                    
+                    try:
+                        from app.core.llm_manager import key_manager
+                        usage = getattr(response, "usage", None)
+                        if usage:
+                            key_manager.add_tokens(current_model, getattr(usage, "prompt_tokens", 0), getattr(usage, "completion_tokens", 0))
+                    except Exception as e:
+                        logger.error(f"[IBSE] Token collection failed: {e}")
                 elif provider == "GEMINI":
                     from langchain_core.messages import SystemMessage, HumanMessage
                     messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
                     response = await asyncio.wait_for(client_instance.ainvoke(messages), timeout=45.0)
                     content = _normalize_llm_content(response.content)
+                    
+                    try:
+                        from app.core.llm_manager import key_manager
+                        key_manager.extract_and_add_tokens(provider, response)
+                    except Exception as e:
+                        logger.error(f"[IBSE] Token collection failed: {e}")
                     if not content or "SAFETY" in str(response.response_metadata):
                         return '{"decision": "unextractable"}'
                 elif provider == "CLAUDE":
@@ -198,6 +212,14 @@ obfuscated_urls: {obfuscated_urls}
                         messages=[{"role": "user", "content": user_prompt}]
                     ), timeout=45.0)
                     content = response.content[0].text
+                    
+                    try:
+                        from app.core.llm_manager import key_manager
+                        usage = getattr(response, "usage", None)
+                        if usage:
+                            key_manager.add_tokens(current_model, getattr(usage, "input_tokens", 0), getattr(usage, "output_tokens", 0))
+                    except Exception as e:
+                        logger.error(f"[IBSE] Token collection failed: {e}")
                 else:
                     raise Exception("Unsupported Provider")
                 key_manager.report_success(provider)

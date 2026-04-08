@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import axios from 'axios';
-import { Upload, FileSpreadsheet, RefreshCw, AlertCircle, ChevronRight, BarChart3, Search, Download, Check, Database, Copy, GitCompare, X } from 'lucide-react';
+import { Upload, FileSpreadsheet, RefreshCw, AlertCircle, ChevronRight, ChevronUp, ChevronDown, BarChart3, Search, Download, Check, Database, Copy, GitCompare, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { RagRegistrationModal } from '../RagRegistrationModal';
 import { clsx, type ClassValue } from 'clsx';
@@ -20,6 +20,25 @@ const HighlightText = ({ text, highlight }: { text: string; highlight: string })
             {parts.map((part, i) => 
                 part.toLowerCase() === highlight.toLowerCase() ? (
                     <mark key={i} className="bg-yellow-200/80 text-slate-900 rounded-sm font-semibold">{part}</mark>
+                ) : (
+                    <span key={i}>{part}</span>
+                )
+            )}
+        </React.Fragment>
+    );    
+};
+
+const LinkifyText = ({ text }: { text: string }) => {
+    if (!text) return null;
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    return (
+        <React.Fragment>
+            {parts.map((part, i) => 
+                part.match(urlRegex) ? (
+                    <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-600 hover:underline">
+                        {part}
+                    </a>
                 ) : (
                     <span key={i}>{part}</span>
                 )
@@ -83,6 +102,10 @@ interface DiffItem {
     llm_reason?: string;
     match_key: string;
     policy_interpretation?: string;
+    llm_semantic_class?: string;
+    llm_url?: string;
+    llm_message_extracted_url?: string;
+    llm_signature?: string;
 }
 
 interface MissingRecord {
@@ -296,6 +319,9 @@ export default function ValidatorPage() {
     const [isTypeBModalOpen, setIsTypeBModalOpen] = useState(false);
     const [typeBFilter, setTypeBFilter] = useState<'ALL' | 'URL' | 'SIGNATURE' | 'BOTH' | 'NONE'>('ALL');
     const [typeBSearchText, setTypeBSearchText] = useState('');
+
+    // Summary Expanded State
+    const [isSummaryExpanded, setIsSummaryExpanded] = useState(true);
 
     // Human Error (AI Correctness) State
     const [correctedIds, setCorrectedIds] = useState<Set<string>>(new Set());
@@ -1004,13 +1030,25 @@ export default function ValidatorPage() {
                     </div>
 
                     {/* 자동 생성 요약문 */}
-                    <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
-                        <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                            <span className="w-1 h-6 bg-indigo-500 rounded-full inline-block"></span>
-                            분석 요약
-                        </h3>
-                        <div className="prose prose-sm max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap">
-                            <ReactMarkdown>{data.auto_summary.replace(/\*\*(.*?)\*\*(?=[가-힣])/g, '**$1** ')}</ReactMarkdown>
+                    <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 transition-all duration-300">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                <span className="w-1 h-6 bg-indigo-500 rounded-full inline-block"></span>
+                                분석 요약
+                            </h3>
+                            <button
+                                onClick={() => setIsSummaryExpanded(!isSummaryExpanded)}
+                                className="p-1.5 hover:bg-slate-100 rounded-full transition-colors text-slate-500"
+                            >
+                                {isSummaryExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                            </button>
+                        </div>
+                        <div className={cn("grid transition-all duration-300 ease-in-out", isSummaryExpanded ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0 mt-0")}>
+                            <div className="overflow-hidden">
+                                <div className="prose prose-sm max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                    <ReactMarkdown>{data.auto_summary.replace(/\*\*(.*?)\*\*(?=[가-힣])/g, '**$1** ')}</ReactMarkdown>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -1216,7 +1254,7 @@ export default function ValidatorPage() {
                                                 </button>
                                             </div>
                                             <p className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed font-medium">
-                                                {selectedDiff.message_full}
+                                                <LinkifyText text={selectedDiff.message_full} />
                                             </p>
                                         </div>
 
@@ -1259,13 +1297,19 @@ export default function ValidatorPage() {
                                                     AI Decision
                                                 </h5>
                                                 <div className="space-y-3">
-                                                    <div>
+                                                    <div className="flex items-center gap-2 flex-wrap">
                                                         <span className={cn(
                                                             "text-sm font-bold px-2 py-1 rounded-md",
                                                             selectedDiff.llm_is_spam ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"
                                                         )}>
                                                             {selectedDiff.llm_is_spam ? "SPAM" : "HAM"}
                                                         </span>
+                                                        {selectedDiff.llm_is_spam && selectedDiff.llm_semantic_class?.startsWith("Type_B") && 
+                                                         (selectedDiff.llm_reason?.includes("악성 URL 탐지") || selectedDiff.llm_reason?.includes("텍스트 HAM")) && (
+                                                            <span className="text-xs font-bold px-2 py-1 bg-red-100 text-red-700 rounded-md border border-red-200">
+                                                                Red Group (학습 보호)
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     {selectedDiff.llm_code && (
                                                         <div className="text-xs text-slate-600">
@@ -1279,8 +1323,48 @@ export default function ValidatorPage() {
                                                         </div>
                                                     )}
                                                     {selectedDiff.llm_reason && (
-                                                        <div className="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg leading-relaxed">
+                                                        <div className="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg leading-relaxed break-words whitespace-pre-wrap">
                                                             {selectedDiff.llm_reason}
+                                                        </div>
+                                                    )}
+                                                    {(selectedDiff.llm_url || selectedDiff.llm_message_extracted_url || selectedDiff.llm_signature) && (
+                                                        <div className="mt-4 pt-4 border-t border-slate-200/60 flex flex-col gap-3">
+                                                            {(selectedDiff.llm_url || selectedDiff.llm_message_extracted_url) && (
+                                                                <div>
+                                                                    <span className="font-bold text-[10px] text-slate-400 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
+                                                                        🔗 Extracted URL
+                                                                    </span>
+                                                                    <div className="flex flex-col gap-1.5">
+                                                                        {selectedDiff.llm_url && (
+                                                                            <div className="bg-indigo-50/50 border border-indigo-100 p-2.5 rounded-lg">
+                                                                                <a href={selectedDiff.llm_url} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 break-all hover:text-indigo-800 hover:underline font-medium">
+                                                                                    {selectedDiff.llm_url}
+                                                                                </a>
+                                                                            </div>
+                                                                        )}
+                                                                        {selectedDiff.llm_message_extracted_url && selectedDiff.llm_message_extracted_url !== selectedDiff.llm_url && (
+                                                                            <div className="bg-slate-50 border border-slate-100 p-2 rounded-lg">
+                                                                                <span className="text-[10px] text-slate-400 font-bold block mb-0.5">Original URL in Msg:</span>
+                                                                                <a href={selectedDiff.llm_message_extracted_url} target="_blank" rel="noreferrer" className="text-xs text-slate-500 break-all hover:text-slate-800 hover:underline">
+                                                                                    {selectedDiff.llm_message_extracted_url}
+                                                                                </a>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {selectedDiff.llm_signature && (
+                                                                <div>
+                                                                    <span className="font-bold text-[10px] text-slate-400 uppercase tracking-widest block mb-1.5 flex items-center gap-1">
+                                                                        🔑 Extracted Signature
+                                                                    </span>
+                                                                    <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-lg">
+                                                                        <div className="text-xs text-slate-700 font-mono break-all whitespace-pre-wrap">
+                                                                            {selectedDiff.llm_signature}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     )}
                                                 </div>

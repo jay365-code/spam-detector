@@ -1190,6 +1190,11 @@ def has_potential_url(message: str) -> bool:
 async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File(...)):
     logger.info(f"DEBUG: Receive file upload request from Client {client_id}: {[f.filename for f in files]}")
     
+    # 🔹 Reset token tracking at the start of a batch session to accumulate correctly across chunks
+    from app.core.llm_manager import key_manager
+    if hasattr(key_manager, 'reset_token_usage'):
+        key_manager.reset_token_usage()
+
     # [Safe Cleanup] Zombie process killing via 'taskkill' removed.
     # New architecture uses localized PlaywrightManager with auto-cleanup (finally block).
     # This prevents accidental termination of user's local Chrome browser.
@@ -1283,13 +1288,10 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
                 try:
 
                     
+                    
                     # [JIT Optimization] Global pre-processing removed to eliminate startup delay.
                     # Context will be prepared individually within process_single_item.
                     
-                    from app.core.llm_manager import key_manager
-                    if hasattr(key_manager, 'reset_token_usage'):
-                        key_manager.reset_token_usage()
-
                     # A. Define Single Item Processing Function (Wraps Content + URL Logic per item)
                     from app.graphs.batch_flow import create_batch_graph
                     from app.agents.url_agent.tools import PlaywrightManager

@@ -287,34 +287,6 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
     # Generate Diffs (Mismatched Labels)
     diffs = []
     # Filter for mismatches
-    mismatch = merged[merged['is_spam_human'] != merged['is_spam_llm']]
-
-    
-    for _, row in mismatch.iterrows():
-        diff_type = "FN" if row['is_spam_human'] else "FP"
-        policy_tag = interpret_policy(
-            diff_type, 
-            row.get('reason_llm', ''), 
-            row.get('reason_human', '')
-        )
-        
-        diffs.append({
-            "diff_id": hashlib.md5(f"{row['original_index_human']}_{row['original_index_llm']}".encode()).hexdigest(),
-            "diff_type": diff_type,
-            "message_preview": str(row['메시지_human'])[:80] + "...",
-            "message_full": str(row['메시지_human']),
-            "human_label_raw": str(row['구분_human']),
-            "llm_label_raw": str(row['구분_llm']),
-            "human_code": str(row.get('code_human', '')),
-            "llm_code": str(row.get('code_llm', '')),
-            "human_is_spam": bool(row['is_spam_human']),
-            "llm_is_spam": bool(row['is_spam_llm']),
-            "human_reason": str(row.get('reason_human', '')),
-            "llm_reason": str(row.get('reason_llm', '')),
-            "match_key": f"{row['norm_msg'][:10]}... (idx: {row['cc_idx']})",
-            "policy_interpretation": policy_tag
-        })
-
     # Pre-process signature signatures mapped by matching message text
     signature_map = {}
     if df_llm_sig is not None and not df_llm_sig.empty:
@@ -343,6 +315,38 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
                         signature_map[s_msg] = s_val
                 except Exception:
                     pass
+
+    mismatch = merged[merged['is_spam_human'] != merged['is_spam_llm']]
+
+    for _, row in mismatch.iterrows():
+        diff_type = "FN" if row['is_spam_human'] else "FP"
+        policy_tag = interpret_policy(
+            diff_type, 
+            row.get('reason_llm', ''), 
+            row.get('reason_human', '')
+        )
+        
+        diffs.append({
+            "diff_id": hashlib.md5(f"{row['original_index_human']}_{row['original_index_llm']}".encode()).hexdigest(),
+            "diff_type": diff_type,
+            "message_preview": str(row['메시지_human'])[:80] + "...",
+            "message_full": str(row['메시지_human']),
+            "human_label_raw": str(row['구분_human']),
+            "llm_label_raw": str(row['구분_llm']),
+            "human_code": str(row.get('code_human', '')),
+            "llm_code": str(row.get('code_llm', '')),
+            "human_is_spam": bool(row['is_spam_human']),
+            "llm_is_spam": bool(row['is_spam_llm']),
+            "human_reason": str(row.get('reason_human', '')),
+            "llm_reason": str(row.get('reason_llm', '')),
+            "llm_semantic_class": str(row.get('semantic_class_llm', '')),
+            "llm_url": str(row.get('URL_llm', '')) if 'URL_llm' in row and pd.notna(row['URL_llm']) else "",
+            "llm_message_extracted_url": str(row.get('message_extracted_url_llm', '')) if 'message_extracted_url_llm' in row and pd.notna(row['message_extracted_url_llm']) else "",
+            "llm_signature": signature_map.get(normalize_text(str(row['메시지_human'])), ""),
+            "match_key": f"{row['norm_msg'][:10]}... (idx: {row['cc_idx']})",
+            "policy_interpretation": policy_tag
+        })
+
 
     # Generate Human-based Integrated Diffs
     human_based_diffs = []
