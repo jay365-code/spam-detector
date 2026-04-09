@@ -566,6 +566,8 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                 if classification_code in ["0", "1", "2", "3", "10"]:
                     classification_code = None
                 reason = f"[Override] LLM output SPAM but probability is too low ({spam_prob:.2f}). Forced HAM. | {reason}"
+        elif label == "HOLD_SHORT":
+            is_spam = "HOLD_SHORT"
         else:
             is_spam = False
             if classification_code in ["0", "1", "2", "3", "10"]:
@@ -675,10 +677,11 @@ Step 3. [암묵적 도메인 (Covert Domain) 추론 및 추출]
 Step 4. 최종 판정 (label 확정):
    - Guide 기준에 따라 완벽한 정상문자면 HAM. 
    - Guide 기준 SPAM 사유에 해당하면 무조건 SPAM. SPAM일 경우 spam_code (0, 1, 2, 3 중 택1)를 반드시 Guide의 3항(분류 코드 선택) 기준에 맞게 지정하라.
+   - URL 없는 극단적 짧은 파편화 난독 문자라면 HOLD_SHORT 적용.
 
 [OUTPUT — JSON ONLY]
 {{
-"label": "HAM|SPAM",
+"label": "HAM|SPAM|HOLD_SHORT",
 "spam_code": "0|1|2|3|null",
 "spam_probability": 0.0,
 "reason": "Spam Guide의 어떤 기준에 의해 판정했는지 명시하여 한국어로 짧게 작성할 것.",
@@ -785,9 +788,19 @@ Step 4. 최종 판정 (label 확정):
             
             result = self._parse_response(content, os.getenv("LLM_PROVIDER", "OPENAI"))
             
+            # [특수 판정 방어] 이중 필터 - HOLD_SHORT 길이 검증
+            if result.get('is_spam') == "HOLD_SHORT":
+                from app.agents.history_manager import HistoryManager
+                if not HistoryManager.is_eligible_for_hold(message):
+                    # 글자수 초과이므로 HAM으로 강제 예외 전환
+                    result['is_spam'] = False
+                    result['classification_code'] = None
+                    result['reason'] = f"[HOLD 거부] 설정된 메시지 길이 초과. 일반 HAM으로 우회됨. | {result.get('reason')}"
+                    logger.warning("[Content_Agent] Length mismatch. Forced HOLD_SHORT to HAM.")
+
             # 판정 결과 로그 (표준화된 형식)
             is_spam = result.get('is_spam')
-            verdict = "SPAM" if is_spam else ("HITL" if is_spam is None else "HAM")
+            verdict = "HOLD_SHORT" if is_spam == "HOLD_SHORT" else ("SPAM" if is_spam else ("HITL" if is_spam is None else "HAM"))
             logger.info(f"판정완료 | {verdict} | code={result.get('classification_code')} | prob={result.get('spam_probability')}")
             logger.info(f"  - Reason: {result.get('reason')}")
             

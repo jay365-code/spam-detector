@@ -54,6 +54,33 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
             # Legacy/Fallback Mode
             res = await content_agent.acheck(msg, s1, status_callback=cb)
             
+        # [NEW] HOLD_SHORT 판명 시 파이썬 단 이중 필터링 및 카운팅 시스템 적용
+        if res.get("is_spam") == "HOLD_SHORT":
+            from app.agents.history_manager import HistoryManager
+            if not HistoryManager.is_eligible_for_hold(msg):
+                # 길이 제한 초과 -> 일반적인 HAM으로 환원
+                res['is_spam'] = False
+                res['classification_code'] = None
+                res['reason'] = f"[HOLD 거부] 설정 글자수 초과. 안전을 위해 HAM으로 오버라이드. | {res.get('reason')}"
+                logger.warning(f"Length mismatch for HOLD_SHORT. Msg truncated: {msg[:20]}")
+            else:
+                # 조건 충족: 빈도수 누적
+                current_count, is_locked_on = HistoryManager.add_and_check_threshold(msg)
+                if is_locked_on:
+                    # 10회(Threshold) 도달 시 즉시 SPAM 격상
+                    res['is_spam'] = True
+                    res['classification_code'] = "2" # 극심한 난독화 스팸 통폐합 코드
+                    res['reason'] = f"🚫 [상습 난독화 스팸] 동일 뼈대 패턴 초과 누적 (현재 {current_count}건, Lock-on) | {res.get('reason')}"
+                    logger.info(f"[Threshold Reached] SPAM Lock-on executed (Count: {current_count})")
+                    if cb: await cb(f"🚫 [상습 난독화 스팸] 패턴 {current_count}회 누적 돌파 락온!")
+                else:
+                    # 보류 관찰: 일단 HAM으로 통과시키고 엑셀에 HOLD 안내
+                    res['is_spam'] = False
+                    res['classification_code'] = None
+                    res['reason'] = f"🛡️ [HOLD 관찰 중] 의도 불명 반복 문자 (누적 {current_count}회) | {res.get('reason')}"
+                    logger.info(f"[HOLD_SHORT] Msg logged. Current Count: {current_count}")
+                    if cb: await cb(f"🛡️ [HOLD 관찰 중] 의도 불명 파편화 문자 (누적 {current_count}회)")
+            
         return {"content_result": res}
 
     async def url_node(state: BatchState):
