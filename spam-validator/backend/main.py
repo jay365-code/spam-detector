@@ -236,11 +236,7 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
         indicator=True
     )
     
-    # ----------------------------------------------------
-    # Type B (FP Sentinel) 강제 덮어쓰기 로직 제거됨 (은닉 해제)
-    # - 수작업자가 HAM으로 넘긴 교묘한 스미싱을 AI가 Type_B로 잘 끄집어냈을 때,
-    # - 엑셀/대시보드에서 그걸 덮어쓰지(Match 위장) 않고 정직하게 FP(오탐) 목록으로 노출시켜 투명한 디버깅이 가능하게 함.
-    # ----------------------------------------------------
+
 
 
     # Split into Matched / Missing
@@ -392,63 +388,12 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
             "match_status": match_status
         })
 
-    # Generate Red Group List (순수 URL 분리 오탐 방지 군)
-    type_b_items = []
-
-    # Red Group: 텍스트는 HAM, URL만 악성인 특수 케이스
-    mask_red_group = (
-        df_l['semantic_class'].str.startswith("Type_B", na=False) & 
-        (df_l['reason'].str.contains(r'악성 URL 탐지|텍스트 HAM', na=False, regex=True))
-    )
-    type_b_df = df_l[mask_red_group]
-    for _, row in type_b_df.iterrows():
-        # Get URL if it exists
-        extracted_url = str(row['URL']) if 'URL' in row and pd.notna(row['URL']) else ""
-        
-        # Look up signature based on message content
-        norm_msg = normalize_text(str(row['메시지']))
-        extracted_signature = signature_map.get(norm_msg, "")
-        
-        type_b_items.append({
-            "message_preview": str(row['메시지'])[:80] + "...",
-            "message_full": str(row['메시지']),
-            "semantic_class": str(row['semantic_class']),
-            "llm_reason": str(row.get('reason', '')),
-            "llm_code": str(row.get('code', '')),
-            "is_spam": bool(row['is_spam']),
-            "extracted_url": extracted_url,
-            "extracted_signature": extracted_signature
-        })
-
-    # 자동 요약 생성
-    type_b_url_count = len(type_b_df[type_b_df['semantic_class'] == "Type_B (URL)"])
-    type_b_sig_count = len(type_b_df[type_b_df['semantic_class'] == "Type_B (SIGNATURE)"])
-    type_b_both_count = len(type_b_df[type_b_df['semantic_class'] == "Type_B (URL, SIGNATURE)"])
-    type_b_none_count = len(type_b_df[type_b_df['semantic_class'] == "Type_B (NONE)"])
-    type_b_total_count = len(type_b_df)
-
-    # Generate Type A List
-    type_a_items = []
-    type_a_df = df_l[(df_l['is_spam'] == True) & (~mask_red_group)]
-    for _, row in type_a_df.iterrows():
-        type_a_items.append({
-            "message_preview": str(row['메시지'])[:80] + "...",
-            "message_full": str(row['메시지']),
-            "semantic_class": str(row.get('semantic_class', '')),
-            "llm_reason": str(row.get('reason', '')),
-            "llm_code": str(row.get('code', '')),
-            "is_spam": bool(row['is_spam'])
-        })
+    # Generate Red Group List 및 Type A/B 구시대 유물 삭제 완료
 
     summary_dict = {
         "sheet_used": sheet_name,
         "total_human": len(df_h),
         "total_llm": len(df_l),
-        "type_b_total_count": type_b_total_count,
-        "type_b_url_count": type_b_url_count,
-        "type_b_sig_count": type_b_sig_count,
-        "type_b_both_count": type_b_both_count,
-        "type_b_none_count": type_b_none_count,
         "human_spam_count": int(df_h['is_spam'].sum()),
         "llm_spam_count": int(df_l['is_spam'].sum()),
         "human_spam_rate": float(df_h['is_spam'].mean()) if len(df_h) > 0 else 0.0,
@@ -484,8 +429,6 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
         "summary": summary_dict,
         "diffs": diffs,
         "human_based_diffs": human_based_diffs,
-        "type_b_items": type_b_items,
-        "type_a_items": type_a_items,
         "missing_in_human": missing_in_human,
         "missing_in_llm": missing_in_llm,
         "auto_summary": auto_summary
@@ -513,18 +456,14 @@ async def export_diff(request: ExportDiffRequest):
             is_llm_spam = d.get("llm_is_spam")
             llm_reason = str(d.get("llm_reason", ""))
             
-            # 순수 Red Group 조건: 텍스트는 정상인데 URL 때문에 Type_B 로 넘어온 경우
-            is_red_group = is_llm_spam is True and str(d.get("llm_semantic_class", "")).startswith("Type_B") and ("악성 URL 탐지" in llm_reason or "텍스트 HAM" in llm_reason)
+            # 순수 Red Group 조건: 텍스트는 정상인데 URL 때문에 SPAM으로 분리된 케이스
+            is_red_group = is_llm_spam is True and ("악성 URL 탐지" in llm_reason or "텍스트 HAM" in llm_reason)
             
             llm_val = "누락"
             if is_red_group:
                 llm_val = ""  # Red Group (URL 단독 악성)은 엑셀 'AI 판단' 컬럼을 빈칸 처리
             elif is_llm_spam is True:
-                sem_class = d.get("llm_semantic_class", "").replace("_", " ") # "Type_A" -> "Type A"
-                if sem_class:
-                    llm_val = f"SPAM: {sem_class}"
-                else:
-                    llm_val = "SPAM"
+                llm_val = "SPAM"
             elif is_llm_spam is False:
                 llm_val = "HAM"
             
@@ -535,11 +474,7 @@ async def export_diff(request: ExportDiffRequest):
             elif m_status == "FN":
                 m_status_disp = "FN (미탐)"
                 
-            # 엑셀 출력용 URL (규칙 적용: Type B인데 URL 구분이 아니면 빈칸 처리)
             llm_url_for_excel = safe_str(d.get("llm_url", ""))
-            sem_class = d.get("llm_semantic_class", "")
-            if sem_class and sem_class.startswith("Type_B") and "(URL" not in sem_class:
-                llm_url_for_excel = ""
                 
             diff_items.append({
                 "Row 순번": d.get("index", idx) + 1,
@@ -670,19 +605,7 @@ async def export_diff(request: ExportDiffRequest):
             ws_dash.cell(row=22, column=2).font = Font(bold=True, color="C00000")
             ws_dash.cell(row=22, column=5).font = Font(bold=True, color="D97500")
             
-            # Layout: 5. 잠재적 위험 (Type B) 모니터링
-            ws_dash.merge_cells('A25:F25')
-            ws_dash['A25'] = "▶ 5. 잠재적 위험 (Type B - Poisoning Risk) 모니터링"
-            ws_dash['A25'].font = section_font
-            ws_dash['A25'].fill = section_fill
-            
-            write_pair(26, 1, "Type B 전체 총계", sum_data.get("type_b_total_count", 0))
-            ws_dash.cell(row=26, column=1).font = Font(bold=True, color="1F497D")
-            
-            write_pair(27, 1, " ↳ Type B (URL)", sum_data.get("type_b_url_count", 0))
-            write_pair(27, 4, " ↳ Type B (Signature)", sum_data.get("type_b_sig_count", 0))
-            write_pair(28, 1, " ↳ Type B (URL+Sig)", sum_data.get("type_b_both_count", 0))
-            write_pair(28, 4, " ↳ Type B (기타)", sum_data.get("type_b_none_count", 0))
+
             
             # Dashboard Column Width Adjustments
             ws_dash.column_dimensions['A'].width = 32

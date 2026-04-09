@@ -552,74 +552,44 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 existing_reason = final.get("reason", "")
                 final["reason"] = f"[IBSE: 시그니처 부재 및 유효 URL 없음. 단, 타 요원 SPAM 증거 존중하여 판정 유지] | {existing_reason}"
                 
-        return {"final_result": final}
-
-    def fp_sentinel_node(state: BatchState):
-        """
-        FP Sentinel (오탐 방지 정책 에이전트) - Type B 제거 및 간소화
-        Type B 및 CNN 보호 로직이 제거되었으며, 최종 결과에 대한 단순 무결성 검증망 역할만 수행
-        """
-        final = state.get("final_result") or {}
-        
-        ibse_category = final.get("ibse_category")
-        
-        # [Old Legacy] 안전장치 해제 로그는 aggregator_node에서 처리하므로 삭제
-        pass
-
-        # Rulset 2: Type_A (Pure Spam)
+        # =====================================================================
+        # [NEW] Batch Mode / Excel 가독성을 위한 Reason 상세 포맷팅 및 라벨 통일
+        # =====================================================================
+        # 1. 엑셀 출력용 직관적 라벨 정리 (Type A 등 구시대 유물 제거)
         if final.get("is_spam") is True:
-             semantic_class = "Type_A"
-             learning_label = "SPAM"
-             
-        # Rulset 3: Ham
+            final["semantic_class"] = "SPAM"
+            final["learning_label"] = "SPAM"
+            # 스팸인데 분류 코드가 비어있다면 URL 코드로 임시 복구, 없으면 0
+            if not final.get("classification_code"):
+                final["classification_code"] = final.get("url_spam_code") or "0"
         else:
-             semantic_class = "Ham"
-             learning_label = "HAM"
-             
-        # 최종 HAM 판정 시, 앞서 병렬 실행된 IBSE 노드가 추출했던 문자열(시그니처) 초기화
-        if semantic_class == "Ham":
-             final["ibse_signature"] = None
-             final["ibse_category"] = None
-             final.pop("malicious_url_extracted", None)
-
-        final["semantic_class"] = semantic_class
-        final["learning_label"] = learning_label
-        
-        # [NEW] 안전망: 스팸으로 분류되었는데 분류 코드가 없을 경우 강제 할당
-        if semantic_class != "Ham" and not final.get("classification_code"):
-             # URL에 의해 스팸으로 뒤집힌 경우 url_spam_code 우선 적용, 없으면 기본 "0"
-             final["classification_code"] = final.get("url_spam_code") or "0"
-             
-        # =====================================================================
-        # [NEW] Batch Mode / Excel 가독성을 위한 Reason 상세 포맷팅 (Summary)
-        # =====================================================================
+            final["semantic_class"] = "HAM"
+            final["learning_label"] = "HAM"
+            # HAM이면 시그니처 싹 지우기 (불필요한 혼동 및 모델 오염 방지)
+            final["ibse_signature"] = None
+            final["ibse_category"] = None
+            final.pop("malicious_url_extracted", None)
+            
+        # 2. 콘솔/엑셀 가독성 포맷팅
         c_res = state.get("content_result") or {}
         u_res = state.get("url_result") or {}
         
-        # 1. 텍스트 분석 결과
         c_reason = c_res.get("reason", "분석 생략됨").replace("\n", " ").strip()
-        
-        # 2. URL 분석 결과
         u_reason = u_res.get("summary") or u_res.get("reason", "")
         u_reason = u_reason.replace("\n", " ").strip() if u_reason else "URL 없음/분석 생략"
         
-        # 3. 로직 변경 이력 추출 (기존 logic에서 '|') 로 이어붙인 로그들 포착
         raw_reason = final.get("reason", "")
         logic_steps = []
         for part in raw_reason.split("|"):
             part = part.strip()
-            # 원본 c_reason과 다르면서 대괄호로 시작하는 로그 태그들을 필터링
             if part.startswith("[") and part != c_reason:
                 logic_steps.append(f"- {part}")
                 
-        # (FP Override는 이미 위에서 원본 reason 문자열에 추가되므로 따로 넣지 않아도 로직상 split되어 잡힘, 
-        # 단 drop_url 은 추가)
         if final.get("drop_url"):
              logic_steps.append(f"- [URL 배제 조치] 파이프라인에서 악성 여부 입증 부족(Safe Injection) 또는 데드링크 파제로 인해 URL 필드 삭제 처리됨")
 
         logic_str = "\n".join(logic_steps) if logic_steps else "- 특이사항 없이 Content Agent 판정 유지"
         
-        # 최종 판정 직관화
         if final.get("is_spam"):
             final_verdict_str = "🚫 SPAM (스팸)"
         else:
@@ -628,7 +598,6 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
             else:
                 final_verdict_str = "✅ HAM (정상)"
         
-        # 다중행 문자열 조립
         formatted_reason = (
             f"▼ [최종 판정]: {final_verdict_str}\n\n"
             f"[1. 텍스트 의도 분석]\n- {c_reason}\n\n"
@@ -636,9 +605,9 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
             f"[3. 파이프라인 최종 의사결정 로그]\n{logic_str}"
         )
         final["reason"] = formatted_reason
-             
-        return {"final_result": final}
         
+        return {"final_result": final}
+
 
     # --- Conditional Logic ---
     
@@ -728,7 +697,6 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
     workflow.add_node("url_node", url_node)
     workflow.add_node("ibse_node", ibse_node)
     workflow.add_node("aggregator_node", aggregator_node)
-    workflow.add_node("fp_sentinel_node", fp_sentinel_node)
     
     workflow.set_entry_point("content_node")
     
@@ -748,9 +716,6 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
     
     # Convergence
     workflow.add_edge("ibse_node", "aggregator_node")
-    
-    # FP Sentinel Policy Engine
-    workflow.add_edge("aggregator_node", "fp_sentinel_node")
-    workflow.add_edge("fp_sentinel_node", END)
+    workflow.add_edge("aggregator_node", END)
     
     return workflow.compile()
