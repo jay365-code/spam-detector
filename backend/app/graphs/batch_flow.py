@@ -57,6 +57,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         pre_parsed_url = state.get("pre_parsed_url")
         pre_parsed_only_mode = state.get("pre_parsed_only_mode", False)
         
+        pre_parsed_url_invalidated = False
         # [NEW] 단축 URL 예외 처리: KISA 입력 URL이 파손된 단축(Shortener) URL일 경우 조기 차단
         if pre_parsed_url:
             import re
@@ -82,6 +83,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                        logger.warning(f"[URL Agent 단축 URL 필터] 원본 URL 필드가 훼손된 단축 URL({pre_parsed_url})로 판명되어 이를 무시하고 본문 추출 모드로 전환합니다.")
                        pre_parsed_url = None
                        pre_parsed_only_mode = False
+                       pre_parsed_url_invalidated = True
             except Exception:
                 pass
                 
@@ -91,6 +93,10 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         # 난독화 디코딩된 텍스트가 있으면 전달
         decoded_text = s1.get("decoded_text")
         res = await url_agent.acheck(msg, status_callback=cb, content_context=content_result, decoded_text=decoded_text, pre_parsed_url=pre_parsed_url, pre_parsed_only_mode=pre_parsed_only_mode, playwright_manager=playwright_manager)
+        
+        if pre_parsed_url_invalidated and isinstance(res, dict):
+            res["pre_parsed_url_invalidated"] = True
+            
         return {"url_result": res}
 
     async def ibse_node(state: BatchState):
@@ -254,8 +260,8 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              url_reason = u_res.get("reason", "")
              
              # Red Group (붉은색 채우기) 발동 여부 검사
-             # [수정] Red Group 판정은 KISA 원본(입력 파라미터)에 URL 필드가 명시적으로 존재할 때만 발동
-             has_input_url = bool(state.get("pre_parsed_url"))
+             # [수정] Red Group 판정 및 URL 스팸 통째로 덮어쓰기는 KISA 원본(입력 파라미터)에 URL 필드가 명시적으로 존재할 때만 발동
+             has_input_url = bool(state.get("pre_parsed_url")) and not u_res.get("pre_parsed_url_invalidated")
              
              # --- [URL 단독 메시지 보호 강화 기능 제거] ---
              # URL Agent가 가이드라인(url_spam_guide.md)에 따라 익명 오픈채팅/방초대 등을 정확히 SPAM으로 식별하므로,
@@ -291,12 +297,27 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                     else:
                         final["reason"] = f"{existing_reason} | [URL: Suspected but Inconclusive ({url_reason})]"
                 elif url_is_spam:
-                    # Case 1: 본문이 비록 HAM이었더라도 URL이 SPAM이면 전체를 SPAM으로 격상. (단, Red Group 시각적 표기만 생략됨)
+                    # Case 1: 본문이 비록 HAM이었더라도 URL이 SPAM이면 전체를 SPAM으로 격상.
                     final["is_spam"] = True
-                    final["spam_probability"] = u_res.get("spam_probability", 0.95)
-                    final["reason"] = f"{existing_reason} | [URL SPAM: {url_reason}]"
-                    if url_code and str(url_code) != "0":
-                        final["classification_code"] = url_code
+                    # 확률은 기존 확률과 새로 얻은 확률 중 높은 것으로 유지 보강
+                    final["spam_probability"] = max(final.get("spam_probability", 0.0), u_res.get("spam_probability", 0.95))
+                    
+                    if has_input_url:
+                        # [조건 충족] 입력 URL이 있을 때만 URL 정보로 전부 덮어씀 (Red Group 시각적 표기만 생략됨)
+                        final["reason"] = f"{existing_reason} | [URL SPAM: {url_reason}]"
+                        if url_code and str(url_code) != "0":
+                            final["classification_code"] = url_code
+                    else:
+                        # [조건 미충족] 입력 URL이 빈칸이거나 단축 파손되어 본문에서 찾은 경우에는 기존(시그니처/텍스트) 사유 코드를 보호함
+                        final["reason"] = f"{existing_reason} | ([보조] URL 탐지: {url_reason[:50]}...)"
+                        
+                        # [핫픽스] 텍스트가 HAM(오탐방지)이었을 경우 코드가 0번이 될 수 있으므로, URL의 스팸 코드를 "시그니처 판정"의 코드로 물려줍니다.
+                        if url_code and str(url_code) != "0":
+                            final["classification_code"] = url_code
+                        
+                        # [핫픽스] 이 케이스는 "URL 덮어쓰기" 명패를 버리고 "SIGNATURE" 간판을 채택할 것이므로,
+                        # 아래 하단의 'URL 중복 시그니처 소거(Deduplication)' 필터로부터 시그니처를 지키기 위해 예외 쉴드를 부여합니다.
+                        final["preserve_signature_override"] = True
                 else:
                     # Case 3: URL(Safe) -> 명백히 안전한 사이트(CONFIRMED SAFE)인 경우, 본문과 어긋난 위장방패막이(Mismatched)인지 확인
                     is_confirmed_safe = u_res.get("is_confirmed_safe", False)
@@ -477,7 +498,8 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         # [NEW] 단축 URL 이중 추출(엑셀 중복 등재) 방지
         # 유효한 URL 파편이 존재하고 최종적으로 폐기(drop_url)되지 않을 예정이라면,
         # URL중복제거 시트에서 이미 차단되므로 IBSE 문자열 시그니처는 무효화(None) 처리합니다.
-        if valid_extracted_urls and not final.get("drop_url"):
+        # 단, preserve_signature_override 플래그가 있는 경우(본문에서 살려내서 시그니처 위주로 가기로 한 놈)는 보호합니다.
+        if valid_extracted_urls and not final.get("drop_url") and not final.get("preserve_signature_override"):
             if final.get("ibse_signature"):
                 final["ibse_signature"] = None
                 final["ibse_category"] = "unextractable (URL Deduplication Active)"
@@ -491,6 +513,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 final["is_spam"] = False
                 existing_reason = final.get("reason", "")
                 final["reason"] = f"[HAM Override: 유효 URL 부재 및 시그니처 추출 불가로 인한 무죄 추정] | {existing_reason}"
+
 
                 
         return {"final_result": final}
@@ -630,28 +653,36 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         if has_url:
             routes.append("url_node")
             
-        # Run IBSE if Content is Spam
+        # Run IBSE if Content is Spam (정상 HAM 메시지에 대한 LLM 비용 소모를 방지하기 위함)
         if c_res.get("is_spam"):
             routes.append("ibse_node")
-            
-        # Note: If Content is Ham, we don't run IBSE initially.
-        # But if URL returns Spam later, we missed IBSE?
-        # Requirement: "If final is spam" -> IBSE.
-        # If Content(Ham) + URL(Spam) -> Final(Spam).
-        # We need IBSE in that case too.
-        
-        # Limitation of simple parallel branch: 
-        # If URL Node runs parallel to IBSE, IBSE doesn't know URL result yet.
-        # So IBSE only triggers on Content Spam here.
-        # If URL turns Ham to Spam, we might need a 2nd pass or just accept we investigate Content Spams primarily.
-        
-        # Let's stick to: Trigger IBSE if Content is Spam.
-        # (Extension: Could add edge URL -> IBSE? But that breaks parallel structure if we want Content->URL/IBSE)
         
         if not routes:
             return "aggregator_node"
             
         return routes
+
+    def url_to_ibse_router(state: BatchState):
+        """
+        URL Node 완료 후, 초기 라우터에서 비용 절감을 위해 스킵되었던 IBSE 추출기가
+        'URL 은닉 파손 스팸' 탐지 조건에 의해 뒤늦게 시그니처가 필요해질 경우 지연 호출(Lazy Trigger)하는 라우터
+        """
+        u_res = state.get("url_result") or {}
+        c_res = state.get("content_result") or {}
+        
+        # 1. 텍스트가 HAM이었어서 초기 병렬 라우터 분기에서 IBSE를 건너뛰었는가?
+        content_was_ham = not c_res.get("is_spam")
+        
+        # 2. URL Agent가 스크래핑을 통해 이 메시지를 스팸으로 재판결(격상) 했는가?
+        url_is_spam = u_res.get("is_spam")
+        
+        # 3. 입력 URL 파라미터가 없거나 파손되어서, 이 스팸 판결의 공로를 (URL) 덮어쓰기 대신 (SIGNATURE) 명패로 올려야 하는가?
+        has_input_url = bool(state.get("pre_parsed_url")) and not u_res.get("pre_parsed_url_invalidated")
+        
+        if content_was_ham and url_is_spam and not has_input_url:
+            return "ibse_node"
+            
+        return "aggregator_node"
 
 
     # --- Graph Construction ---
@@ -672,8 +703,14 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         ["url_node", "ibse_node", "aggregator_node"]
     )
     
+    # Conditional Edges from URL (Lazy IBSE Triggering for Hidden URL Spams)
+    workflow.add_conditional_edges(
+        "url_node",
+        url_to_ibse_router,
+        ["ibse_node", "aggregator_node"]
+    )
+    
     # Convergence
-    workflow.add_edge("url_node", "aggregator_node")
     workflow.add_edge("ibse_node", "aggregator_node")
     
     # FP Sentinel Policy Engine

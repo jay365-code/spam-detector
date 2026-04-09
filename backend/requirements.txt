@@ -31,3 +31,4 @@ ruff
 mypy
 python-multipart
 chardet
+pyahocorasick>=2.1.0

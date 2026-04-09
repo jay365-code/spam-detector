@@ -1239,8 +1239,13 @@ function App() {
                               <span className="font-semibold border border-indigo-400/30 bg-indigo-400/10 px-1 py-0.5 rounded shadow-sm text-[10px] uppercase tracking-wider shrink-0">
                                 시그니처
                               </span>
-                              <span className="bg-slate-800/80 px-1.5 py-1 rounded text-slate-300 font-mono text-[11px] break-all border border-slate-700/50">
-                                {log.result.ibse_signature}
+                              <span className="bg-slate-800/80 px-1.5 py-1 rounded text-slate-300 font-mono text-[11px] break-all border border-slate-700/50 flex items-center flex-wrap gap-1">
+                                <span>{log.result.ibse_signature}</span>
+                                {log.result.ibse_signature.toLowerCase() !== 'none' && (
+                                  <span className="text-[10px] text-slate-500 tracking-tighter shrink-0 font-sans font-semibold">
+                                    ({[...log.result.ibse_signature].reduce((acc, char) => acc + (char.charCodeAt(0) > 127 ? 2 : 1), 0)} byte)
+                                  </span>
+                                )}
                               </span>
                             </div>
                           )}

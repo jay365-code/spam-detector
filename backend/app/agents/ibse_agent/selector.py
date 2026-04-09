@@ -152,7 +152,6 @@ obfuscated_urls: {obfuscated_urls}
         return await self._call_llm(system_prompt, user_prompt)
 
     async def _call_llm(self, system_prompt: str, user_prompt: str) -> dict:
-        from app.core.llm_manager import key_manager
         @retry(
             stop=stop_after_attempt(3),
             wait=wait_exponential(multiplier=1, min=1, max=5),
@@ -162,10 +161,10 @@ obfuscated_urls: {obfuscated_urls}
         )
         async def do_call():
             provider = self.provider
-            if key_manager.is_quota_exhausted(provider):
+            if self._key_manager.is_quota_exhausted(provider):
                 raise Exception(f"{provider} quota globally exhausted. No retry.")
             
-            api_key = key_manager.get_key(provider)
+            api_key = self._key_manager.get_key(provider)
             current_model = self.model_name
             is_fallback = getattr(self, "_use_fallback", False)
             if is_fallback:
@@ -187,10 +186,9 @@ obfuscated_urls: {obfuscated_urls}
                     content = response.choices[0].message.content
                     
                     try:
-                        from app.core.llm_manager import key_manager
                         usage = getattr(response, "usage", None)
                         if usage:
-                            key_manager.add_tokens(current_model, getattr(usage, "prompt_tokens", 0), getattr(usage, "completion_tokens", 0))
+                            self._key_manager.add_tokens(current_model, getattr(usage, "prompt_tokens", 0), getattr(usage, "completion_tokens", 0))
                     except Exception as e:
                         logger.error(f"[IBSE] Token collection failed: {e}")
                 elif provider == "GEMINI":
@@ -200,8 +198,7 @@ obfuscated_urls: {obfuscated_urls}
                     content = _normalize_llm_content(response.content)
                     
                     try:
-                        from app.core.llm_manager import key_manager
-                        key_manager.extract_and_add_tokens(provider, response)
+                        self._key_manager.extract_and_add_tokens(provider, response)
                     except Exception as e:
                         logger.error(f"[IBSE] Token collection failed: {e}")
                     if not content or "SAFETY" in str(response.response_metadata):
@@ -214,21 +211,20 @@ obfuscated_urls: {obfuscated_urls}
                     content = response.content[0].text
                     
                     try:
-                        from app.core.llm_manager import key_manager
                         usage = getattr(response, "usage", None)
                         if usage:
-                            key_manager.add_tokens(current_model, getattr(usage, "input_tokens", 0), getattr(usage, "output_tokens", 0))
+                            self._key_manager.add_tokens(current_model, getattr(usage, "input_tokens", 0), getattr(usage, "output_tokens", 0))
                     except Exception as e:
                         logger.error(f"[IBSE] Token collection failed: {e}")
                 else:
                     raise Exception("Unsupported Provider")
-                key_manager.report_success(provider)
+                self._key_manager.report_success(provider)
                 if is_fallback: content = f"__FALLBACK_{current_model}__\n" + content
                 return content
             except Exception as e:
                 is_quota = "quota" in str(e).lower() or "429" in str(e).lower()
                 if is_quota:
-                    if not key_manager.rotate_key(provider, failed_key=api_key):
+                    if not self._key_manager.rotate_key(provider, failed_key=api_key):
                         raise Exception("Quota exhausted globally") from e
                     raise e
                 if isinstance(e, asyncio.TimeoutError):
