@@ -36,4 +36,6 @@ CONFIG_METADATA = [
     {"key": "ALPHANUMERIC_OBFUSCATION_RATIO_THRESHOLD", "label": "난독화 의심 비율", "description": "스팸 필터링 엄격도 조절", "type": "float", "step": 0.05, "min": 0, "max": 1.0},
     {"key": "LOG_LEVEL_CONSOLE", "label": "콘솔 로그 레벨", "description": "화면에 표시할 로그 상세 수위", "type": "select", "options": ["DEBUG", "INFO", "WARNING", "ERROR"]},
     {"key": "MIN_MESSAGE_LENGTH", "label": "최소 분석 길이", "description": "이 길이보다 짧은 메시지는 분석에서 제외(SKIP)", "type": "number", "min": 0, "max": 100},
+    {"key": "HOLD_SPAM_THRESHOLD", "label": "난독 임계치(락온 횟수)", "description": "동일 뼈대 문자가 몇 번 누적될 때 SPAM 격상할지 결정", "type": "number", "min": 1, "max": 100},
+    {"key": "MAX_HOLD_SHORT_LENGTH", "label": "난독 보류 최대 길이", "description": "이 길이 이하의 파편화된 문자열만 HOLD_SHORT 보류 대상", "type": "number", "min": 0, "max": 100},
 ]
