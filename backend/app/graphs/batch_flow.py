@@ -25,6 +25,12 @@ class BatchState(TypedDict):
 
 logger = logging.getLogger(__name__)
 
+# [NEW] 배치 런타임용 전역 시그니처 매칭 캐시 (부분 문자열 하이패스용)
+BATCH_SIGNATURE_CACHE = set()
+
+def clear_signature_cache():
+    BATCH_SIGNATURE_CACHE.clear()
+
 def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manager: Optional[Any] = None):
     """
     Factory to create the Unified Batch Graph with injected dependencies.
@@ -107,12 +113,45 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         c_res = state.get("content_result") or {}
         obfuscated_urls = c_res.get("obfuscated_urls", [])
         
-        # IBSE Agent is now Async
+        # [NEW] 런타임 서브스트링 하이패스 캐시 스캔
+        # 메시지 원문 안에 이전 배치에서 추출 성공한 고유 시그니처 문자열이 
+        # 토씨 하나 안 틀리고 숨어있다면, LLM 호출을 건너뛰고 강제 할당합니다.
+        for cached_sig in list(BATCH_SIGNATURE_CACHE):
+            if cached_sig in msg:
+                if cb: await cb("⚡ [High-Pass] 실시간 런타임 시그니처 캐시 매칭 성공 (LLM 스킵)")
+                # UI에 표시할 길이를 위해 _lenb 계산 (EUC-KR 기준)
+                try:
+                    sig_len = len(cached_sig.encode('cp949'))
+                except UnicodeEncodeError:
+                    sig_len = len(cached_sig.encode('utf-8'))
+                    
+                return {"ibse_result": {
+                    "decision": "use_string (runtime_cache)",
+                    "signature": cached_sig,
+                    "length": sig_len,
+                    "error": None,
+                    "duration_seconds": 0.01
+                }}
+        
+        # IBSE Agent is now Async (캐시 매칭 실패 시 원래 하던대로 LLM 호출)
         res = await ibse_service.process_message(
             msg, 
             status_callback=cb,
             obfuscated_urls=obfuscated_urls
         )
+        
+        # [NEW] LLM이 새로 추출한 시그니처 캐싱 (유니크함 및 가이드라인 규칙 준수여부 이중 검사)
+        if res and res.get("signature") and res.get("decision") != "unextractable":
+            sig = res["signature"]
+            try:
+                sig_b_len = len(sig.encode('cp949'))
+            except Exception:
+                sig_b_len = len(sig.encode('utf-8'))
+                
+            # 대표님 요청: 기존 KISA 가이드라인 추출 규칙(9~20, 39~40 Byte) 안에 들어오는 경우에만 정상적인 유니크 시그니처로 인정하고 풀에 등재
+            if (9 <= sig_b_len <= 20) or (39 <= sig_b_len <= 40):
+                BATCH_SIGNATURE_CACHE.add(sig)
+                
         return {"ibse_result": res}
 
 
@@ -504,17 +543,14 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 final["ibse_signature"] = None
                 final["ibse_category"] = "unextractable (URL Deduplication Active)"
                 
-        # [NEW] 최종 안전망 (무죄 추정의 원칙)
-        # 만약 판단된 SPAM 메시지이나, 유효한 URL이 없고(또는 drop_url 처리됨) IBSE 시그니처마저 추출 실패(unextractable)했다면,
-        # 필터링 및 차단에 사용할 기술적 근거(지표)가 완벽히 소실된 상태이므로 강제로 HAM으로 오버라이드하여 오탐을 방지합니다.
+        # [NEW] 무죄 추정의 원칙 폐기
+        # URL Agent가 명백한 스팸으로 결정한 경우 우선순위를 지키기 위해 이 오버라이드 조건문(HAM 덮어쓰기)은 폐기/주석 처리합니다.
         if final.get("is_spam") is True and str(final.get("ibse_category", "")).startswith("unextractable"):
             has_valid_url = bool(valid_extracted_urls and not final.get("drop_url"))
             if not has_valid_url:
-                final["is_spam"] = False
+                # final["is_spam"] = False  <-- 이 악성 방호막을 영구 삭제!
                 existing_reason = final.get("reason", "")
-                final["reason"] = f"[HAM Override: 유효 URL 부재 및 시그니처 추출 불가로 인한 무죄 추정] | {existing_reason}"
-
-
+                final["reason"] = f"[IBSE: 시그니처 부재 및 유효 URL 없음. 단, 타 요원 SPAM 증거 존중하여 판정 유지] | {existing_reason}"
                 
         return {"final_result": final}
 

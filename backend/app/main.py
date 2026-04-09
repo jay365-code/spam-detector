@@ -1270,6 +1270,10 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
             """
             
             import asyncio
+            from app.graphs.batch_flow import clear_signature_cache
+            
+            # [NEW] 이전 배치들의 시그니처 런타임 캐시 완전 소각 (오염 전이 눈덩이 현상 방지)
+            clear_signature_cache()
             
             # Step 1: Stage 1 (Rule) for all
             s1_results = []
