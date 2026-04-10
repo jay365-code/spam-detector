@@ -22,7 +22,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS spam_history (
                 normalized_text TEXT PRIMARY KEY,
                 count INTEGER DEFAULT 1,
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                last_updated TIMESTAMP DEFAULT (datetime('now', 'localtime'))
             )
         ''')
         conn.commit()
@@ -68,10 +68,10 @@ class HistoryManager:
             # SQLite 3.24+ 문법 UPSERT
             cursor.execute('''
                 INSERT INTO spam_history (normalized_text, count, last_updated)
-                VALUES (?, 1, CURRENT_TIMESTAMP)
+                VALUES (?, 1, datetime('now', 'localtime'))
                 ON CONFLICT(normalized_text) DO UPDATE SET 
                     count = count + 1,
-                    last_updated = CURRENT_TIMESTAMP
+                    last_updated = datetime('now', 'localtime')
             ''', (clean_text,))
             
             # 업데이트된 카운트 조회
