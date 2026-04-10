@@ -1165,7 +1165,8 @@ class ExcelHandler:
                         
                         if result.get("ibse_signature") and result.get("ibse_signature") != "unextractable":
                             clean_sig = str(result.get("ibse_signature")).replace(" ", "").replace("\n", "").replace("\r", "")
-                            sig_len = result.get("ibse_len", self._lenb(clean_sig))
+                            sig_len_raw = result.get("ibse_len")
+                            sig_len = int(sig_len_raw) if sig_len_raw is not None else self._lenb(clean_sig)
                         else:
                             clean_sig = clean_msg  # 진성 URL 없는 스팸 본문 전체를 시그니처로 사용
                             # 1단계: 원문이 너무 길면 문장 제한인 40바이트로 강제 절삭
@@ -1238,8 +1239,8 @@ class ExcelHandler:
             
             # 7. Update Summary Table on "TRAP.문장 중복제거" 
             url_cnt = len(unique_urls) + len(unique_short_urls)
-            str_cnt = sum(1 for item in blocklist_data if item['len'] <= 20)
-            sen_cnt = sum(1 for item in blocklist_data if item['len'] > 20)
+            str_cnt = sum(1 for item in blocklist_data if (item.get('len') or 0) <= 20)
+            sen_cnt = sum(1 for item in blocklist_data if (item.get('len') or 0) > 20)
             actual_spam_cnt = stats["spam_count"]
             self._update_summary_table(wb, is_trap, output_filename, actual_spam_cnt, url_cnt, str_cnt, sen_cnt)
                 
@@ -1369,7 +1370,7 @@ class ExcelHandler:
                     unique_sen[sig] = {"len": length, "code": code}
 
         # 문자열(20바이트 이하): 길이가 작은 순서로 오름차순, 그다음 가나다순
-        sorted_str = sorted(unique_str.items(), key=lambda x: (x[1]['len'], str(x[0])))
+        sorted_str = sorted(unique_str.items(), key=lambda x: (x[1].get('len') or 0, str(x[0])))
         start_row_str = ws_str.max_row + 1 if ws_str.cell(row=1,column=1).value else 1
         for row_idx, (sig, info) in enumerate(sorted_str, start=start_row_str):
             ws_str.cell(row=row_idx, column=1, value=self._sanitize_cell_value(sig))
@@ -1377,7 +1378,7 @@ class ExcelHandler:
             ws_str.cell(row=row_idx, column=3, value=info['code'])
 
         # 문장열(21바이트 이상): 길이가 긴 순서로 내림차순, 그다음 가나다순
-        sorted_sen = sorted(unique_sen.items(), key=lambda x: (-x[1]['len'], str(x[0])))
+        sorted_sen = sorted(unique_sen.items(), key=lambda x: (-(x[1].get('len') or 0), str(x[0])))
         start_row_sen = ws_sen.max_row + 1 if ws_sen.cell(row=1,column=1).value else 1
         for row_idx, (sig, info) in enumerate(sorted_sen, start=start_row_sen):
             ws_sen.cell(row=row_idx, column=1, value=self._sanitize_cell_value(sig))
