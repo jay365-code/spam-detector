@@ -28,6 +28,12 @@ logger = logging.getLogger(__name__)
 # [NEW] 배치 런타임용 전역 시그니처 매칭 캐시 (부분 문자열 하이패스용)
 BATCH_SIGNATURE_CACHE = set()
 
+# [NEW] URL Agent 봇 탐지 방어 및 Vanguard 3-Strike 룰을 위한 런타임 스마트 캐시
+BATCH_URL_CACHE: Dict[str, Dict[str, Any]] = {}
+URL_LOCKS: Dict[str, asyncio.Condition] = {}
+URL_STRIKES: Dict[str, int] = {}
+URL_IN_PROGRESS = set()
+
 def clear_signature_cache():
     BATCH_SIGNATURE_CACHE.clear()
 
@@ -125,12 +131,112 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         
         # 난독화 디코딩된 텍스트가 있으면 전달
         decoded_text = s1.get("decoded_text")
-        res = await url_agent.acheck(msg, status_callback=cb, content_context=content_result, decoded_text=decoded_text, pre_parsed_url=pre_parsed_url, pre_parsed_only_mode=pre_parsed_only_mode, playwright_manager=playwright_manager)
         
-        if pre_parsed_url_invalidated and isinstance(res, dict):
-            res["pre_parsed_url_invalidated"] = True
+        # --- Vanguard 3-Strike Cache Logic ---
+        lock_url = pre_parsed_url
+        if not lock_url and not pre_parsed_only_mode:
+            import re
+            url_match = re.search(r'(?:https?:\/\/)?(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*)', msg)
+            if url_match:
+                lock_url = url_match.group(0).strip()
+
+        if lock_url and not pre_parsed_url_invalidated:
+            from app.agents.url_whitelist_manager import UrlWhitelistManager
             
-        return {"url_result": res}
+            # 1. 영구 DB (UrlWhitelistManager) 사전 스캔 (단축 도메인 제외)
+            if UrlWhitelistManager.check_safe_url(lock_url):
+                if cb: await cb(f"⚡ [DB Whitelist] 검증된 안전망. 초고속 HAM 오버라이드. ({lock_url})")
+                return {"url_result": {
+                    "is_spam": False,
+                    "is_confirmed_safe": True,
+                    "reason": "⚡ [DB Safe] 검증된 안전 도메인 (초고속 패스)",
+                    "details": {"final_url": lock_url}
+                }}
+
+            # 2. 런타임 릴레이 스마트 캐시 (Vanguard 3-Strike)
+            clean_lock_url = UrlWhitelistManager.get_clean_domain_path(lock_url) or lock_url
+            
+            if clean_lock_url not in URL_LOCKS:
+                URL_LOCKS[clean_lock_url] = asyncio.Condition()
+
+            condition = URL_LOCKS[clean_lock_url]
+            async with condition:
+                while True:
+                    # 운 좋게 정답 캐시가 존재하면 즉시 셰어 통과
+                    if clean_lock_url in BATCH_URL_CACHE:
+                        if cb: await cb("⚡ [Runtime Cache] 선두 리더(첨병)의 셰어 결과를 확보하여 즉시 패스합니다.")
+                        cached_res = BATCH_URL_CACHE[clean_lock_url].copy()
+                        status_str = "SAFE" if cached_res.get("is_confirmed_safe") else "SPAM"
+                        cached_res["reason"] = f"⚡ [Runtime Share] 리더 분석결과({status_str}) 즉시 복사됨"
+                        if pre_parsed_url_invalidated: cached_res["pre_parsed_url_invalidated"] = True
+                        return {"url_result": cached_res}
+                    
+                    # 이미 3 Strike 상태라면 진정한 스팸(봇 블락 등)으로 확정 (추가 릴레이 뺑뺑이/지연 방지)
+                    if URL_STRIKES.get(clean_lock_url, 0) >= 3:
+                        if clean_lock_url not in BATCH_URL_CACHE:
+                            BATCH_URL_CACHE[clean_lock_url] = {
+                                "is_spam": True,
+                                "is_confirmed_safe": False,
+                                "reason": "🚫 [3-Strike OUT] 3연속 접속 실패. 릴레이 강제 종료",
+                                "details": {"final_url": lock_url}
+                            }
+                        if cb: await cb("🚫 [3-Strike OUT] 앞선 3번의 시도가 모두 거부되어 무한 대기를 종료하고 스팸 처리합니다.")
+                        cached_res = BATCH_URL_CACHE[clean_lock_url].copy()
+                        if pre_parsed_url_invalidated: cached_res["pre_parsed_url_invalidated"] = True
+                        return {"url_result": cached_res}
+
+                    # 정답이 없고, 진행 중인 리더도 없다면 내가 리더(Vanguard)가 된다!
+                    if clean_lock_url not in URL_IN_PROGRESS:
+                        URL_IN_PROGRESS.add(clean_lock_url)
+                        current_strikes = URL_STRIKES.get(clean_lock_url, 0)
+                        if cb: await cb(f"🛡️ [Vanguard Leader] {current_strikes + 1}번째 첨병으로 선발되어 스크래핑에 돌격합니다!")
+                        break
+                    
+                    # 진행 중인 리더가 있다면, 정답이 나올 때까지 숨죽여 기다림
+                    if cb: await cb("⏳ [Wait] 선행 첨병 에이전트가 스크래핑을 수행 중입니다. 안전망 셰어를 대기합니다...")
+                    await condition.wait()
+            
+            # 리더만의 실행 구간 (Condition 락에서 벗어나 논블로킹 통신)
+            res = await url_agent.acheck(msg, status_callback=cb, content_context=content_result, decoded_text=decoded_text, pre_parsed_url=pre_parsed_url, pre_parsed_only_mode=pre_parsed_only_mode, playwright_manager=playwright_manager)
+            
+            # 판단 후 결과 공유 및 대기자 기상(Wake up) 통지
+            async with condition:
+                URL_IN_PROGRESS.discard(clean_lock_url)
+                
+                is_safe = res.get("is_confirmed_safe", False)
+                final_url = res.get("details", {}).get("final_url", lock_url)
+                
+                if is_safe:
+                    # 대성공: 영구 DB 등록 및 런타임 결과 셰어
+                    UrlWhitelistManager.add_safe_url(final_url)
+                    BATCH_URL_CACHE[clean_lock_url] = res
+                    if cb: await cb("🎉 [HAM Override] 첨병 통과 성공! 정답을 DB와 런타임 캐시에 영구 브로드캐스트합니다.")
+                else:
+                    # 실패(SPAM) 혹은 봇 튕김(Error): Strike 증가 후 다음 타자(2번, 3번)에게 기회 양보
+                    URL_STRIKES[clean_lock_url] = URL_STRIKES.get(clean_lock_url, 0) + 1
+                    current_strikes = URL_STRIKES[clean_lock_url]
+                    if cb: await cb(f"⚠️ [Vanguard Failed] 첨병 판독 실패(SPAM/Error). 누적 {current_strikes} Strike.")
+                    
+                    if current_strikes >= 3:
+                        res["reason"] = f"[Vanguard 3-Strike] 3연속 악성/차단 확정 | {res.get('reason')}"
+                        BATCH_URL_CACHE[clean_lock_url] = res
+                
+                # 잠들어있는 2~10번 대기자 전원 기상! (다시 while루프 상단을 돌아 캐시 확인 또는 Strike 확인)
+                condition.notify_all()
+
+            if pre_parsed_url_invalidated and isinstance(res, dict):
+                res["pre_parsed_url_invalidated"] = True
+                
+            return {"url_result": res}
+            
+        else:
+            # URL을 특정할 수 없는 경우 기존 방식대로 바로 실행 (Fallback)
+            res = await url_agent.acheck(msg, status_callback=cb, content_context=content_result, decoded_text=decoded_text, pre_parsed_url=pre_parsed_url, pre_parsed_only_mode=pre_parsed_only_mode, playwright_manager=playwright_manager)
+            
+            if pre_parsed_url_invalidated and isinstance(res, dict):
+                res["pre_parsed_url_invalidated"] = True
+                
+            return {"url_result": res}
 
     async def ibse_node(state: BatchState):
         cb = state.get("status_callback")
