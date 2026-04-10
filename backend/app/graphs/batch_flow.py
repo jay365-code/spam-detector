@@ -54,6 +54,23 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         
         if cb: await cb("🧩 [Unified Flow] Content Agent 의도 분석 노드 진입")
         
+        # --- [NEW] Pre-filter: 인코딩 파손(????, ) 방어선 ---
+        import re
+        clean_msg = re.sub(r'\s+', '', msg)
+        has_consecutive_broken = bool(re.search(r'[?]{10,}', clean_msg))
+        ratio_broken = (clean_msg.count('?') + clean_msg.count('')) / max(len(clean_msg), 1)
+        
+        if has_consecutive_broken or ratio_broken > 0.4:
+            if cb: await cb("🛡️ [System Filter] 인코딩 파손(예: ???) 텍스트 감지. LLM 난독화 오탐 방지를 위해 조기 통과 (HAM)")
+            res = {
+                "is_spam": False,
+                "classification_code": None,
+                "reason": "🛡️ [인코딩 파손 예외] 다량의 깨진 문자(?, )가 감지되어 LLM 난독화 오탐 방지를 위해 정상(HAM) 처리됨.",
+                "spam_probability": 0.0
+            }
+            return {"content_result": res}
+        # ----------------------------------------------------
+        
         if prefetched:
             res = await content_agent.acheck(msg, s1, status_callback=cb, content_context=prefetched)
         else:
@@ -150,7 +167,11 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                     "is_spam": False,
                     "is_confirmed_safe": True,
                     "reason": "⚡ [DB Safe] 검증된 안전 도메인 (초고속 패스)",
-                    "details": {"final_url": lock_url}
+                    "details": {
+                        "final_url": lock_url,
+                        "extracted_url": lock_url,
+                        "attempted_urls": [lock_url]
+                    }
                 }}
 
             # 2. 런타임 릴레이 스마트 캐시 (Vanguard 3-Strike)
