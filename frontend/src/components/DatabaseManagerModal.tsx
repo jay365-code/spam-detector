@@ -198,7 +198,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[100] p-4 text-slate-200 transition-opacity duration-300">
-      <div className="bg-slate-900/90 backdrop-blur-3xl border border-slate-700/50 w-full max-w-5xl h-[85vh] rounded-2xl shadow-[0_0_50px_-12px_rgba(0,0,0,0.7)] flex flex-col overflow-hidden ring-1 ring-white/5">
+      <div className="bg-slate-900/90 backdrop-blur-3xl border border-slate-700/50 w-[96vw] max-w-[1400px] h-[86vh] rounded-2xl shadow-[0_0_50px_-12px_rgba(0,0,0,0.7)] flex flex-col overflow-hidden ring-1 ring-white/5">
         
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-white/5 bg-slate-800/20 relative z-20">
@@ -371,7 +371,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                 <table className="w-full text-left border-collapse">
                   <thead className="sticky top-0 z-10 bg-slate-900/90 backdrop-blur-md shadow-sm border-b border-slate-800">
                     <tr className="text-xs uppercase tracking-wider text-slate-400 group transition-colors hover:bg-slate-800/20">
-                      <th className="p-3 w-12 text-center rounded-tl-lg">
+                      <th className="py-2.5 px-3 w-12 text-center rounded-tl-lg">
                         <button 
                           onClick={() => handleSelectAll({ target: { checked: !(currentFilteredRecords.length > 0 && selectedItems.size === currentFilteredRecords.length) } } as any)}
                           className={`focus:outline-none transition-all duration-200 active:scale-90 ${(currentFilteredRecords.length > 0 && selectedItems.size === currentFilteredRecords.length) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
@@ -383,14 +383,14 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                           )}
                         </button>
                       </th>
-                      <th className="p-3 font-semibold">
+                      <th className="py-2.5 px-3 font-semibold">
                         {activeTab === 'url' ? '도메인 경로 (Domain Path)' : '정규화된 텍스트 (Normalized Text)'}
                       </th>
-                      <th className="p-3 font-semibold text-center w-24">
+                      <th className="py-2.5 px-3 font-semibold text-center w-24">
                         {activeTab === 'url' ? '통과 횟수' : '누적 카운트'}
                       </th>
-                      <th className="p-3 font-semibold w-40">최근 업데이트</th>
-                      <th className="p-3 font-semibold w-20 text-center rounded-tr-lg">관리</th>
+                      <th className="py-2.5 px-3 font-semibold w-40">최근 업데이트</th>
+                      <th className="py-2.5 px-3 font-semibold w-20 text-center rounded-tr-lg">관리</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5 text-sm">
@@ -398,39 +398,39 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                       (currentFilteredRecords as UrlRecord[])
                         .map((row) => (
                         <tr key={row.domain_path} className={`hover:bg-slate-800/40 transition-colors group ${selectedItems.has(row.domain_path) ? 'bg-blue-500/10' : ''}`}>
-                          <td className={`p-3.5 text-center border-l-2 relative ${selectedItems.has(row.domain_path) ? 'border-blue-500' : 'border-transparent'}`}>
+                          <td className={`py-1.5 px-3 text-center border-l-2 relative ${selectedItems.has(row.domain_path) ? 'border-blue-500' : 'border-transparent'}`}>
                             <button 
                               onClick={() => handleToggleSelect(row.domain_path)}
                               className={`focus:outline-none transition-all duration-200 active:scale-90 ${selectedItems.has(row.domain_path) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                             >
                               {selectedItems.has(row.domain_path) ? (
-                                <CheckSquare className="w-5 h-5 text-blue-500 drop-shadow-[0_0_5px_rgba(59,130,246,0.5)] mx-auto" />
+                                <CheckSquare className="w-4 h-4 text-blue-500 drop-shadow-[0_0_5px_rgba(59,130,246,0.5)] mx-auto" />
                               ) : (
-                                <Square className="w-5 h-5 text-slate-600 hover:text-slate-500 mx-auto" />
+                                <Square className="w-4 h-4 text-slate-600 hover:text-slate-500 mx-auto" />
                               )}
                             </button>
                           </td>
-                          <td className="p-3.5">
-                            <div className="flex items-center space-x-2.5">
-                              <div className="p-1.5 bg-blue-500/10 rounded-md">
+                          <td className="py-1.5 px-3">
+                            <div className="flex items-center space-x-2">
+                              <div className="p-1 max-w-fit bg-blue-500/10 rounded-md">
                                 <Link2 className="w-3.5 h-3.5 text-blue-400" />
                               </div>
                               <span className="text-slate-200 font-medium break-all font-mono text-[13px]">{row.domain_path}</span>
-                              {row.status === 'SAFE' && <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full uppercase font-bold tracking-wider shadow-[0_0_8px_rgba(16,185,129,0.1)]">SAFE</span>}
+                              {row.status === 'SAFE' && <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0 rounded-full uppercase font-bold tracking-wider shadow-[0_0_8px_rgba(16,185,129,0.1)]">SAFE</span>}
                             </div>
                           </td>
-                          <td className="p-3.5 text-center">
-                            <span className="inline-flex items-center justify-center min-w-[2.5rem] h-7 px-2.5 bg-slate-950 border border-slate-800 text-blue-400 rounded-lg font-mono text-xs font-bold shadow-inner">
+                          <td className="py-1.5 px-3 text-center">
+                            <span className="inline-flex items-center justify-center min-w-[2.2rem] h-6 px-1 bg-slate-950 border border-slate-800 text-blue-400 rounded p-0 font-mono text-xs font-bold shadow-inner">
                               {row.hit_count}
                             </span>
                           </td>
-                          <td className="p-3.5 text-slate-500 text-xs whitespace-nowrap font-mono tracking-tight">
+                          <td className="py-1.5 px-3 text-slate-500 text-xs whitespace-nowrap font-mono tracking-tight">
                             {row.last_updated}
                           </td>
-                          <td className="p-3.5 text-center">
+                          <td className="py-1.5 px-3 text-center">
                             <button 
                               onClick={() => handleDeleteUrl(row.domain_path)}
-                              className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all duration-200 opacity-0 group-hover:opacity-100 transform hover:scale-105"
+                              className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 transform hover:scale-105"
                               title="삭제"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -442,35 +442,35 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                       (currentFilteredRecords as HistoryRecord[])
                         .map((row) => (
                         <tr key={row.normalized_text} className={`hover:bg-slate-800/40 transition-colors group ${selectedItems.has(row.normalized_text) ? 'bg-pink-500/10' : ''}`}>
-                          <td className={`p-3.5 text-center align-top pt-4 border-l-2 relative ${selectedItems.has(row.normalized_text) ? 'border-pink-500' : 'border-transparent'}`}>
+                          <td className={`py-2 px-3 text-center align-top pt-2.5 border-l-2 relative ${selectedItems.has(row.normalized_text) ? 'border-pink-500' : 'border-transparent'}`}>
                             <button 
                               onClick={() => handleToggleSelect(row.normalized_text)}
-                              className={`focus:outline-none transition-all duration-200 active:scale-90 mt-0.5 ${selectedItems.has(row.normalized_text) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                              className={`focus:outline-none transition-all duration-200 active:scale-90 ${selectedItems.has(row.normalized_text) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                             >
                               {selectedItems.has(row.normalized_text) ? (
-                                <CheckSquare className="w-5 h-5 text-pink-500 drop-shadow-[0_0_5px_rgba(236,72,153,0.5)] mx-auto" />
+                                <CheckSquare className="w-4 h-4 text-pink-500 drop-shadow-[0_0_5px_rgba(236,72,153,0.5)] mx-auto" />
                               ) : (
-                                <Square className="w-5 h-5 text-slate-600 hover:text-slate-500 mx-auto" />
+                                <Square className="w-4 h-4 text-slate-600 hover:text-slate-500 mx-auto" />
                               )}
                             </button>
                           </td>
-                          <td className="p-3.5 pt-4">
+                          <td className="py-2 px-3">
                             <div className="flex items-start">
-                              <span className="text-slate-200 font-medium break-all mt-0.5 max-h-24 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-700 leading-relaxed text-[13px]">{row.normalized_text}</span>
+                              <span className="text-slate-200 font-medium break-all max-h-16 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-700 leading-relaxed text-[13px]">{row.normalized_text}</span>
                             </div>
                           </td>
-                          <td className="p-3.5 text-center align-top pt-4">
-                            <span className={`inline-flex items-center justify-center min-w-[2.5rem] h-7 px-2.5 bg-slate-950 rounded-lg font-mono text-xs font-bold shadow-inner ${row.count >= 10 ? 'text-red-400 border border-red-500/30 shadow-[0_0_8px_rgba(239,68,68,0.2)]' : 'text-pink-400 border border-pink-500/20'}`}>
+                          <td className="py-2 px-3 text-center align-top pt-2">
+                            <span className={`inline-flex items-center justify-center min-w-[2.2rem] h-6 px-1 bg-slate-950 rounded font-mono text-xs font-bold shadow-inner ${row.count >= 10 ? 'text-red-400 border border-red-500/30 shadow-[0_0_8px_rgba(239,68,68,0.2)]' : 'text-pink-400 border border-pink-500/20'}`}>
                               {row.count}
                             </span>
                           </td>
-                          <td className="p-3.5 text-slate-500 text-xs whitespace-nowrap align-top pt-4 font-mono tracking-tight">
+                          <td className="py-2 px-3 text-slate-500 text-xs whitespace-nowrap align-top pt-2 font-mono tracking-tight">
                             {row.last_updated}
                           </td>
-                          <td className="p-3.5 text-center align-top pt-3">
+                          <td className="py-2 px-3 text-center align-top">
                             <button 
                               onClick={() => handleDeleteHistory(row.normalized_text)}
-                              className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all duration-200 opacity-0 group-hover:opacity-100 transform hover:scale-105"
+                              className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 transform hover:scale-105"
                               title="삭제"
                             >
                               <Trash2 className="w-4 h-4" />
