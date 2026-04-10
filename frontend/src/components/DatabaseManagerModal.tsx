@@ -330,7 +330,6 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                   <span>선택 삭제 ({selectedItems.size})</span>
                 </button>
               )}
-              </div>
 
               {/* Right Group: Add New Forms */}
               {activeTab === 'url' ? (
