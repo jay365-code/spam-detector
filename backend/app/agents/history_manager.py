@@ -32,8 +32,8 @@ init_db()
 
 class HistoryManager:
     @staticmethod
-    def cleanup_old_records(days: int = 365):
-        """지정된 기간(기본 365일) 이전의 오래된 스팸 누적 히스토리를 자동 삭제합니다 (Storage Leak 방지)"""
+    def cleanup_old_records(days: int = 3650):
+        """지정된 기간(기본 3650일, 10년) 이전의 오래된 스팸 누적 히스토리를 자동 삭제합니다 (Storage Leak 방지)"""
         try:
             with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
@@ -50,7 +50,7 @@ class HistoryManager:
             print(f"[HistoryManager] Cleanup Failed: {e}")
 
 # 모듈 로딩 시 과거 데이터 청소 1회 수행
-HistoryManager.cleanup_old_records(days=365)
+HistoryManager.cleanup_old_records(days=3650)
     @staticmethod
     def get_clean_text(text: str) -> str:
         """
