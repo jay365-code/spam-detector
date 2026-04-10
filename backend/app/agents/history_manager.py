@@ -49,8 +49,7 @@ class HistoryManager:
         except Exception as e:
             print(f"[HistoryManager] Cleanup Failed: {e}")
 
-# 모듈 로딩 시 과거 데이터 청소 1회 수행
-HistoryManager.cleanup_old_records(days=3650)
+
     @staticmethod
     def get_clean_text(text: str) -> str:
         """
@@ -113,3 +112,6 @@ HistoryManager.cleanup_old_records(days=3650)
             cursor.execute('SELECT count FROM spam_history WHERE normalized_text = ?', (clean_text,))
             result = cursor.fetchone()
             return result[0] if result else 0
+
+# 모듈 로딩 시 과거 데이터 청소 1회 수행
+HistoryManager.cleanup_old_records(days=3650)
