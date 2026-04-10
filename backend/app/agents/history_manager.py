@@ -9,8 +9,13 @@ load_dotenv()
 MAX_HOLD_SHORT_LENGTH = int(os.getenv("MAX_HOLD_SHORT_LENGTH", "30"))
 HOLD_SPAM_THRESHOLD = int(os.getenv("HOLD_SPAM_THRESHOLD", "10"))
 
-# DB 파일 경로 설정 (기존 data 디렉토리에 저장하여 보존되게 함)
-DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+# DB 파일 경로 설정 (.env의 DB_DATA_DIR가 우선, 없으면 기존 data 디렉토리)
+env_db_dir = os.getenv("DB_DATA_DIR")
+if env_db_dir:
+    DB_DIR = Path(env_db_dir).resolve()
+else:
+    DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+
 DB_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DB_DIR / "short_spam_history.db"
 
@@ -112,6 +117,49 @@ class HistoryManager:
             cursor.execute('SELECT count FROM spam_history WHERE normalized_text = ?', (clean_text,))
             result = cursor.fetchone()
             return result[0] if result else 0
+
+    @staticmethod
+    def get_all_records() -> list:
+        """프론트엔드 관리를 위한 전체 목록 조회 (최신 1000건)"""
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT normalized_text, count, last_updated FROM spam_history ORDER BY last_updated DESC LIMIT 1000')
+            return [{"normalized_text": row[0], "count": row[1], "last_updated": row[2]} for row in cursor.fetchall()]
+
+    @staticmethod
+    def add_manual_record(text: str, count: int = 1) -> bool:
+        """프론트엔드에서 수동으로 스팸 텍스트와 누적값을 추가/수정"""
+        clean_text = HistoryManager.get_clean_text(text)
+        if not clean_text:
+            return False
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO spam_history (normalized_text, count, last_updated)
+                    VALUES (?, ?, datetime('now', 'localtime'))
+                    ON CONFLICT(normalized_text) DO UPDATE SET 
+                        count = ?,
+                        last_updated = datetime('now', 'localtime')
+                ''', (clean_text, count, count))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"[HistoryManager] Add record failed: {e}")
+            return False
+
+    @staticmethod
+    def delete_record(text: str) -> bool:
+        """특정 스팸 텍스트 레코드 삭제"""
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM spam_history WHERE normalized_text = ?', (text,))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"[HistoryManager] Delete record failed: {e}")
+            return False
 
 # 모듈 로딩 시 과거 데이터 청소 1회 수행
 HistoryManager.cleanup_old_records(days=3650)

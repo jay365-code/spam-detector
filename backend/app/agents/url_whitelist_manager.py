@@ -7,8 +7,18 @@ from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# DB 파일 경로 설정 (기존 data 디렉토리에 저장하여 보존되게 함)
-DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+from dotenv import load_dotenv
+
+# .env 로드 및 환경변수 설정
+load_dotenv()
+
+# DB 파일 경로 설정 (.env의 DB_DATA_DIR가 우선, 없으면 기존 data 디렉토리)
+env_db_dir = os.getenv("DB_DATA_DIR")
+if env_db_dir:
+    DB_DIR = Path(env_db_dir).resolve()
+else:
+    DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+
 DB_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DB_DIR / "url_whitelist.db"
 
@@ -133,14 +143,19 @@ class UrlWhitelistManager:
         return False
 
     @staticmethod
-    def add_safe_url(url_str: str) -> bool:
+    def add_safe_url(url_str: str, raw: bool = False) -> bool:
         """
         CONFIRMED SAFE 판정을 받은 최종 URL을 화이트리스트에 영구 등재
+        raw=True일 경우 파라미터 제거나 소문자화 과정을 건너뛰고 입력값 그대로 저장
         """
         if not url_str or url_str == "Unknown":
             return False
             
-        clean_dp = UrlWhitelistManager.get_clean_domain_path(url_str)
+        if raw:
+            clean_dp = url_str
+        else:
+            clean_dp = UrlWhitelistManager.get_clean_domain_path(url_str)
+            
         if not clean_dp:
             return False
             
@@ -166,4 +181,29 @@ class UrlWhitelistManager:
                 return True
         except Exception as e:
             logger.error(f"[UrlWhitelist] Error adding URL {clean_dp}: {e}")
+            return False
+
+    @staticmethod
+    def get_all_records() -> list:
+        """프론트엔드 관리를 위한 전체 목록 조회 (최신 1000건)"""
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT domain_path, status, hit_count, last_updated, created_at FROM safe_urls ORDER BY last_updated DESC LIMIT 1000')
+                return [{"domain_path": row[0], "status": row[1], "hit_count": row[2], "last_updated": row[3], "created_at": row[4]} for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"[UrlWhitelist] get_all_records Error: {e}")
+            return []
+
+    @staticmethod
+    def delete_record(domain_path: str) -> bool:
+        """특정 도메인 레코드 삭제"""
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM safe_urls WHERE domain_path = ?', (domain_path,))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"[UrlWhitelist] Delete record failed: {e}")
             return False
