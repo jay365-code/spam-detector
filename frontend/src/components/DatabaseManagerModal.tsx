@@ -271,7 +271,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
               <ShieldCheck className={`w-5 h-5 transition-transform duration-300 ${activeTab === 'url' ? 'scale-110 drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'group-hover:scale-110'}`} />
               <span className="font-semibold text-sm">URL 화이트리스트</span>
               <span className="ml-auto bg-black/30 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider opacity-80 group-hover:opacity-100 transition-opacity shadow-inner">
-                {urls.length}
+                {urlRecords.length}
               </span>
             </button>
             
@@ -284,7 +284,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
               <FileText className={`w-5 h-5 transition-transform duration-300 ${activeTab === 'history' ? 'scale-110 drop-shadow-[0_0_8px_rgba(236,72,153,0.5)]' : 'group-hover:scale-110'}`} />
               <span className="font-semibold text-sm">짧은 난독 리스트</span>
               <span className="ml-auto bg-black/30 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider opacity-80 group-hover:opacity-100 transition-opacity shadow-inner">
-                {histories.length}
+                {historyRecords.length}
               </span>
             </button>
           </div>
