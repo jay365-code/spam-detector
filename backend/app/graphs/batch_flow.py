@@ -141,10 +141,12 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         obfuscated_urls = c_res.get("obfuscated_urls", [])
         
         # [NEW] 런타임 서브스트링 하이패스 캐시 스캔
-        # 메시지 원문 안에 이전 배치에서 추출 성공한 고유 시그니처 문자열이 
-        # 토씨 하나 안 틀리고 숨어있다면, LLM 호출을 건너뛰고 강제 할당합니다.
+        # 메시지 원본에서 모든 공백(띄어쓰기, 줄바꿈 등)을 제거한 후 시그니처와 비교합니다.
+        import re
+        clean_msg = re.sub(r'\s+', '', msg)
+        
         for cached_sig in list(BATCH_SIGNATURE_CACHE):
-            if cached_sig in msg:
+            if cached_sig in clean_msg:
                 if cb: await cb("⚡ [High-Pass] 실시간 런타임 시그니처 캐시 매칭 성공 (LLM 스킵)")
                 # UI에 표시할 길이를 위해 _lenb 계산 (EUC-KR 기준)
                 try:
