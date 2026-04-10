@@ -116,25 +116,7 @@ interface MissingRecord {
     reason: string;
 }
 
-interface TypeBItem {
-    message_preview: string;
-    message_full: string;
-    semantic_class: string;
-    llm_reason: string;
-    llm_code: string;
-    is_spam: boolean;
-    extracted_url?: string;
-    extracted_signature?: string;
-}
 
-interface TypeAItem {
-    message_preview: string;
-    message_full: string;
-    semantic_class: string;
-    llm_reason: string;
-    llm_code: string;
-    is_spam: boolean;
-}
 
 interface HumanBasedDiffItem {
     index: number;
@@ -155,8 +137,7 @@ interface CompareResponse {
     summary: SummaryMetrics;
     diffs: DiffItem[];
     human_based_diffs: HumanBasedDiffItem[];
-    type_b_items: TypeBItem[];
-    type_a_items: TypeAItem[];
+
     missing_in_human: MissingRecord[];
     missing_in_llm: MissingRecord[];
     auto_summary: string;

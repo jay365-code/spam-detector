@@ -27,10 +27,30 @@ def init_db():
         ''')
         conn.commit()
 
-# 모듈 로드 시 DB 상태 보장
+# 모듈 로드 시 DB 상태 보장 및 클린업
 init_db()
 
 class HistoryManager:
+    @staticmethod
+    def cleanup_old_records(days: int = 365):
+        """지정된 기간(기본 365일) 이전의 오래된 스팸 누적 히스토리를 자동 삭제합니다 (Storage Leak 방지)"""
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                cursor = conn.cursor()
+                # SQLite datetime은 기본 UTC지만, localtime 옵션으로 현지 시간 기준 계산
+                cursor.execute(f'''
+                    DELETE FROM spam_history 
+                    WHERE last_updated < datetime('now', 'localtime', '-{days} days')
+                ''')
+                deleted_rows = cursor.rowcount
+                conn.commit()
+                if deleted_rows > 0:
+                    print(f"[HistoryManager] Cleaned up {deleted_rows} old records (older than {days} days) to prevent storage leak.")
+        except Exception as e:
+            print(f"[HistoryManager] Cleanup Failed: {e}")
+
+# 모듈 로딩 시 과거 데이터 청소 1회 수행
+HistoryManager.cleanup_old_records(days=365)
     @staticmethod
     def get_clean_text(text: str) -> str:
         """

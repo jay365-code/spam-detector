@@ -1534,10 +1534,20 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
                     normalized = []
                     for i, r in enumerate(results_with_idx):
                         if isinstance(r, BaseException):
+                            logger.error(f"[Async Gather Trap] Index {i} failed: {type(r).__name__} - {r}")
                             if isinstance(r, asyncio.CancelledError):
                                 normalized.append((i, {"is_spam": None, "reason": "Cancelled"}))
                             else:
-                                normalized.append((i, {"is_spam": None, "reason": f"Error: {r}"}))
+                                # [User Request] 풍선효과 차단: excel_handler.py가 참조하는 기본 Schema 구성요소를 강력하게 삽입
+                                err_type = type(r).__name__
+                                normalized.append((i, {
+                                    "is_spam": None, 
+                                    "reason": f"Async Exception [{err_type}]: {str(r)}",
+                                    "classification_code": "ERROR", 
+                                    "spam_probability": 0.0,
+                                    "input_tokens": 0,
+                                    "output_tokens": 0
+                                }))
                         else:
                             normalized.append(r)
                     results_with_idx = normalized
@@ -1622,6 +1632,7 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
         batch_chunk_size = 1000 
         
         total_rows = 0
+        uploaded_temp_files = []  # 임시 파일 추적용 리스트 (마지막 디스크 클린업)
         
         # If Excel file uploaded (Legacy logic bypass)
         if excel_files:
@@ -1629,6 +1640,7 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
                 file_id = str(uuid.uuid4())
                 file_ext = os.path.splitext(ex_file.filename)[1]
                 input_path = os.path.join(UPLOAD_DIR, f"{file_id}{file_ext}")
+                uploaded_temp_files.append(input_path)
                 with open(input_path, "wb") as buffer:
                     shutil.copyfileobj(ex_file.file, buffer)
                     
@@ -1656,6 +1668,7 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
             if kisa_file:
                 file_id = str(uuid.uuid4())
                 input_path_kisa = os.path.join(UPLOAD_DIR, f"{file_id}.txt")
+                uploaded_temp_files.append(input_path_kisa)
                 with open(input_path_kisa, "wb") as buffer:
                     shutil.copyfileobj(kisa_file.file, buffer)
                 
@@ -1666,6 +1679,7 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
             if trap_file:
                 file_id = str(uuid.uuid4())
                 input_path_trap = os.path.join(UPLOAD_DIR, f"{file_id}.txt")
+                uploaded_temp_files.append(input_path_trap)
                 with open(input_path_trap, "wb") as buffer:
                     shutil.copyfileobj(trap_file.file, buffer)
 
@@ -1748,6 +1762,15 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
     except Exception as e:
         logger.error(f"Error during upload/processing: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # [User Request] 업로드 원본(임시파일) 즉시 파기 (Disk Full 방지)
+        for tmp_file in locals().get('uploaded_temp_files', []):
+            if os.path.exists(tmp_file):
+                try:
+                    os.remove(tmp_file)
+                    logger.info(f"Temporary file deleted immediately to prevent disk leak: {tmp_file}")
+                except Exception as del_err:
+                    logger.warning(f"Could not delete temp file {tmp_file}: {del_err}")
 
 class ExcelRowUpdate(BaseModel):
     """엑셀 행 업데이트 요청"""
