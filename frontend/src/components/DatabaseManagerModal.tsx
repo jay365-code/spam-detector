@@ -305,14 +305,20 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
               {/* Left Group: Search & Selection Controls */}
               <div className="flex items-center space-x-3 flex-1 min-w-[320px]">
                 <div className="relative flex-1 max-w-sm group">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-blue-400 transition-colors" />
-                <input
-                  type="text"
-                  placeholder={activeTab === 'url' ? "도메인 검색..." : "텍스트 검색..."}
-                  value={activeTab === 'url' ? urlSearch : historySearch}
-                  onChange={(e) => activeTab === 'url' ? setUrlSearch(e.target.value) : setHistorySearch(e.target.value)}
-                  className="w-full bg-slate-950/60 border border-slate-700/80 rounded-lg pl-9 pr-4 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all shadow-inner placeholder-slate-500 text-slate-200"
-                />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-blue-400 transition-colors" />
+                  <input
+                    type="text"
+                    placeholder={activeTab === 'url' ? "도메인 검색..." : "텍스트 검색..."}
+                    value={activeTab === 'url' ? urlSearch : historySearch}
+                    onChange={(e) => activeTab === 'url' ? setUrlSearch(e.target.value) : setHistorySearch(e.target.value)}
+                    className="w-full bg-slate-950/60 border border-slate-700/80 rounded-lg pl-9 pr-4 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all shadow-inner placeholder-slate-500 text-slate-200"
+                  />
+                </div>
+                
+                <div className="flex items-center space-x-1.5 bg-black/20 px-2.5 py-1 rounded-md border border-slate-800/80 shadow-inner">
+                  <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">검색결과</span>
+                  <span className="text-sm font-mono text-slate-200 font-bold">{currentFilteredRecords.length}</span>
+                </div>
               </div>
 
               {selectedItems.size > 0 && (
