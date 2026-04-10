@@ -994,6 +994,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
             
         return {
             "is_spam": False,
+            "is_confirmed_safe": True,
             "spam_probability": 0.0,
             "classification_code": None,
             "reason": f"리다이렉트 목적지가 신뢰할 수 있는 공식 도메인 ({current_url.split('/')[2]}){fallback_text}",
