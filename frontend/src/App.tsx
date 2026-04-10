@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { CheckCircle, AlertCircle, User, Database, Pencil, X, Save, Loader2, Search, FileText, FolderOpen, Settings, MessageSquare } from 'lucide-react';
+import { CheckCircle, AlertCircle, User, Database, Server, Pencil, X, Save, Loader2, Search, FileText, FolderOpen, Settings, MessageSquare } from 'lucide-react';
 import { FileUpload } from './components/FileUpload';
 import { StatusPanel } from './components/StatusPanel';
 import { ChatInterface } from './components/ChatInterface';
 import { RagManager } from './components/RagManager';
 import { SettingsModal } from './components/SettingsModal';
+import { DatabaseManagerModal } from './components/DatabaseManagerModal';
 
 // 백엔드 constants.py 및 spam_guide_20260326.md 기준 (0-3 코드 체계)
 const CLASSIFICATION_MAP: Record<string, string> = {
@@ -116,6 +117,7 @@ function App() {
   // RAG Manager State
   const [isRagManagerOpen, setIsRagManagerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isDbManagerOpen, setIsDbManagerOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false); // [New] Chat Panel State
   const [chatWidth, setChatWidth] = useState(450); // [New] Resizable Chat Width
   const [isChatDragging, setIsChatDragging] = useState(false); // [New] Chat Resize State
@@ -865,6 +867,13 @@ function App() {
                 <Database className="w-4 h-4" />
               </button>
               <button
+                onClick={() => setIsDbManagerOpen(true)}
+                className="flex items-center justify-center p-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors text-emerald-400"
+                title="데이터베이스 관리"
+              >
+                <Server className="w-4 h-4" />
+              </button>
+              <button
                 onClick={() => setIsSettingsOpen(true)}
                 className="flex items-center justify-center p-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors"
                 title="Settings"
@@ -1493,6 +1502,11 @@ function App() {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+      />
+
+      <DatabaseManagerModal
+        isOpen={isDbManagerOpen}
+        onClose={() => setIsDbManagerOpen(false)}
       />
     </div>
   );

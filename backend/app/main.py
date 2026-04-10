@@ -386,6 +386,58 @@ async def set_key_index(request: SetKeyIndexRequest = Body(...)):
     return {"success": True, "results": results}
 
 
+# ========== Database Management API ==========
+
+from app.agents.url_whitelist_manager import UrlWhitelistManager
+from app.agents.history_manager import HistoryManager
+
+class UrlAddRequest(BaseModel):
+    url: str
+    raw: bool = False
+
+@app.get("/api/db/url-whitelist")
+async def get_url_whitelist():
+    records = UrlWhitelistManager.get_all_records()
+    return {"success": True, "data": records}
+
+@app.post("/api/db/url-whitelist")
+async def add_url_whitelist(request: UrlAddRequest):
+    success = UrlWhitelistManager.add_safe_url(request.url, request.raw)
+    if success:
+        return {"success": True, "message": "Added to URL whitelist."}
+    raise HTTPException(status_code=400, detail="유효하지 않은 URL이거나 추가에 실패했습니다.")
+
+@app.delete("/api/db/url-whitelist/{domain_path:path}")
+async def delete_url_whitelist(domain_path: str):
+    success = UrlWhitelistManager.delete_record(domain_path)
+    if success:
+        return {"success": True, "message": "Deleted successfully."}
+    raise HTTPException(status_code=404, detail="해당 도메인을 찾을 수 없거나 삭제에 실패했습니다.")
+
+class HistoryAddRequest(BaseModel):
+    text: str
+    count: int = 1
+
+@app.get("/api/db/spam-history")
+async def get_spam_history():
+    records = HistoryManager.get_all_records()
+    return {"success": True, "data": records}
+
+@app.post("/api/db/spam-history")
+async def add_spam_history(request: HistoryAddRequest):
+    success = HistoryManager.add_manual_record(request.text, request.count)
+    if success:
+        return {"success": True, "message": "Added to spam history."}
+    raise HTTPException(status_code=400, detail="텍스트 추가에 실패했습니다.")
+
+@app.delete("/api/db/spam-history/{text}")
+async def delete_spam_history(text: str):
+    success = HistoryManager.delete_record(text)
+    if success:
+        return {"success": True, "message": "Deleted successfully."}
+    raise HTTPException(status_code=404, detail="해당 텍스트를 찾을 수 없거나 삭제에 실패했습니다.")
+
+
 # ========== Spam RAG API (Reference Examples) ==========
 from app.services.spam_rag_service import get_spam_rag_service
 
