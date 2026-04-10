@@ -3,6 +3,9 @@ import sqlite3
 import re
 from pathlib import Path
 from dotenv import load_dotenv
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # .env 로드 및 환경변수 설정
 load_dotenv()
@@ -21,16 +24,20 @@ DB_PATH = DB_DIR / "short_spam_history.db"
 
 def init_db():
     """History DB 초기화 및 테이블 생성"""
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS spam_history (
-                normalized_text TEXT PRIMARY KEY,
-                count INTEGER DEFAULT 1,
-                last_updated TIMESTAMP DEFAULT (datetime('now', 'localtime'))
-            )
-        ''')
-        conn.commit()
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS spam_history (
+                    normalized_text TEXT PRIMARY KEY,
+                    count INTEGER DEFAULT 1,
+                    last_updated TIMESTAMP DEFAULT (datetime('now', 'localtime'))
+                )
+            ''')
+            conn.commit()
+            logger.info(f"[HistoryManager] Successfully connected to DB at: {DB_PATH}")
+    except Exception as e:
+        logger.error(f"[HistoryManager] Failed to connect or initialize DB: {e}")
 
 # 모듈 로드 시 DB 상태 보장 및 클린업
 init_db()
@@ -50,9 +57,9 @@ class HistoryManager:
                 deleted_rows = cursor.rowcount
                 conn.commit()
                 if deleted_rows > 0:
-                    print(f"[HistoryManager] Cleaned up {deleted_rows} old records (older than {days} days) to prevent storage leak.")
+                    logger.info(f"[HistoryManager] Cleaned up {deleted_rows} old records (older than {days} days) to prevent storage leak.")
         except Exception as e:
-            print(f"[HistoryManager] Cleanup Failed: {e}")
+            logger.error(f"[HistoryManager] Cleanup Failed: {e}")
 
 
     @staticmethod
@@ -145,7 +152,7 @@ class HistoryManager:
                 conn.commit()
                 return True
         except Exception as e:
-            print(f"[HistoryManager] Add record failed: {e}")
+            logger.error(f"[HistoryManager] Add record failed: {e}")
             return False
 
     @staticmethod
@@ -158,7 +165,7 @@ class HistoryManager:
                 conn.commit()
                 return cursor.rowcount > 0
         except Exception as e:
-            print(f"[HistoryManager] Delete record failed: {e}")
+            logger.error(f"[HistoryManager] Delete record failed: {e}")
             return False
 
 # 모듈 로딩 시 과거 데이터 청소 1회 수행

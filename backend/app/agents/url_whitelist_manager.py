@@ -32,18 +32,22 @@ SHORTENER_DOMAINS = {
 
 def init_db():
     """URL Whitelist DB 초기화 및 테이블 생성"""
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS safe_urls (
-                domain_path TEXT PRIMARY KEY,
-                status TEXT DEFAULT 'SAFE',
-                hit_count INTEGER DEFAULT 1,
-                last_updated TIMESTAMP DEFAULT (datetime('now', 'localtime')),
-                created_at TIMESTAMP DEFAULT (datetime('now', 'localtime'))
-            )
-        ''')
-        conn.commit()
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS safe_urls (
+                    domain_path TEXT PRIMARY KEY,
+                    status TEXT DEFAULT 'SAFE',
+                    hit_count INTEGER DEFAULT 1,
+                    last_updated TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+                    created_at TIMESTAMP DEFAULT (datetime('now', 'localtime'))
+                )
+            ''')
+            conn.commit()
+            logger.info(f"[UrlWhitelist] Successfully connected to DB at: {DB_PATH}")
+    except Exception as e:
+        logger.error(f"[UrlWhitelist] Failed to connect or initialize DB: {e}")
 
 # 모듈 로드 시 DB 상태 보장 및 클린업
 init_db()
