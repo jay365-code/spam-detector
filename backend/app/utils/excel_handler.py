@@ -973,7 +973,7 @@ class ExcelHandler:
                     # Pass start_index, pre_parsed_urls (KISA TXT), and is_trap to processing_function
                     # Use global_total_rows for smooth progress bar handling
                     _start = index_offset + start_idx
-                    _total = global_total_rows if global_total_rows > 0 else total_rows
+                    _total = global_total_rows if (global_total_rows is not None and global_total_rows > 0) else total_rows
                     
                     results = processing_function(messages, start_index=_start, total_count=_total, pre_parsed_urls=pre_parsed_urls, is_trap=is_trap)
                 except TypeError:
