@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Trash2, Search, Link2, FileText, AlertTriangle, ShieldCheck, Database, CheckSquare, Square } from 'lucide-react';
+import { X, Save, Trash2, Search, Link2, FileText, AlertTriangle, ShieldCheck, Database, CheckSquare, Square, Maximize2, Minimize2 } from 'lucide-react';
 
 interface DatabaseManagerModalProps {
   isOpen: boolean;
@@ -40,6 +40,9 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
 
   // Selection State
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+
+  // Window State
+  const [isMaximized, setIsMaximized] = useState(false);
 
   // Clear selection when tab or search changes
   useEffect(() => {
@@ -198,7 +201,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[100] p-4 text-slate-200 transition-opacity duration-300">
-      <div className="bg-slate-900/90 backdrop-blur-3xl border border-slate-700/50 w-[96vw] max-w-[1400px] h-[86vh] rounded-2xl shadow-[0_0_50px_-12px_rgba(0,0,0,0.7)] flex flex-col overflow-hidden ring-1 ring-white/5">
+      <div className={`bg-slate-900/90 backdrop-blur-3xl border border-slate-700/50 flex flex-col overflow-hidden ring-1 ring-white/5 transition-all duration-300 ${isMaximized ? 'w-[100vw] h-[100vh] max-w-none rounded-none' : 'w-[96vw] max-w-[1400px] h-[86vh] rounded-2xl shadow-[0_0_50px_-12px_rgba(0,0,0,0.7)]'}`}>
         
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-white/5 bg-slate-800/20 relative z-20">
@@ -214,9 +217,14 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
               <p className="text-xs text-slate-500 mt-0.5">Vanguard 3-Strike Cache & Whitelist System</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-800/80 hover:text-white rounded-xl transition-all duration-200 text-slate-400">
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex items-center space-x-1">
+            <button onClick={() => setIsMaximized(!isMaximized)} className="p-2.5 hover:bg-slate-800/80 hover:text-white rounded-xl transition-all duration-200 text-slate-400 group relative">
+              {isMaximized ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+            </button>
+            <button onClick={onClose} className="p-2.5 hover:bg-slate-800/80 hover:text-red-400 rounded-xl transition-all duration-200 text-slate-400 group relative">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         {/* User Prompt Modal for URL Cleaning */}
