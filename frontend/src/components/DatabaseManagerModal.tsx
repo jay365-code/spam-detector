@@ -200,11 +200,11 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[100] p-4 text-slate-200 transition-opacity duration-300">
-      <div className={`bg-slate-900/90 backdrop-blur-3xl border border-slate-700/50 flex flex-col overflow-hidden ring-1 ring-white/5 transition-all duration-300 ${isMaximized ? 'w-[100vw] h-[100vh] max-w-none rounded-none' : 'w-[96vw] max-w-[1400px] h-[86vh] rounded-2xl shadow-[0_0_50px_-12px_rgba(0,0,0,0.7)]'}`}>
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[100] p-2 sm:p-4 text-slate-200 transition-opacity duration-300">
+      <div className={`bg-slate-900/90 backdrop-blur-3xl border border-slate-700/50 flex flex-col overflow-hidden ring-1 ring-white/5 transition-all duration-300 ${isMaximized ? 'w-[100vw] h-[100vh] max-w-none rounded-none' : 'w-[98vw] max-w-[1400px] h-[96vh] rounded-2xl shadow-[0_0_50px_-12px_rgba(0,0,0,0.7)]'}`}>
         
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-white/5 bg-slate-800/20 relative z-20">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-white/5 bg-slate-800/20 relative z-20">
           <div className="flex items-center space-x-4">
             <div className="p-2.5 bg-gradient-to-br from-blue-500/20 to-indigo-500/20 rounded-xl border border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.2)] relative">
               <div className="absolute inset-0 bg-blue-400 blur-md opacity-20 rounded-xl"></div>
@@ -218,11 +218,11 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
             </div>
           </div>
           <div className="flex items-center space-x-1">
-            <button onClick={() => setIsMaximized(!isMaximized)} className="p-2.5 hover:bg-slate-800/80 hover:text-white rounded-xl transition-all duration-200 text-slate-400 group relative">
+            <button onClick={() => setIsMaximized(!isMaximized)} className="p-2 hover:bg-slate-800/80 hover:text-white rounded-lg transition-all duration-200 text-slate-400 group relative">
               {isMaximized ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
             </button>
-            <button onClick={onClose} className="p-2.5 hover:bg-slate-800/80 hover:text-red-400 rounded-xl transition-all duration-200 text-slate-400 group relative">
-              <X className="w-6 h-6" />
+            <button onClick={onClose} className="p-2 hover:bg-slate-800/80 hover:text-red-400 rounded-lg transition-all duration-200 text-slate-400 group relative">
+              <X className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -300,18 +300,18 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
           {/* Main Content Pane */}
           <div className="flex-1 flex flex-col bg-slate-900/30 relative">
             {/* Toolbar */}
-            <div className="p-5 border-b border-slate-800/60 flex flex-wrap items-center justify-between gap-4 backdrop-blur-md bg-slate-900/40 z-10">
+            <div className="px-5 py-3 border-b border-slate-800/60 flex flex-wrap items-center justify-between gap-4 backdrop-blur-md bg-slate-900/40 z-10">
               
               {/* Left Group: Search & Selection Controls */}
               <div className="flex items-center space-x-3 flex-1 min-w-[320px]">
                 <div className="relative flex-1 max-w-sm group">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-blue-400 transition-colors" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-blue-400 transition-colors" />
                 <input
                   type="text"
                   placeholder={activeTab === 'url' ? "도메인 검색..." : "텍스트 검색..."}
                   value={activeTab === 'url' ? urlSearch : historySearch}
                   onChange={(e) => activeTab === 'url' ? setUrlSearch(e.target.value) : setHistorySearch(e.target.value)}
-                  className="w-full bg-slate-950/60 border border-slate-700/80 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all shadow-inner placeholder-slate-500 text-slate-200"
+                  className="w-full bg-slate-950/60 border border-slate-700/80 rounded-lg pl-9 pr-4 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all shadow-inner placeholder-slate-500 text-slate-200"
                 />
               </div>
 
@@ -334,10 +334,10 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                     placeholder="https://lotteon.com/xxx"
                     value={newUrl}
                     onChange={(e) => setNewUrl(e.target.value)}
-                    className="w-80 bg-slate-950/60 border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 shadow-inner placeholder-slate-500 transition-all font-mono"
+                    className="w-80 bg-slate-950/60 border border-slate-700/80 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 shadow-inner placeholder-slate-500 transition-all font-mono"
                     onKeyDown={(e) => e.key === 'Enter' && handleUrlSubmit()}
                   />
-                  <button onClick={handleUrlSubmit} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.25)] hover:shadow-[0_0_20px_rgba(59,130,246,0.4)] px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-all transform active:scale-95 whitespace-nowrap relative overflow-hidden group">
+                  <button onClick={handleUrlSubmit} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.25)] hover:shadow-[0_0_20px_rgba(59,130,246,0.4)] px-4 py-1.5 rounded-lg text-sm font-bold text-white transition-all transform active:scale-95 whitespace-nowrap relative overflow-hidden group">
                     <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out z-0"></div>
                     <span className="relative z-10">신규 도메인 추가</span>
                   </button>
@@ -349,7 +349,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                     placeholder="스팸 문구 또는 텍스트..."
                     value={newHistoryText}
                     onChange={(e) => setNewHistoryText(e.target.value)}
-                    className="w-64 bg-slate-950/60 border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500/50 focus:border-pink-500/50 shadow-inner placeholder-slate-500 transition-all"
+                    className="w-64 bg-slate-950/60 border border-slate-700/80 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500/50 focus:border-pink-500/50 shadow-inner placeholder-slate-500 transition-all"
                     onKeyDown={(e) => e.key === 'Enter' && handleHistorySubmit()}
                   />
                   <input
@@ -357,10 +357,10 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                     min="1"
                     value={newHistoryCount}
                     onChange={(e) => setNewHistoryCount(parseInt(e.target.value) || 1)}
-                    className="w-20 bg-slate-950/60 border border-slate-700/80 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500/50 focus:border-pink-500/50 text-center shadow-inner font-mono font-bold text-pink-400"
+                    className="w-16 bg-slate-950/60 border border-slate-700/80 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500/50 focus:border-pink-500/50 text-center shadow-inner font-mono font-bold text-pink-400"
                     title="누적 카운트"
                   />
-                  <button onClick={handleHistorySubmit} className="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 border border-pink-500/30 shadow-[0_0_15px_rgba(236,72,153,0.25)] hover:shadow-[0_0_20px_rgba(236,72,153,0.4)] px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-all transform active:scale-95 whitespace-nowrap relative overflow-hidden group">
+                  <button onClick={handleHistorySubmit} className="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 border border-pink-500/30 shadow-[0_0_15px_rgba(236,72,153,0.25)] hover:shadow-[0_0_20px_rgba(236,72,153,0.4)] px-4 py-1.5 rounded-lg text-sm font-bold text-white transition-all transform active:scale-95 whitespace-nowrap relative overflow-hidden group">
                     <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out z-0"></div>
                     <span className="relative z-10">스팸 텍스트 추가</span>
                   </button>
