@@ -271,7 +271,25 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         # 메시지 원본에서 모든 공백(띄어쓰기, 줄바꿈 등)을 제거한 후 시그니처와 비교합니다.
         import re
         clean_msg = re.sub(r'\s+', '', msg)
+        # [NEW] Persistent SQLite Signature 캐시 스캔
+        from app.core.signature_db import SignatureDBManager
+        db_matched_sig = SignatureDBManager.find_matching_signature(clean_msg)
+        if db_matched_sig:
+            if cb: await cb("⚡ [High-Pass] 영구 DB 시그니처 매칭 성공 (LLM 스킵)")
+            try:
+                sig_len = len(db_matched_sig.encode('cp949'))
+            except UnicodeEncodeError:
+                sig_len = len(db_matched_sig.encode('utf-8'))
+                
+            return {"ibse_result": {
+                "decision": "use_string (db_cache)",
+                "signature": db_matched_sig,
+                "byte_len_cp949": sig_len,
+                "error": None,
+                "duration_seconds": 0.01
+            }}
         
+        # [NEW] 런타임 서브스트링 하이패스 캐시 스캔 (현재 배치 내 동일 패턴 방어)
         for cached_sig in list(BATCH_SIGNATURE_CACHE):
             if cached_sig in clean_msg:
                 if cb: await cb("⚡ [High-Pass] 실시간 런타임 시그니처 캐시 매칭 성공 (LLM 스킵)")
@@ -284,7 +302,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 return {"ibse_result": {
                     "decision": "use_string (runtime_cache)",
                     "signature": cached_sig,
-                    "length": sig_len,
+                    "byte_len_cp949": sig_len,
                     "error": None,
                     "duration_seconds": 0.01
                 }}
@@ -754,11 +772,30 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
             else:
                 final_verdict_str = "✅ HAM (정상)"
         
+        ibse_sig = final.get("ibse_signature")
+        ibse_len = final.get("ibse_len", 0)
+        ibse_cat = str(final.get("ibse_category", ""))
+        
+        if ibse_sig:
+            if "db_cache" in ibse_cat:
+                source_tag = "⚡ (DB 영구 캐시 매칭)"
+            elif "runtime_cache" in ibse_cat:
+                source_tag = "⚡ (실시간 그룹 캐시 매칭)"
+            else:
+                source_tag = "🤖 (LLM 분석 생성)"
+            ibse_str = f"시그니처: {ibse_sig}\n  (길이: {ibse_len} bytes) {source_tag}"
+        else:
+            if "unextractable" in ibse_cat:
+                ibse_str = "추출 불가 (Unextractable)"
+            else:
+                ibse_str = "추출 대상 아님 / 생략됨"
+                
         formatted_reason = (
             f"▼ [최종 판정]: {final_verdict_str}\n\n"
             f"[1. 텍스트 의도 분석]\n- {c_reason}\n\n"
             f"[2. URL 검증 분석]\n- {u_reason}\n\n"
-            f"[3. 파이프라인 최종 의사결정 로그]\n{logic_str}"
+            f"[3. IBSE 시그니처 추출 결과]\n- {ibse_str}\n\n"
+            f"[4. 파이프라인 최종 의사결정 로그]\n{logic_str}"
         )
         final["reason"] = formatted_reason
         

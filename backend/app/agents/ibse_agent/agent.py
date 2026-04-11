@@ -27,11 +27,11 @@ def should_continue(state: IBSEState) -> Literal["retry", "end"]:
         logger.warning(f"IBSE skipping graph retry due to unextractable decision or API error: {error}")
         return "end"
     
-    # If error exists and we haven't retried yet (max 1 retry)
-    if error and retry_count < 1:
-        logger.info(f"IBSE Validation Failed (Attempt {retry_count + 1}). Retrying...")
-        return "retry"
-    
+    # If error exists, gracefully end without graph-level retries (1 model, 1 execution rule)
+    if error:
+        logger.warning(f"IBSE Validation Failed with error: {error}. Graph retry is disabled. Ending.")
+        return "end"
+
     return "end"
 
 def update_retry_count(state: IBSEState):

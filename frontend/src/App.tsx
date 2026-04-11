@@ -835,8 +835,9 @@ function App() {
     .map(({ log, originalIdx }) => ({ ...log, originalIdx }));
 
   return (
-    <div className="h-screen bg-slate-900 text-white flex flex-col overflow-hidden">
-
+    <div className="flex flex-row h-screen w-full bg-slate-900 text-white overflow-hidden">
+      {/* Dynamic Main Content Area */}
+      <div className="flex-1 flex flex-col h-full relative min-w-0 overflow-hidden transition-all duration-300">
       {/* Background Ambience */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[100px]" />
@@ -1431,17 +1432,12 @@ function App() {
           </div>
         </div>
       )}
+      </div> {/* End Main Content Area */}
 
-      {/* AI Chat Drawer & Backdrop */}
-      {isChatOpen && (
-        <div 
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity"
-          onClick={() => setIsChatOpen(false)}
-        />
-      )}
+      {/* AI Chat Side Panel */}
       <div 
-        style={{ width: chatWidth }}
-        className={`fixed top-0 right-0 h-full bg-slate-900 border-l border-slate-700 shadow-2xl z-50 flex flex-col transform ${isChatOpen ? 'translate-x-0' : 'translate-x-[100%]'} ${isChatDragging ? 'transition-none' : 'transition-transform duration-300 ease-in-out'}`}
+        style={{ width: isChatOpen ? chatWidth : 0 }}
+        className={`relative h-full bg-slate-900 border-l border-slate-700 shadow-[inset_10px_0_30px_rgba(0,0,0,0.5)] z-30 flex flex-col flex-shrink-0 overflow-hidden ${isChatDragging ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}
       >
         {/* Resize Handle (Hitbox) */}
         {isChatOpen && (

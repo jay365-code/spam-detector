@@ -438,6 +438,24 @@ async def delete_spam_history(text: str):
     raise HTTPException(status_code=404, detail="해당 텍스트를 찾을 수 없거나 삭제에 실패했습니다.")
 
 
+# ========== Signatures DB API ==========
+from app.core.signature_db import SignatureDBManager
+
+@app.get("/api/db/signatures")
+async def get_signatures(page: int = 1, limit: int = 500, q: str = "", sort: str = "hit_count", order: str = "desc"):
+    result = SignatureDBManager.get_signatures(page=page, limit=limit, search_query=q, sort_col=sort, sort_order=order)
+    return {"success": True, "data": result}
+
+@app.delete("/api/db/signatures/{text}")
+async def delete_signature(text: str):
+    import urllib.parse
+    decoded_text = urllib.parse.unquote(text)
+    success = SignatureDBManager.delete_signature(decoded_text)
+    if success:
+        return {"success": True, "message": "Deleted successfully."}
+    raise HTTPException(status_code=404, detail="해당 시그니처를 찾을 수 없거나 삭제에 실패했습니다.")
+
+
 # ========== Spam RAG API (Reference Examples) ==========
 from app.services.spam_rag_service import get_spam_rag_service
 
@@ -953,7 +971,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                  response_text += f"🔧 **전처리(공백제거)**: `{spaceless_msg}`\n\n"
                                  
                                  if sig:
-                                     response_text += f"✅ **추출 성공**\n- **시그니처**: `{sig}`\n- **길이**: {byte_len} bytes (CP949)\n"
+                                     source_tag = " ⚡ **(DB 스피드 캐시)**" if "db_cache" in str(decision) else (" ⚡ **(실시간 캐시)**" if "cache" in str(decision) else " 🤖 **(LLM 단독 생성)**")
+                                     response_text += f"✅ **추출 성공**{source_tag}\n- **시그니처**: `{sig}`\n- **길이**: {byte_len} bytes (CP949)\n"
                                  elif decision == "unextractable":
                                      response_text += f"🛑 **추출 생략 (대상 아님)**\n- **사유**: {reason}\n"
                                  else:
@@ -1161,8 +1180,16 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 # Step B-2: Append IBSE Data if extracted
                                 ibse_sig = final_res.get("ibse_signature")
                                 ibse_len = final_res.get("ibse_len")
+                                ibse_cat = final_res.get("ibse_category", "")
                                 if ibse_sig:
-                                    ibse_text = f"\n**[IBSE 시그니처 추출 결과]**\n- **시그니처**: `{ibse_sig}`\n- **길이**: {ibse_len} bytes (CP949)\n"
+                                    if "db_cache" in str(ibse_cat):
+                                        source_tag = "⚡ **(DB 영구 캐시 매칭)**"
+                                    elif "runtime_cache" in str(ibse_cat):
+                                        source_tag = "⚡ **(실시간 그룹 캐시 매칭)**"
+                                    else:
+                                        source_tag = "🤖 **(LLM 분석 생성)**"
+                                        
+                                    ibse_text = f"\n**[IBSE 시그니처 추출 결과]** {source_tag}\n- **시그니처**: `{ibse_sig}`\n- **길이**: {ibse_len} bytes (CP949)\n"
                                     await send_text_chunk(ibse_text)
 
                                 # Step C: Post-processing Summary (RAG-based)

@@ -153,7 +153,7 @@ obfuscated_urls: {obfuscated_urls}
 
     async def _call_llm(self, system_prompt: str, user_prompt: str) -> dict:
         @retry(
-            stop=stop_after_attempt(3),
+            stop=stop_after_attempt(2),
             wait=wait_exponential(multiplier=1, min=1, max=5),
             retry=retry_if_exception(lambda e: "No retry." not in str(e)),
             before_sleep=before_sleep_log(logger, logging.WARNING),
@@ -182,7 +182,7 @@ obfuscated_urls: {obfuscated_urls}
                     }
                     if not any(current_model.startswith(p) for p in ("o1", "o3", "o4", "gpt-5")):
                         _kwargs["temperature"] = 0.0
-                    response = await asyncio.wait_for(client_instance.chat.completions.create(**_kwargs), timeout=45.0)
+                    response = await asyncio.wait_for(client_instance.chat.completions.create(**_kwargs), timeout=65.0)
                     content = response.choices[0].message.content
                     
                     try:
@@ -194,7 +194,7 @@ obfuscated_urls: {obfuscated_urls}
                 elif provider == "GEMINI":
                     from langchain_core.messages import SystemMessage, HumanMessage
                     messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
-                    response = await asyncio.wait_for(client_instance.ainvoke(messages), timeout=45.0)
+                    response = await asyncio.wait_for(client_instance.ainvoke(messages), timeout=65.0)
                     content = _normalize_llm_content(response.content)
                     
                     try:
@@ -207,7 +207,7 @@ obfuscated_urls: {obfuscated_urls}
                     response = await asyncio.wait_for(client_instance.messages.create(
                         model=current_model, max_tokens=1024, system=system_prompt,
                         messages=[{"role": "user", "content": user_prompt}]
-                    ), timeout=45.0)
+                    ), timeout=65.0)
                     content = response.content[0].text
                     
                     try:
