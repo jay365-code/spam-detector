@@ -626,6 +626,24 @@ class PlaywrightManager:
                         # visible text만 추출 평가
                         text_content = await page.evaluate("document.body.innerText")
                         
+                        # [Universal Channel Optimization] 모든 유형의 채널/커뮤니티 구독자 수 추정 (Regex 기반 Fact 추출)
+                        import re
+                        match = re.search(r'(?:친구|친구수|채널\s*추가|가입자|구독자|팔로워|회원|회원수|멤버|팬)\s*([\d,\.]+)(만명|만|명|\+)?', text_content.replace('\n', ' '))
+                        channel_subscribers = -1  # -1 means 'Unknown/Parse Failed'
+                        if match:
+                            num_str = match.group(1).replace(',', '')
+                            unit = match.group(2) or ''
+                            try:
+                                val = float(num_str)
+                                if '만' in unit:
+                                    val *= 10000
+                                channel_subscribers = int(val)
+                            except:
+                                pass
+                        result["channel_subscribers"] = channel_subscribers
+                        if channel_subscribers != -1:
+                            logger.info(f"Universal channel subscribers parsed: {channel_subscribers}")
+                        
                         # 3.5 캡차 탐지 및 우회 시도 (Heuristic)
                         result["captcha_detected"] = False
                         captcha_keywords = ["captcha", "recaptcha", "turnstile", "사람 확인", "로봇이 아닙니다", "not a robot", "human check"]

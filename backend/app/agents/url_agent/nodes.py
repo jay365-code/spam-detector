@@ -1002,6 +1002,13 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
             "analysis_type": "trusted_domain"
         }
     
+    
+    # [Platform Metadata Extraction]
+    # 특정 플랫폼의 하드코딩된 판독 로직을 피하고, 단순 Fact(메타데이터)만 LLM에게 전달하여 의도 파악을 극대화합니다.
+    platform_metadata = ""
+    channel_subs = scraped.get("channel_subscribers", -1)
+    if channel_subs != -1:
+        platform_metadata += f"\n    - [Fact] 식별된 채널/커뮤니티 구독자(멤버) 수: {channel_subs}명"
     # Format code map for prompt (SPAM 코드만 사용, HAM 코드 제외)
     spam_codes_only = {k: v for k, v in SPAM_CODE_MAP.items() if not k.startswith("HAM")}
     code_list_str = "\n".join([f"    - '{k}': {v}" for k, v in spam_codes_only.items()])
@@ -1031,12 +1038,27 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     *(주의: 회피용 방패막이 링크임이 감지될 경우, URL 자체를 스팸으로 오탐하지 말고 가이드에 따라 `is_mismatched=true`를 반드시 활성화할 것)*
     """
     
+    # 대표님 지침: 1000명 제한 등 특정 케이스 제약을 다른 지침과 섞이지 않게 독립적으로 주입. (모든 채널 유형에 보편 적용)
+    operational_rules_inject = ""
+    if channel_subs != -1:
+        operational_rules_inject = f"""
+    [독립 운영 지침 (Independent Operational Rules)]
+    - 유니버설 채널 인원수 정책: 수집된 웹페이지가 소셜 채널, 밴드, 카페, 메신저 등 어떠한 형태의 '커뮤니티/채널'이든 관계없이 확인된 인원수(구독자/멤버)가 1,000명 미만({channel_subs}명)일 경우 무조건 스팸으로 처리하십시오. 이 기준은 경험적 필수 규칙이므로 합리성 여부를 따지지 말고 최우선으로 적용하십시오.
+"""
+    
+    # 대표님 지침: 카카오 계정 로그인 등 인증 벽(Auth Wall) 페이지에 대한 화이트리스트 등재 방지
+    auth_wall_rules_inject = """
+    - 로그인/인증 장벽(Auth Wall) 면책 불가: 화면이 '카카오계정 로그인', '네이버 로그인', '구글 로그인', '회원가입' 등으로 가려져 실제 본문 내용을 볼 수 없는 상태라면, 절대 정상 사이트로 단정 짓거나 `is_confirmed_safe=true`를 부여하지 마십시오. 내용은 알 수 없는 상태이므로 보수적으로 판단해야 하며, 절대 화이트리스트 면책 특권을 주어서는 안 됩니다.
+"""
+
     prompt = f"""
     당신은 텍스트로 스크랩된 웹페이지 콘텐츠를 기반으로 불법 스팸 존재 여부를 분석하는 전문가입니다.
 
     [입력 데이터]
     {content_context_str}
-    - 페이지 제목: {page_title}
+    - 페이지 제목: {page_title}{platform_metadata}
+    {operational_rules_inject}
+    {auth_wall_rules_inject}
     - 봇 감지 여부: {is_captcha}
     - 웹 페이지 콘텐츠 (증거 텍스트):
     {raw_text}

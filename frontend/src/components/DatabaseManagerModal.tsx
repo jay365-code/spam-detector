@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Save, Trash2, Search, Link2, FileText, AlertTriangle, ShieldCheck, Database, CheckSquare, Square, Maximize2, Minimize2 } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Save, Trash2, Search, Link2, FileText, AlertTriangle, ShieldCheck, Database, CheckSquare, Square, Maximize2, Minimize2, ChevronUp, ChevronDown, Key } from 'lucide-react';
 
 interface DatabaseManagerModalProps {
   isOpen: boolean;
@@ -20,8 +20,17 @@ interface HistoryRecord {
   last_updated: string;
 }
 
+interface SignatureRecord {
+  signature: string;
+  byte_length: number;
+  source: string;
+  hit_count: number;
+  created_at: string;
+  last_hit: string | null;
+}
+
 export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'url' | 'history'>('url');
+  const [activeTab, setActiveTab] = useState<'url' | 'history' | 'signatures'>('url');
   
   // URL State
   const [urlRecords, setUrlRecords] = useState<UrlRecord[]>([]);
@@ -34,6 +43,18 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
   const [newHistoryText, setNewHistoryText] = useState('');
   const [newHistoryCount, setNewHistoryCount] = useState(1);
   
+  // Signature State
+  const [signatureRecords, setSignatureRecords] = useState<SignatureRecord[]>([]);
+  const [sigSearch, setSigSearch] = useState('');
+  const [sigPage, setSigPage] = useState(1);
+  const [sigTotal, setSigTotal] = useState(0);
+  const [sigSortCol, setSigSortCol] = useState('hit_count');
+  const [sigSortOrder, setSigSortOrder] = useState('desc');
+
+  // Client-side Sort Config for URL and History
+  const [urlSort, setUrlSort] = useState<{key: keyof UrlRecord, dir: 'asc'|'desc'}>({key: 'hit_count', dir: 'desc'});
+  const [historySort, setHistorySort] = useState<{key: keyof HistoryRecord, dir: 'asc'|'desc'}>({key: 'count', dir: 'desc'});
+
   // Loading & Prompt State
   const [loading, setLoading] = useState(false);
   const [promptData, setPromptData] = useState<{ isOpen: boolean; url: string; cleanPreview: string } | null>(null);
@@ -44,14 +65,20 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
   // Window State
   const [isMaximized, setIsMaximized] = useState(false);
 
-  // Clear selection when tab or search changes
+  // Clear selection when tab changes
   useEffect(() => {
     setSelectedItems(new Set());
-  }, [activeTab, urlSearch, historySearch]);
+    if (activeTab === 'signatures') {
+      fetchSignatures();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && activeTab !== 'signatures') {
       fetchData();
+    }
+    if (isOpen && activeTab === 'signatures') {
+      fetchSignatures();
     }
   }, [isOpen, activeTab]);
 
@@ -62,7 +89,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
         const res = await fetch('http://localhost:8000/api/db/url-whitelist');
         const json = await res.json();
         if (json.success) setUrlRecords(json.data);
-      } else {
+      } else if (activeTab === 'history') {
         const res = await fetch('http://localhost:8000/api/db/spam-history');
         const json = await res.json();
         if (json.success) setHistoryRecords(json.data);
@@ -73,9 +100,54 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
     setLoading(false);
   };
 
-  const currentFilteredRecords = activeTab === 'url' 
-    ? urlRecords.filter(r => r.domain_path.toLowerCase().includes(urlSearch.toLowerCase()))
-    : historyRecords.filter(r => r.normalized_text.includes(historySearch));
+  const fetchSignatures = async (page = sigPage, query = sigSearch) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`http://localhost:8000/api/db/signatures?page=${page}&limit=500&q=${encodeURIComponent(query)}&sort=${sigSortCol}&order=${sigSortOrder}`);
+      const json = await res.json();
+      if (json.success) {
+        setSignatureRecords(json.data.data);
+        setSigTotal(json.data.total);
+        setSigPage(json.data.page);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
+  // Debounce search on signatures
+  useEffect(() => {
+    if (activeTab === 'signatures' && isOpen) {
+      const timer = setTimeout(() => {
+        setSigPage(1);
+        fetchSignatures(1, sigSearch);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [sigSearch, sigSortCol, sigSortOrder]);
+
+  const sortedUrlRecords = useMemo(() => {
+    let sorted = [...urlRecords];
+    sorted.sort((a, b) => {
+      if (a[urlSort.key] < b[urlSort.key]) return urlSort.dir === 'asc' ? -1 : 1;
+      if (a[urlSort.key] > b[urlSort.key]) return urlSort.dir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return sorted.filter(r => r.domain_path.toLowerCase().includes(urlSearch.toLowerCase()));
+  }, [urlRecords, urlSort, urlSearch]);
+
+  const sortedHistoryRecords = useMemo(() => {
+    let sorted = [...historyRecords];
+    sorted.sort((a, b) => {
+      if (a[historySort.key] < b[historySort.key]) return historySort.dir === 'asc' ? -1 : 1;
+      if (a[historySort.key] > b[historySort.key]) return historySort.dir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return sorted.filter(r => r.normalized_text.toLowerCase().includes(historySearch.toLowerCase()));
+  }, [historyRecords, historySort, historySearch]);
+
+  const currentFilteredRecords = activeTab === 'url' ? sortedUrlRecords : (activeTab === 'history' ? sortedHistoryRecords : signatureRecords);
 
   const handleToggleSelect = (id: string) => {
     const newSet = new Set(selectedItems);
@@ -86,7 +158,11 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      const allIds = currentFilteredRecords.map(r => activeTab === 'url' ? (r as UrlRecord).domain_path : (r as HistoryRecord).normalized_text);
+      const allIds = currentFilteredRecords.map(r => {
+        if (activeTab === 'url') return (r as UrlRecord).domain_path;
+        if (activeTab === 'history') return (r as HistoryRecord).normalized_text;
+        return (r as SignatureRecord).signature;
+      });
       setSelectedItems(new Set(allIds));
     } else {
       setSelectedItems(new Set());
@@ -99,7 +175,8 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
 
     setLoading(true);
     const promises = Array.from(selectedItems).map(id => {
-      const endpoint = activeTab === 'url' ? 'url-whitelist' : 'spam-history';
+      const endpoint = activeTab === 'url' ? 'url-whitelist' : (activeTab === 'history' ? 'spam-history' : 'signatures');
+      // For signature, we need double encode if there are slashes, but standard encodeURIComponent is fine
       return fetch(`http://localhost:8000/api/db/${endpoint}/${encodeURIComponent(id)}`, {
         method: 'DELETE'
       });
@@ -108,7 +185,8 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
     try {
       await Promise.all(promises);
       setSelectedItems(new Set());
-      fetchData();
+      if (activeTab === 'signatures') fetchSignatures();
+      else fetchData();
     } catch (err) {
       console.error("Bulk delete error", err);
     }
@@ -151,7 +229,6 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
         handleAddUrl(newUrl, false);
       }
     } catch (e) {
-      // Invalid URL parse, just try generic
       handleAddUrl(newUrl, false);
     }
   };
@@ -188,7 +265,8 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
   };
 
   const handleDeleteHistory = async (text: string) => {
-    if (!confirm(`짧은 난독 텍스트를 삭제하시겠습니까?\n'${text}'`)) return;
+    if (!confirm(`짧은 난독 텍스트를 삭제하시겠습니까?
+'${text}'`)) return;
     try {
       const res = await fetch(`http://localhost:8000/api/db/spam-history/${encodeURIComponent(text)}`, {
         method: 'DELETE'
@@ -197,7 +275,25 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
     } catch (err) {}
   };
 
+  const handleDeleteSig = async (text: string) => {
+    if (!confirm(`시그니처를 삭제하시겠습니까?
+'${text}'`)) return;
+    try {
+      const res = await fetch(`http://localhost:8000/api/db/signatures/${encodeURIComponent(text)}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) fetchSignatures();
+    } catch (err) {}
+  };
+
+  const SortIcon = ({ col, currentSort }: { col: string, currentSort: {key: string, dir: string} }) => {
+    if (currentSort.key !== col) return <ChevronDown className="w-3.5 h-3.5 opacity-20 inline-block ml-1" />;
+    return currentSort.dir === 'asc' ? <ChevronUp className="w-3.5 h-3.5 text-blue-400 inline-block ml-1" /> : <ChevronDown className="w-3.5 h-3.5 text-blue-400 inline-block ml-1" />;
+  };
+
   if (!isOpen) return null;
+
+  const totalPages = Math.ceil(sigTotal / 500) || 1;
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[100] p-2 sm:p-4 text-slate-200 transition-opacity duration-300">
@@ -269,16 +365,16 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
         <div className="flex flex-1 overflow-hidden">
           
           {/* Sidebar */}
-          <div className="w-64 bg-slate-950/40 border-r border-slate-800/60 p-4 flex flex-col space-y-2 backdrop-blur-sm z-10">
+          <div className="w-72 bg-slate-950/40 border-r border-slate-800/60 p-4 flex flex-col space-y-2 backdrop-blur-sm z-10 overflow-y-auto">
             <button
               onClick={() => setActiveTab('url')}
               className={`flex items-center space-x-3 p-3.5 rounded-xl transition-all duration-300 group ${
                 activeTab === 'url' ? 'bg-gradient-to-r from-blue-500/10 to-transparent text-blue-400 border-l-4 border-blue-500 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 border-l-4 border-transparent'
               }`}
             >
-              <ShieldCheck className={`w-5 h-5 transition-transform duration-300 ${activeTab === 'url' ? 'scale-110 drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'group-hover:scale-110'}`} />
-              <span className="font-semibold text-sm">URL 화이트리스트</span>
-              <span className="ml-auto bg-black/30 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider opacity-80 group-hover:opacity-100 transition-opacity shadow-inner">
+              <ShieldCheck className={`w-5 h-5 transition-transform duration-300 flex-shrink-0 ${activeTab === 'url' ? 'scale-110 drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'group-hover:scale-110'}`} />
+              <span className="font-semibold text-sm whitespace-nowrap flex-1 text-left">URL 화이트리스트</span>
+              <span className="bg-black/30 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider flex-shrink-0 opacity-80 group-hover:opacity-100 transition-opacity shadow-inner">
                 {urlRecords.length}
               </span>
             </button>
@@ -289,10 +385,23 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                 activeTab === 'history' ? 'bg-gradient-to-r from-pink-500/10 to-transparent text-pink-400 border-l-4 border-pink-500 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 border-l-4 border-transparent'
               }`}
             >
-              <FileText className={`w-5 h-5 transition-transform duration-300 ${activeTab === 'history' ? 'scale-110 drop-shadow-[0_0_8px_rgba(236,72,153,0.5)]' : 'group-hover:scale-110'}`} />
-              <span className="font-semibold text-sm">짧은 난독 리스트</span>
-              <span className="ml-auto bg-black/30 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider opacity-80 group-hover:opacity-100 transition-opacity shadow-inner">
+              <FileText className={`w-5 h-5 transition-transform duration-300 flex-shrink-0 ${activeTab === 'history' ? 'scale-110 drop-shadow-[0_0_8px_rgba(236,72,153,0.5)]' : 'group-hover:scale-110'}`} />
+              <span className="font-semibold text-sm whitespace-nowrap flex-1 text-left">짧은 난독 리스트</span>
+              <span className="bg-black/30 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider flex-shrink-0 opacity-80 group-hover:opacity-100 transition-opacity shadow-inner">
                 {historyRecords.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('signatures')}
+              className={`flex items-center space-x-3 p-3.5 rounded-xl transition-all duration-300 group ${
+                activeTab === 'signatures' ? 'bg-gradient-to-r from-purple-500/10 to-transparent text-purple-400 border-l-4 border-purple-500 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 border-l-4 border-transparent'
+              }`}
+            >
+              <Key className={`w-5 h-5 transition-transform duration-300 flex-shrink-0 ${activeTab === 'signatures' ? 'scale-110 drop-shadow-[0_0_8px_rgba(168,85,247,0.5)]' : 'group-hover:scale-110'}`} />
+              <span className="font-semibold text-sm whitespace-nowrap flex-1 text-left">영구 시그니처</span>
+              <span className="bg-black/30 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider flex-shrink-0 opacity-80 group-hover:opacity-100 transition-opacity shadow-inner">
+                {sigTotal}
               </span>
             </button>
           </div>
@@ -308,16 +417,20 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-blue-400 transition-colors" />
                   <input
                     type="text"
-                    placeholder={activeTab === 'url' ? "도메인 검색..." : "텍스트 검색..."}
-                    value={activeTab === 'url' ? urlSearch : historySearch}
-                    onChange={(e) => activeTab === 'url' ? setUrlSearch(e.target.value) : setHistorySearch(e.target.value)}
+                    placeholder={activeTab === 'url' ? "도메인 검색..." : activeTab === 'history' ? "텍스트 검색..." : "전체 시그니처 검색 (서버 연동)"}
+                    value={activeTab === 'url' ? urlSearch : activeTab === 'history' ? historySearch : sigSearch}
+                    onChange={(e) => {
+                      if (activeTab === 'url') setUrlSearch(e.target.value);
+                      else if (activeTab === 'history') setHistorySearch(e.target.value);
+                      else setSigSearch(e.target.value);
+                    }}
                     className="w-full bg-slate-950/60 border border-slate-700/80 rounded-lg pl-9 pr-4 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all shadow-inner placeholder-slate-500 text-slate-200"
                   />
                 </div>
                 
                 <div className="flex items-center space-x-1.5 bg-black/20 px-2.5 py-1 rounded-md border border-slate-800/80 shadow-inner">
                   <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">검색결과</span>
-                  <span className="text-sm font-mono text-slate-200 font-bold">{currentFilteredRecords.length}</span>
+                  <span className="text-sm font-mono text-slate-200 font-bold">{activeTab === 'signatures' ? sigTotal : currentFilteredRecords.length}</span>
                 </div>
               </div>
 
@@ -344,10 +457,10 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                   />
                   <button onClick={handleUrlSubmit} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.25)] hover:shadow-[0_0_20px_rgba(59,130,246,0.4)] px-4 py-1.5 rounded-lg text-sm font-bold text-white transition-all transform active:scale-95 whitespace-nowrap relative overflow-hidden group">
                     <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out z-0"></div>
-                    <span className="relative z-10">신규 도메인 추가</span>
+                    <span className="relative z-10">신규 추가</span>
                   </button>
                 </div>
-              ) : (
+              ) : activeTab === 'history' ? (
                 <div className="flex items-center space-x-2.5">
                   <input
                     type="text"
@@ -367,10 +480,10 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                   />
                   <button onClick={handleHistorySubmit} className="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 border border-pink-500/30 shadow-[0_0_15px_rgba(236,72,153,0.25)] hover:shadow-[0_0_20px_rgba(236,72,153,0.4)] px-4 py-1.5 rounded-lg text-sm font-bold text-white transition-all transform active:scale-95 whitespace-nowrap relative overflow-hidden group">
                     <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out z-0"></div>
-                    <span className="relative z-10">스팸 텍스트 추가</span>
+                    <span className="relative z-10">텍스트 추가</span>
                   </button>
                 </div>
-              )}
+              ) : null}
             </div>
 
             {/* Table Area */}
@@ -396,114 +509,216 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                           )}
                         </button>
                       </th>
-                      <th className="py-2.5 px-3 font-semibold">
-                        {activeTab === 'url' ? '도메인 경로 (Domain Path)' : '정규화된 텍스트 (Normalized Text)'}
-                      </th>
-                      <th className="py-2.5 px-3 font-semibold text-center w-24">
-                        {activeTab === 'url' ? '통과 횟수' : '누적 카운트'}
-                      </th>
-                      <th className="py-2.5 px-3 font-semibold w-40">최근 업데이트</th>
+                      {activeTab === 'url' && (
+                        <>
+                          <th className="py-2.5 px-3 font-semibold cursor-pointer hover:bg-white/5" onClick={() => setUrlSort({key: 'domain_path', dir: urlSort.key==='domain_path'&&urlSort.dir==='asc'?'desc':'asc'})}>
+                            도메인 경로 (Domain Path) <SortIcon col="domain_path" currentSort={urlSort} />
+                          </th>
+                          <th className="py-2.5 px-3 font-semibold text-center w-24 cursor-pointer hover:bg-white/5" onClick={() => setUrlSort({key: 'hit_count', dir: urlSort.key==='hit_count'&&urlSort.dir==='asc'?'desc':'asc'})}>
+                            통과 횟수 <SortIcon col="hit_count" currentSort={urlSort} />
+                          </th>
+                          <th className="py-2.5 px-3 font-semibold w-40 cursor-pointer hover:bg-white/5" onClick={() => setUrlSort({key: 'last_updated', dir: urlSort.key==='last_updated'&&urlSort.dir==='asc'?'desc':'asc'})}>
+                            최근 업데이트 <SortIcon col="last_updated" currentSort={urlSort} />
+                          </th>
+                        </>
+                      )}
+                      {activeTab === 'history' && (
+                        <>
+                          <th className="py-2.5 px-3 font-semibold cursor-pointer hover:bg-white/5" onClick={() => setHistorySort({key: 'normalized_text', dir: historySort.key==='normalized_text'&&historySort.dir==='asc'?'desc':'asc'})}>
+                            정규화된 텍스트 <SortIcon col="normalized_text" currentSort={historySort} />
+                          </th>
+                          <th className="py-2.5 px-3 font-semibold text-center w-24 cursor-pointer hover:bg-white/5" onClick={() => setHistorySort({key: 'count', dir: historySort.key==='count'&&historySort.dir==='asc'?'desc':'asc'})}>
+                            누적 카운트 <SortIcon col="count" currentSort={historySort} />
+                          </th>
+                          <th className="py-2.5 px-3 font-semibold w-40 cursor-pointer hover:bg-white/5" onClick={() => setHistorySort({key: 'last_updated', dir: historySort.key==='last_updated'&&historySort.dir==='asc'?'desc':'asc'})}>
+                            최근 업데이트 <SortIcon col="last_updated" currentSort={historySort} />
+                          </th>
+                        </>
+                      )}
+                      {activeTab === 'signatures' && (
+                        <>
+                          <th className="py-2.5 px-3 font-semibold cursor-pointer hover:bg-white/5" onClick={() => { setSigSortOrder(sigSortCol==='signature'&&sigSortOrder==='asc'?'desc':'asc'); setSigSortCol('signature'); }}>
+                            시그니처 패턴 <SortIcon col="signature" currentSort={{key: sigSortCol, dir: sigSortOrder}} />
+                          </th>
+                          <th className="py-2.5 px-3 font-semibold text-center w-24 cursor-pointer hover:bg-white/5" onClick={() => { setSigSortOrder(sigSortCol==='byte_length'&&sigSortOrder==='asc'?'desc':'asc'); setSigSortCol('byte_length'); }}>
+                            바이트 <SortIcon col="byte_length" currentSort={{key: sigSortCol, dir: sigSortOrder}} />
+                          </th>
+                          <th className="py-2.5 px-3 font-semibold text-center w-24 cursor-pointer hover:bg-white/5" onClick={() => { setSigSortOrder(sigSortCol==='hit_count'&&sigSortOrder==='asc'?'desc':'asc'); setSigSortCol('hit_count'); }}>
+                            적중(Hit) <SortIcon col="hit_count" currentSort={{key: sigSortCol, dir: sigSortOrder}} />
+                          </th>
+                          <th className="py-2.5 px-3 font-semibold w-40 cursor-pointer hover:bg-white/5" onClick={() => { setSigSortOrder(sigSortCol==='last_hit'&&sigSortOrder==='asc'?'desc':'asc'); setSigSortCol('last_hit'); }}>
+                            마지막 통과 <SortIcon col="last_hit" currentSort={{key: sigSortCol, dir: sigSortOrder}} />
+                          </th>
+                        </>
+                      )}
                       <th className="py-2.5 px-3 font-semibold w-20 text-center rounded-tr-lg">관리</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5 text-sm">
-                    {activeTab === 'url' ? (
-                      (currentFilteredRecords as UrlRecord[])
-                        .map((row) => (
-                        <tr key={row.domain_path} className={`hover:bg-slate-800/40 transition-colors group ${selectedItems.has(row.domain_path) ? 'bg-blue-500/10' : ''}`}>
-                          <td className={`py-1.5 px-3 text-center border-l-2 relative ${selectedItems.has(row.domain_path) ? 'border-blue-500' : 'border-transparent'}`}>
-                            <button 
-                              onClick={() => handleToggleSelect(row.domain_path)}
-                              className={`focus:outline-none transition-all duration-200 active:scale-90 ${selectedItems.has(row.domain_path) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                            >
-                              {selectedItems.has(row.domain_path) ? (
-                                <CheckSquare className="w-4 h-4 text-blue-500 drop-shadow-[0_0_5px_rgba(59,130,246,0.5)] mx-auto" />
-                              ) : (
-                                <Square className="w-4 h-4 text-slate-600 hover:text-slate-500 mx-auto" />
-                              )}
-                            </button>
-                          </td>
-                          <td className="py-1.5 px-3">
-                            <div className="flex items-center space-x-2">
-                              <div className="p-1 max-w-fit bg-blue-500/10 rounded-md">
-                                <Link2 className="w-3.5 h-3.5 text-blue-400" />
-                              </div>
-                              <span className="text-slate-200 font-medium break-all font-mono text-[13px]">{row.domain_path}</span>
-                              {row.status === 'SAFE' && <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0 rounded-full uppercase font-bold tracking-wider shadow-[0_0_8px_rgba(16,185,129,0.1)]">SAFE</span>}
+                    {/* Render URL Rows */}
+                    {activeTab === 'url' && (currentFilteredRecords as UrlRecord[]).map((row) => (
+                      <tr key={row.domain_path} className={`hover:bg-slate-800/40 transition-colors group ${selectedItems.has(row.domain_path) ? 'bg-blue-500/10' : ''}`}>
+                        <td className={`py-1.5 px-3 text-center border-l-2 relative ${selectedItems.has(row.domain_path) ? 'border-blue-500' : 'border-transparent'}`}>
+                          <button 
+                            onClick={() => handleToggleSelect(row.domain_path)}
+                            className={`focus:outline-none transition-all duration-200 active:scale-90 ${selectedItems.has(row.domain_path) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                          >
+                            {selectedItems.has(row.domain_path) ? (
+                              <CheckSquare className="w-4 h-4 text-blue-500 drop-shadow-[0_0_5px_rgba(59,130,246,0.5)] mx-auto" />
+                            ) : (
+                              <Square className="w-4 h-4 text-slate-600 hover:text-slate-500 mx-auto" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="py-1.5 px-3">
+                          <div className="flex items-center space-x-2">
+                            <div className="p-1 max-w-fit bg-blue-500/10 rounded-md">
+                              <Link2 className="w-3.5 h-3.5 text-blue-400" />
                             </div>
-                          </td>
-                          <td className="py-1.5 px-3 text-center">
-                            <span className="inline-flex items-center justify-center min-w-[2.2rem] h-6 px-1 bg-slate-950 border border-slate-800 text-blue-400 rounded p-0 font-mono text-xs font-bold shadow-inner">
-                              {row.hit_count}
-                            </span>
-                          </td>
-                          <td className="py-1.5 px-3 text-slate-500 text-xs whitespace-nowrap font-mono tracking-tight">
-                            {row.last_updated}
-                          </td>
-                          <td className="py-1.5 px-3 text-center">
-                            <button 
-                              onClick={() => handleDeleteUrl(row.domain_path)}
-                              className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 transform hover:scale-105"
-                              title="삭제"
+                            <a 
+                              href={row.domain_path.startsWith('http') ? row.domain_path : `https://${row.domain_path}`}
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-slate-200 hover:text-blue-400 font-medium break-all font-mono text-[13px] hover:underline transition-colors"
                             >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      (currentFilteredRecords as HistoryRecord[])
-                        .map((row) => (
-                        <tr key={row.normalized_text} className={`hover:bg-slate-800/40 transition-colors group ${selectedItems.has(row.normalized_text) ? 'bg-pink-500/10' : ''}`}>
-                          <td className={`py-2 px-3 text-center align-top pt-2.5 border-l-2 relative ${selectedItems.has(row.normalized_text) ? 'border-pink-500' : 'border-transparent'}`}>
-                            <button 
-                              onClick={() => handleToggleSelect(row.normalized_text)}
-                              className={`focus:outline-none transition-all duration-200 active:scale-90 ${selectedItems.has(row.normalized_text) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                            >
-                              {selectedItems.has(row.normalized_text) ? (
-                                <CheckSquare className="w-4 h-4 text-pink-500 drop-shadow-[0_0_5px_rgba(236,72,153,0.5)] mx-auto" />
-                              ) : (
-                                <Square className="w-4 h-4 text-slate-600 hover:text-slate-500 mx-auto" />
-                              )}
-                            </button>
-                          </td>
-                          <td className="py-2 px-3">
-                            <div className="flex items-start">
-                              <span className="text-slate-200 font-medium break-all max-h-16 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-700 leading-relaxed text-[13px]">{row.normalized_text}</span>
-                            </div>
-                          </td>
-                          <td className="py-2 px-3 text-center align-top pt-2">
-                            <span className={`inline-flex items-center justify-center min-w-[2.2rem] h-6 px-1 bg-slate-950 rounded font-mono text-xs font-bold shadow-inner ${row.count >= 10 ? 'text-red-400 border border-red-500/30 shadow-[0_0_8px_rgba(239,68,68,0.2)]' : 'text-pink-400 border border-pink-500/20'}`}>
-                              {row.count}
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 text-slate-500 text-xs whitespace-nowrap align-top pt-2 font-mono tracking-tight">
-                            {row.last_updated}
-                          </td>
-                          <td className="py-2 px-3 text-center align-top">
-                            <button 
-                              onClick={() => handleDeleteHistory(row.normalized_text)}
-                              className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 transform hover:scale-105"
-                              title="삭제"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                    
+                              {row.domain_path}
+                            </a>
+                            {row.status === 'SAFE' && <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0 rounded-full uppercase font-bold tracking-wider shadow-[0_0_8px_rgba(16,185,129,0.1)]">SAFE</span>}
+                          </div>
+                        </td>
+                        <td className="py-1.5 px-3 text-center">
+                          <span className="inline-flex items-center justify-center min-w-[2.2rem] h-6 px-1 bg-slate-950 border border-slate-800 text-blue-400 rounded p-0 font-mono text-xs font-bold shadow-inner">
+                            {row.hit_count}
+                          </span>
+                        </td>
+                        <td className="py-1.5 px-3 text-slate-500 text-xs whitespace-nowrap font-mono tracking-tight">
+                          {row.last_updated}
+                        </td>
+                        <td className="py-1.5 px-3 text-center">
+                          <button 
+                            onClick={() => handleDeleteUrl(row.domain_path)}
+                            className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 transform hover:scale-105"
+                            title="삭제"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {/* Render History Rows */}
+                    {activeTab === 'history' && (currentFilteredRecords as HistoryRecord[]).map((row) => (
+                      <tr key={row.normalized_text} className={`hover:bg-slate-800/40 transition-colors group ${selectedItems.has(row.normalized_text) ? 'bg-pink-500/10' : ''}`}>
+                        <td className={`py-2 px-3 text-center align-top pt-2.5 border-l-2 relative ${selectedItems.has(row.normalized_text) ? 'border-pink-500' : 'border-transparent'}`}>
+                          <button 
+                            onClick={() => handleToggleSelect(row.normalized_text)}
+                            className={`focus:outline-none transition-all duration-200 active:scale-90 ${selectedItems.has(row.normalized_text) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                          >
+                            {selectedItems.has(row.normalized_text) ? (
+                              <CheckSquare className="w-4 h-4 text-pink-500 drop-shadow-[0_0_5px_rgba(236,72,153,0.5)] mx-auto" />
+                            ) : (
+                              <Square className="w-4 h-4 text-slate-600 hover:text-slate-500 mx-auto" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="py-2 px-3">
+                          <div className="flex items-start">
+                            <span className="text-slate-200 font-medium break-all max-h-16 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-700 leading-relaxed text-[13px]">{row.normalized_text}</span>
+                          </div>
+                        </td>
+                        <td className="py-2 px-3 text-center align-top pt-2">
+                          <span className={`inline-flex items-center justify-center min-w-[2.2rem] h-6 px-1 bg-slate-950 rounded font-mono text-xs font-bold shadow-inner ${row.count >= 10 ? 'text-red-400 border border-red-500/30 shadow-[0_0_8px_rgba(239,68,68,0.2)]' : 'text-pink-400 border border-pink-500/20'}`}>
+                            {row.count}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-slate-500 text-xs whitespace-nowrap align-top pt-2 font-mono tracking-tight">
+                          {row.last_updated}
+                        </td>
+                        <td className="py-2 px-3 text-center align-top">
+                          <button 
+                            onClick={() => handleDeleteHistory(row.normalized_text)}
+                            className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 transform hover:scale-105"
+                            title="삭제"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {/* Render Signature Rows */}
+                    {activeTab === 'signatures' && (currentFilteredRecords as SignatureRecord[]).map((row) => (
+                      <tr key={row.signature} className={`hover:bg-slate-800/40 transition-colors group ${selectedItems.has(row.signature) ? 'bg-purple-500/10' : ''}`}>
+                        <td className={`py-1.5 px-3 text-center border-l-2 relative ${selectedItems.has(row.signature) ? 'border-purple-500' : 'border-transparent'}`}>
+                          <button 
+                            onClick={() => handleToggleSelect(row.signature)}
+                            className={`focus:outline-none transition-all duration-200 active:scale-90 ${selectedItems.has(row.signature) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                          >
+                            {selectedItems.has(row.signature) ? (
+                              <CheckSquare className="w-4 h-4 text-purple-500 drop-shadow-[0_0_5px_rgba(168,85,247,0.5)] mx-auto" />
+                            ) : (
+                              <Square className="w-4 h-4 text-slate-600 hover:text-slate-500 mx-auto" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="py-1.5 px-3">
+                          <span className="text-slate-200 font-medium break-all font-mono text-[13px]">{row.signature}</span>
+                        </td>
+                        <td className="py-1.5 px-3 text-center text-slate-400 text-xs font-mono">{row.byte_length}</td>
+                        <td className="py-1.5 px-3 text-center">
+                          <span className="inline-flex items-center justify-center min-w-[2.2rem] h-6 px-1 bg-slate-950 border border-slate-800 text-purple-400 rounded p-0 font-mono text-xs font-bold shadow-inner">
+                            {row.hit_count}
+                          </span>
+                        </td>
+                        <td className="py-1.5 px-3 text-slate-500 text-xs whitespace-nowrap font-mono tracking-tight">
+                          {row.last_hit || row.created_at || '-'}
+                        </td>
+                        <td className="py-1.5 px-3 text-center">
+                          <button 
+                            onClick={() => handleDeleteSig(row.signature)}
+                            className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 transform hover:scale-105"
+                            title="삭제"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+
                     {/* Empty States */}
-                    {(activeTab === 'url' && currentFilteredRecords.length === 0) && (
-                      <tr><td colSpan={5} className="p-12 text-center text-slate-500 font-medium tracking-wide">조건에 맞는 검색 결과가 없습니다.</td></tr>
-                    )}
-                    {(activeTab === 'history' && currentFilteredRecords.length === 0) && (
-                      <tr><td colSpan={5} className="p-12 text-center text-slate-500 font-medium tracking-wide">조건에 맞는 검색 결과가 없습니다.</td></tr>
+                    {currentFilteredRecords.length === 0 && !loading && (
+                      <tr><td colSpan={6} className="p-12 text-center text-slate-500 font-medium tracking-wide">조건에 맞는 검색 결과가 없습니다.</td></tr>
                     )}
                   </tbody>
                 </table>
               )}
             </div>
+            
+            {/* Pagination Footer for Signatures */}
+            {activeTab === 'signatures' && sigTotal > 0 && (
+              <div className="bg-slate-900/80 border-t border-slate-800/60 p-3 flex justify-between items-center px-5">
+                <span className="text-xs text-slate-400 tracking-wide font-medium">전체 <strong className="text-slate-200">{sigTotal}</strong> 건 중 {(sigPage-1)*500+1} ~ {Math.min(sigPage*500, sigTotal)} 출력</span>
+                <div className="flex items-center space-x-1">
+                  <button 
+                    disabled={sigPage <= 1} 
+                    onClick={() => setSigPage(p => Math.max(1, p - 1))}
+                    className="px-3 py-1.5 rounded bg-slate-800 text-slate-300 disabled:opacity-30 hover:bg-slate-700 text-sm font-semibold transition-all"
+                  >
+                    이전
+                  </button>
+                  <div className="px-3 py-1 bg-slate-950/50 rounded text-slate-300 font-mono text-sm border border-slate-800">
+                    <strong className="text-purple-400">{sigPage}</strong> / {totalPages}
+                  </div>
+                  <button 
+                    disabled={sigPage >= totalPages} 
+                    onClick={() => setSigPage(p => Math.min(totalPages, p + 1))}
+                    className="px-3 py-1.5 rounded bg-slate-800 text-slate-300 disabled:opacity-30 hover:bg-slate-700 text-sm font-semibold transition-all"
+                  >
+                    다음
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
