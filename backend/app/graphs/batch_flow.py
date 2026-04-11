@@ -54,11 +54,11 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         
         if cb: await cb("🧩 [Unified Flow] Content Agent 의도 분석 노드 진입")
         
-        # --- [NEW] Pre-filter: 인코딩 파손(????, ) 방어선 ---
+        # --- [NEW] Pre-filter: 인코딩 파손(????, \ufffd) 방어선 ---
         import re
         clean_msg = re.sub(r'\s+', '', msg)
-        has_consecutive_broken = bool(re.search(r'[?]{10,}', clean_msg))
-        ratio_broken = (clean_msg.count('?') + clean_msg.count('')) / max(len(clean_msg), 1)
+        has_consecutive_broken = bool(re.search(r'[?\ufffd]{10,}', clean_msg))
+        ratio_broken = (clean_msg.count('?') + clean_msg.count('\ufffd')) / max(len(clean_msg), 1)
         
         if has_consecutive_broken or ratio_broken > 0.4:
             if cb: await cb("🛡️ [System Filter] 인코딩 파손(예: ???) 텍스트 감지. LLM 난독화 오탐 방지를 위해 조기 통과 (HAM)")
