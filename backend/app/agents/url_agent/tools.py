@@ -513,9 +513,20 @@ class PlaywrightManager:
                 
                 # Acquire semaphore before doing heavy work (creating context)
                 async with self._semaphore:
-                    # 새 컨텍스트 생성 (모바일 에뮬레이션 - SMS는 모바일에서 클릭되므로)
-                    logger.debug("Creating mobile context (iPhone emulation)...")
-                    context = await self.browser.new_context(
+                    is_kakao = "kakao.com" in url.lower()
+                    if is_kakao:
+                        logger.debug(f"Creating Desktop context for Kakao URL to prevent app deep-link hangs: {url}")
+                        context = await self.browser.new_context(
+                            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                            viewport={"width": 1920, "height": 1080},
+                            device_scale_factor=1,
+                            is_mobile=False,
+                            has_touch=False,
+                            ignore_https_errors=True
+                        )
+                    else:
+                        logger.debug("Creating mobile context (iPhone emulation)...")
+                        context = await self.browser.new_context(
                         user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
                         viewport={"width": 390, "height": 844},
                         device_scale_factor=3,
