@@ -1148,58 +1148,29 @@ class ExcelHandler:
                                      }
 
 
-                    # --- IBSE / 문자열·문장열 Collection Logic ---
-                    # 1) AI가 명시적으로 ibse_signature를 추출했거나,
-                    # 2) "URL이 없는 스팸메시지"이면 문장 자체를 서명으로 채택해 중복 제거 시트로 넘김
+                    # 1) AI가 명시적으로 ibse_signature를 추출한 경우에만 컬렉션에 추가
+                    # (일반 스팸 본문을 억지로 잘라서 시그니처로 만드는 Fallback 제거)
                     
-                    # AI가 텍스트 내부에서 찾은 URL이 있는지 확인 (사용자가 입력 안 했더라도)
-                    has_any_url = url_val or (result.get("extracted_urls") and len(result.get("extracted_urls")) > 0)
-                    is_url_less_spam = (result.get("is_spam") is True or is_type_b) and (not has_any_url)
-                    
-                    if result.get("ibse_signature") or is_url_less_spam:
-                        clean_msg = re.sub(r'[ \t\r\n\f\v]+', '', msg_val)
+                    if result.get("ibse_signature") and str(result.get("ibse_signature")).strip().lower() not in ["none", "unextractable"]:
+                        clean_sig = str(result.get("ibse_signature")).replace(" ", "").replace("\n", "").replace("\r", "")
                         
                         raw_ibse_code = str(result.get("classification_code", ""))
                         m_ibse = re.search(r'\d+', raw_ibse_code)
                         ibse_code = m_ibse.group(0) if m_ibse else raw_ibse_code
                         
-                        if result.get("ibse_signature") and result.get("ibse_signature") != "unextractable":
-                            clean_sig = str(result.get("ibse_signature")).replace(" ", "").replace("\n", "").replace("\r", "")
-                            sig_len_raw = result.get("ibse_len")
-                            sig_len = int(sig_len_raw) if sig_len_raw is not None else self._lenb(clean_sig)
-                        else:
-                            clean_sig = clean_msg  # 진성 URL 없는 스팸 본문 전체를 시그니처로 사용
-                            # 1단계: 원문이 너무 길면 문장 제한인 40바이트로 강제 절삭
-                            # (40바이트(약 20글자)는 충분한 엔트로피를 가지므로 절삭해도 유니크함이 어느정도 보장됨)
-                            if self._lenb(clean_sig) > 40:
-                                valid_len = 0
-                                for i in range(1, len(clean_sig) + 1):
-                                    if len(clean_sig[:i].encode("cp949", errors="replace")) <= 40:
-                                        valid_len = i
-                                    else:
-                                        break
-                                clean_sig = clean_sig[:valid_len]
-                                
-                            sig_len = self._lenb(clean_sig)
-                            
-                            # 2단계: 핵심 방어 로직 (유니크함 보호 및 차단 시스템 데드존 회피)
-                            # 사용자의 지적대로 21~38바이트 시그니처를 억지로 20바이트로 자르면
-                            # 앞부분만 남아 유니크함이 훼손되고 오탐(False Positive)의 위험이 커짐.
-                            # KISA/통신사 규격상 21~38바이트는 등록 자체가 불가능한 데드존이므로,
-                            # LLM이 이미 추출을 포기(unextractable)한 상태라면 과감히 차단 등록을 포기(Drop)함.
-                            if 20 < sig_len < 39:
-                                continue
-                            
-                            # 3단계: 9바이트 미만이면 효용성이 없으므로 등록 포기
-                            if sig_len < 9:
-                                continue
+                        sig_len_raw = result.get("ibse_len")
+                        sig_len = int(sig_len_raw) if sig_len_raw is not None else self._lenb(clean_sig)
                         
-                        blocklist_data.append({
-                            "msg": clean_msg, 
-                            "sig": clean_sig, # whitespace removed signature
-                            "len": sig_len,
-                            "code": ibse_code
-                        })
+                        # 데드존(21~38바이트) 및 최소 글자(9바이트 미만) 제외 룰 유지
+                        if 20 < sig_len < 39 or sig_len < 9:
+                            pass
+                        else:
+                            blocklist_data.append({
+                                "msg": re.sub(r'[ \t\r\n\f\v]+', '', msg_val),
+                                "sig": clean_sig,
+                                "len": sig_len,
+                                "code": ibse_code
+                            })
 
                 try:
                     wb.save(output_path)
