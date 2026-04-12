@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, Trash2, Search, Link2, FileText, AlertTriangle, ShieldCheck, Database, CheckSquare, Square, Maximize2, Minimize2, ChevronUp, ChevronDown, Key } from 'lucide-react';
+import { X, Save, Trash2, Search, Link2, FileText, AlertTriangle, ShieldCheck, Database, CheckSquare, Square, Maximize2, Minimize2, ChevronUp, ChevronDown, Key, Copy } from 'lucide-react';
 
 interface DatabaseManagerModalProps {
   isOpen: boolean;
@@ -583,6 +583,13 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                             >
                               {row.domain_path}
                             </a>
+                            <button
+                              onClick={() => navigator.clipboard.writeText(row.domain_path)}
+                              className="p-1 text-slate-500 hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-all rounded hover:bg-white/5 active:scale-95"
+                              title="클립보드 복사"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
                             {row.status === 'SAFE' && <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0 rounded-full uppercase font-bold tracking-wider shadow-[0_0_8px_rgba(16,185,129,0.1)]">SAFE</span>}
                           </div>
                         </td>
@@ -623,7 +630,14 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                         </td>
                         <td className="py-2 px-3">
                           <div className="flex items-start">
-                            <span className="text-slate-200 font-medium break-all max-h-16 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-700 leading-relaxed text-[13px]">{row.normalized_text}</span>
+                            <span className="flex-1 text-slate-200 font-medium break-all max-h-16 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-700 leading-relaxed text-[13px]">{row.normalized_text}</span>
+                            <button
+                              onClick={() => navigator.clipboard.writeText(row.normalized_text)}
+                              className="p-1 text-slate-500 hover:text-pink-400 opacity-0 group-hover:opacity-100 transition-all rounded hover:bg-white/5 active:scale-95 flex-shrink-0"
+                              title="클립보드 복사"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </td>
                         <td className="py-2 px-3 text-center align-top pt-2">
@@ -662,7 +676,16 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                           </button>
                         </td>
                         <td className="py-1.5 px-3">
-                          <span className="text-slate-200 font-medium break-all font-mono text-[13px]">{row.signature}</span>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-slate-200 font-medium break-all font-mono text-[13px]">{row.signature}</span>
+                            <button
+                              onClick={() => navigator.clipboard.writeText(row.signature)}
+                              className="p-1 text-slate-500 hover:text-purple-400 opacity-0 group-hover:opacity-100 transition-all rounded hover:bg-white/5 active:scale-95 flex-shrink-0"
+                              title="클립보드 복사"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                         <td className="py-1.5 px-3 text-center text-slate-400 text-xs font-mono">{row.byte_length}</td>
                         <td className="py-1.5 px-3 text-center">
