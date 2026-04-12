@@ -661,6 +661,20 @@ function App() {
     };
   }, [clientId]);
 
+  // --- Prevent Accidental Close or Refresh ---
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (logs.length > 0 || isProcessing) {
+        e.preventDefault();
+        // Chrome, Edge 등 현대 브라우저에서 사용자에게 기본 경고창을 띄우기 위한 필수 설정
+        e.returnValue = ''; 
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [logs.length, isProcessing]);
+
   // --- Auto Save & Restore State for Sleep Mode / Refresh (Session Storage) ---
   const saveTimerRef = useRef<number | null>(null);
 
