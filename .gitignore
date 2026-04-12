@@ -112,8 +112,8 @@ spam-validator/backend/logs/
 
 # Secrets and Configs
 mcp_config.json
-t m p /  
- b a c k e n d / t m p /  
+tmp/
+backend/tmp/
  
 # OS generated files
 .DS_Store
