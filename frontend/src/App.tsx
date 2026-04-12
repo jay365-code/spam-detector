@@ -661,6 +661,71 @@ function App() {
     };
   }, [clientId]);
 
+  // --- Auto Save & Restore State for Sleep Mode / Refresh (Session Storage) ---
+  const saveTimerRef = useRef<number | null>(null);
+
+  // Restore State on Mount
+  useEffect(() => {
+    try {
+      const backup = sessionStorage.getItem('spamDetectorBackupState');
+      if (backup) {
+        const parsed = JSON.parse(backup);
+        if (parsed.logs && parsed.logs.length > 0 && logs.length === 0) {
+           setLogs(parsed.logs.map((l: any) => ({
+             ...l,
+             timestamp: l.timestamp ? new Date(l.timestamp) : new Date()
+           })));
+           if (parsed.progress) setProgress(parsed.progress);
+           if (parsed.startedAt) setStartedAt(parsed.startedAt);
+           if (parsed.endTime) setEndTime(parsed.endTime);
+           if (parsed.downloadFilename) setDownloadFilename(parsed.downloadFilename);
+           if (parsed.kisaFilename) setKisaFilename(parsed.kisaFilename);
+           if (parsed.trapFilename) setTrapFilename(parsed.trapFilename);
+           if (parsed.activeReportName) setActiveReportName(parsed.activeReportName);
+           if (parsed.activeReportFileName) setActiveReportFileName(parsed.activeReportFileName);
+           console.log("Restored state from sleep mode or refresh!");
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to parse backup state", e);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-Save State changes with 2s Debounce (Optimized to not freeze UI)
+  useEffect(() => {
+    if (logs.length === 0) return; // 빈 상태면 저장 안 함
+
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+    }
+
+    // @ts-ignore
+    saveTimerRef.current = window.setTimeout(() => {
+      try {
+        const stateToSave = {
+          logs,
+          progress,
+          startedAt,
+          endTime,
+          downloadFilename,
+          kisaFilename,
+          trapFilename,
+          activeReportName,
+          activeReportFileName
+        };
+        sessionStorage.setItem('spamDetectorBackupState', JSON.stringify(stateToSave));
+      } catch (e) {
+         console.warn("Session Storage capacity full or error", e);
+      }
+    }, 2000);
+
+    return () => {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    };
+  }, [logs, progress, isProcessing, startedAt, endTime, downloadFilename, kisaFilename, trapFilename, activeReportName, activeReportFileName]);
+
+
   // Chat Resizing Logic
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -715,6 +780,8 @@ function App() {
     // Reset cancellation state
     setIsCancelling(false);
     setCancellationMessage('');
+    // 새로운 시작 시 기존 백업 정리
+    sessionStorage.removeItem('spamDetectorBackupState');
   };
 
   const handleUploadComplete = (filename: string, kisaName?: string, trapName?: string) => {
