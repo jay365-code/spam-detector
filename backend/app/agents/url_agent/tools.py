@@ -626,23 +626,27 @@ class PlaywrightManager:
                         # visible text만 추출 평가
                         text_content = await page.evaluate("document.body.innerText")
                         
-                        # [Universal Channel Optimization] 모든 유형의 채널/커뮤니티 구독자 수 추정 (Regex 기반 Fact 추출)
+                        # [Universal Channel Optimization] 지정된 소셜 채널 도메인에서만 구독자 수 검증 발동
                         import re
-                        match = re.search(r'(?:친구|친구수|채널\s*추가|가입자|구독자|팔로워|회원|회원수|멤버|팬)\s*([\d,\.]+)(만명|만|명|\+)?', text_content.replace('\n', ' '))
+                        SOCIAL_DOMAINS = ['kakao.com', 'band.us', 'cafe.naver.com', 't.me', 'telegram.me', 'instagram.com', 'facebook.com']
                         channel_subscribers = -1  # -1 means 'Unknown/Parse Failed'
-                        if match:
-                            num_str = match.group(1).replace(',', '')
-                            unit = match.group(2) or ''
-                            try:
-                                val = float(num_str)
-                                if '만' in unit:
-                                    val *= 10000
-                                channel_subscribers = int(val)
-                            except:
-                                pass
+                        
+                        if any(domain in final_url.lower() for domain in SOCIAL_DOMAINS):
+                            match = re.search(r'(?:친구|친구\s*수|채널\s*추가|가입자|구독자|팔로워|회원|회원\s*수|멤버|팬)\s*([\d,\.]+)(만명|만|명|\+)?(?!\s*(?:가지|위|%|퍼센트|개|원|건|주|배|년|월|일|시|분|초|할인|혜택|종|종류|차|등|번|마리|팩|그램|kg|g|만원|천원))', text_content.replace('\n', ' '))
+                            if match:
+                                num_str = match.group(1).replace(',', '')
+                                unit = match.group(2) or ''
+                                try:
+                                    val = float(num_str)
+                                    if '만' in unit:
+                                        val *= 10000
+                                    channel_subscribers = int(val)
+                                except:
+                                    pass
+                                    
                         result["channel_subscribers"] = channel_subscribers
                         if channel_subscribers != -1:
-                            logger.info(f"Universal channel subscribers parsed: {channel_subscribers}")
+                            logger.info(f"Social channel subscribers parsed: {channel_subscribers}")
                         
                         # 3.5 캡차 탐지 및 우회 시도 (Heuristic)
                         result["captcha_detected"] = False
