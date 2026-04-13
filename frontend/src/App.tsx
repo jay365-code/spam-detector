@@ -170,7 +170,15 @@ function App() {
     reason: string;
     spam_probability: number;
     is_trap?: boolean;
+    red_group?: boolean;
   } | null>(null);
+  
+  // Wizard State
+  const [wizardStep, setWizardStep] = useState<1 | 2>(1);
+  const [extractedUrls, setExtractedUrls] = useState<string[]>([]);
+  const [extractedSignature, setExtractedSignature] = useState<string>('');
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [isUrlExtracting, setIsUrlExtracting] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
 
   // 수정 모달 열기
@@ -194,8 +202,12 @@ function App() {
       category: '', // Report usually doesn't have category, default to empty
       reason: log.result.reason || '',
       spam_probability: log.result.spam_probability || 0.95,
-      is_trap: log.is_trap || false
+      is_trap: log.is_trap || false,
+      red_group: false
     });
+    setWizardStep(1);
+    setExtractedUrls([]);
+    setExtractedSignature('');
     setEditModalOpen(true);
   };
 
@@ -207,6 +219,55 @@ function App() {
       category: cat,
       classification_code: newCode
     });
+  };
+
+  const handleFirstStepSave = () => {
+    if (!editingLog) return;
+    const originalLog = logs[editingLog.index];
+    const wasSpam = originalLog?.result?.is_spam;
+    if (!wasSpam && editingLog.is_spam) {
+      setWizardStep(2);
+    } else {
+      saveEdit();
+    }
+  };
+
+  const handleExtractUrl = async () => {
+      setIsUrlExtracting(true);
+      try {
+          const res = await fetch('http://localhost:8000/api/utils/extract-url', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ message: editingLog?.message || "" })
+          });
+          const data = await res.json();
+          setExtractedUrls(data.urls || []);
+      } catch (e) {
+          alert('URL 추출 중 오류 발생');
+      } finally {
+          setIsUrlExtracting(false);
+      }
+  };
+
+  const handleExtractSignature = async () => {
+      setIsExtracting(true);
+      try {
+          const res = await fetch('http://localhost:8000/api/ibse/extract', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ message: editingLog?.message || "" })
+          });
+          const data = await res.json();
+          if (data.signature) {
+             setExtractedSignature(data.signature);
+          } else {
+             alert('시그니처 추출 실패, 대상이 없거나 생성할 수 없습니다.');
+          }
+      } catch (e) {
+          alert('시그니처 추출 중 오류 발생');
+      } finally {
+          setIsExtracting(false);
+      }
   };
 
   // 수정 저장
@@ -239,7 +300,10 @@ function App() {
           classification_code: editingLog.classification_code,
           reason: editingLog.reason,
           spam_probability: editingLog.spam_probability,
-          is_trap: editingLog.is_trap || false
+          is_trap: editingLog.is_trap || false,
+          red_group: editingLog.red_group || false,
+          added_urls: extractedUrls,
+          added_signature: extractedSignature || null
         })
       });
 
@@ -372,10 +436,8 @@ function App() {
     if (!downloadUrl || !downloadFilename) return;
 
     try {
-      // 리포트 파일명이 있으면 그걸 쓰고(.xlsx로 변경), 없으면 서버에서 준 파일명 사용
-      const suggestedExcelName = activeReportFileName
-        ? activeReportFileName.replace(/\.json$/i, ".xlsx")
-        : downloadFilename;
+      // 항상 엑셀 분석 결과의 원본 파일네이밍(downloadFilename)을 우선 사용합니다.
+      const suggestedExcelName = downloadFilename;
 
       // 1. Fetch the file from server first (Include suggested name for header consistency)
       const fetchUrl = `${downloadUrl}${downloadUrl.includes('?') ? '&' : '?'}suggested_name=${encodeURIComponent(suggestedExcelName)}`;
@@ -692,7 +754,10 @@ function App() {
            if (parsed.progress) setProgress(parsed.progress);
            if (parsed.startedAt) setStartedAt(parsed.startedAt);
            if (parsed.endTime) setEndTime(parsed.endTime);
-           if (parsed.downloadFilename) setDownloadFilename(parsed.downloadFilename);
+           if (parsed.downloadFilename) {
+             setDownloadFilename(parsed.downloadFilename);
+             setDownloadUrl(`http://localhost:8000/download/${encodeURIComponent(parsed.downloadFilename)}`);
+           }
            if (parsed.kisaFilename) setKisaFilename(parsed.kisaFilename);
            if (parsed.trapFilename) setTrapFilename(parsed.trapFilename);
            if (parsed.activeReportName) setActiveReportName(parsed.activeReportName);
@@ -1429,17 +1494,26 @@ function App() {
 
                 {editingLog.is_spam && (
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">분류 코드</label>
-                    <select
-                      value={editingLog.classification_code}
-                      onChange={(e) => setEditingLog({ ...editingLog, classification_code: e.target.value })}
-                      className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all appearance-none"
-                    >
-                      <option value="0">0 - 기타 스팸</option>
-                      <option value="1">1 - 유해성 스팸</option>
-                      <option value="2">2 - 사기/투자 스팸</option>
-                      <option value="3">3 - 불법 도박/대출</option>
-                    </select>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">분류 코드 & RED GROUP</label>
+                    <div className="flex gap-2">
+                        <select
+                          value={editingLog.classification_code}
+                          onChange={(e) => setEditingLog({ ...editingLog, classification_code: e.target.value })}
+                          className="flex-1 px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all appearance-none"
+                        >
+                          <option value="0">0 - 기타 스팸</option>
+                          <option value="1">1 - 유해성 스팸</option>
+                          <option value="2">2 - 사기/투자 스팸</option>
+                          <option value="3">3 - 불법 도박/대출</option>
+                        </select>
+                        <button
+                          onClick={() => setEditingLog({ ...editingLog, red_group: !editingLog.red_group })}
+                          title="악성 위험 수위가 높은 스팸 (Red Group 지정)"
+                          className={`px-4 py-3 rounded-xl border text-sm font-bold transition-all flex items-center justify-center gap-2 ${editingLog.red_group ? 'bg-rose-500/20 border-rose-500/50 text-rose-500' : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'}`}
+                        >
+                           🔥 RED 
+                        </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1484,32 +1558,72 @@ function App() {
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="flex gap-3 px-8 py-5 border-t border-slate-800 bg-slate-900">
-              <button
-                onClick={() => { setEditModalOpen(false); setEditingLog(null); }}
-                className="flex-1 py-3.5 rounded-2xl bg-slate-800 text-slate-300 font-bold hover:bg-slate-700 transition-all"
-              >
-                취소
-              </button>
-              <button
-                onClick={saveEdit}
-                disabled={editSaving}
-                className="flex-[2] py-3.5 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {editSaving ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    저장 중...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-5 h-5" />
-                    저장
-                  </>
-                )}
-              </button>
-            </div>
+            {/* Footer / Wizard Logic */}
+            {wizardStep === 1 ? (
+              <div className="flex gap-3 px-8 py-5 border-t border-slate-800 bg-slate-900">
+                <button
+                  onClick={() => { setEditModalOpen(false); setEditingLog(null); }}
+                  className="flex-1 py-3.5 rounded-2xl bg-slate-800 text-slate-300 font-bold hover:bg-slate-700 transition-all"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleFirstStepSave}
+                  disabled={editSaving}
+                  className="flex-[2] py-3.5 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {editSaving ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      저장 중...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-5 h-5" />
+                      {(!logs[editingLog.index]?.result?.is_spam && editingLog.is_spam) ? '다음 단계 (연쇄 작업) 👉' : '저장'}
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col px-8 py-5 border-t border-slate-800 bg-slate-900 space-y-4">
+                  <div className="p-4 bg-indigo-950/30 border border-indigo-500/20 text-indigo-200 rounded-xl">
+                      <p className="text-sm font-bold mb-1">🚨 [HAM → SPAM] 추가 데이터 페칭</p>
+                      <p className="text-xs opacity-80 mb-4">엑셀 시트(중복 제거 등) 동기화를 위해 URL/시그니처를 추출합니다.</p>
+                      
+                      <div className="space-y-3">
+                          <div className="flex items-center gap-3">
+                              <button onClick={handleExtractUrl} disabled={isUrlExtracting} className="px-3 py-2 bg-slate-800 text-slate-300 rounded hover:bg-slate-700 text-xs font-bold transition-all w-28 text-center border border-slate-700 flex justify-center items-center">
+                                  {isUrlExtracting ? <Loader2 className="w-3 h-3 animate-spin"/> : 'URL 추출'}
+                              </button>
+                              <div className="flex-1 flex gap-2 overflow-x-auto custom-scrollbar">
+                                  {extractedUrls.length > 0 ? extractedUrls.map(u => <span key={u} className="text-xs px-2 py-1 bg-slate-950/50 rounded text-blue-300 whitespace-nowrap">{u}</span>) : <span className="text-xs text-slate-500 italic mt-1">없음</span>}
+                              </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-3">
+                              <button onClick={handleExtractSignature} disabled={isExtracting} className="px-3 py-2 bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded hover:bg-indigo-600/40 text-xs font-bold transition-all w-28 text-center flex justify-center items-center">
+                                  {isExtracting ? <Loader2 className="w-3 h-3 animate-spin"/> : '✨ LLM 시그니처'}
+                              </button>
+                              <input 
+                                  type="text" 
+                                  value={extractedSignature} 
+                                  onChange={e=>setExtractedSignature(e.target.value)} 
+                                  className="flex-1 bg-slate-950 border border-slate-800 text-white rounded px-3 py-1.5 text-xs focus:ring-1 focus:ring-indigo-500 outline-none" 
+                                  placeholder="사전 추출된 시그니처가 없으면 빈칸으로 저장됩니다." 
+                              />
+                          </div>
+                      </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                      <button onClick={() => setWizardStep(1)} className="w-[120px] py-3.5 rounded-2xl bg-slate-800 text-slate-300 font-bold hover:bg-slate-700 transition-all flex justify-center items-center">이전</button>
+                      <button onClick={saveEdit} disabled={editSaving} className="flex-1 py-3.5 rounded-2xl bg-rose-600 text-white font-bold hover:bg-rose-500 transition-all shadow-lg flex items-center justify-center gap-2">
+                          {editSaving ? <><Loader2 className="w-5 h-5 animate-spin" /> 저장 중...</> : <><Save className="w-5 h-5" /> 최종 연쇄 동기화 저장</>}
+                      </button>
+                  </div>
+              </div>
+            )}
           </div>
         </div>
       )}

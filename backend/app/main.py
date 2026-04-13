@@ -1861,6 +1861,45 @@ class ExcelRowUpdate(BaseModel):
     reason: str
     spam_probability: float = 0.95
     is_trap: bool = False
+    red_group: bool = False
+    added_urls: list[str] = []
+    added_signature: str | None = None
+
+class TextRequest(BaseModel):
+    message: str
+
+@app.post("/api/utils/extract-url")
+def api_extract_url(req: TextRequest):
+    import re
+    url_pattern = r'(?:https?://|www\.)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+    urls = re.findall(url_pattern, req.message)
+    shortener_domains = {
+        "a.to", "abit.ly", "adf.ly", "adfoc.us", "aka.ms", "amzn.to", "apple.co", "asq.kr", 
+        "bit.do", "bit.ly", "bitly.com", "bitly.kr", "bl.ink", "blow.pw", "buff.ly", "buly.kr", 
+        "c11.kr", "clic.ke", "cogi.cc", "coupa.ng", "cutt.it", "cutt.ly", "di.do", "dokdo.in", "dub.co", 
+        "fb.me", "gmarket.it", "goo.gl", "goo.su", "gooal.kr", "han.gl", "horturl.at", 
+        "ii.ad", "iii.ad", "instagr.am", "is.gd", "j.mp", "kakaolink.com", "ko.gl", "koe.kr", 
+        "link24.kr", "linktr.ee", "lrl.kr", "mcaf.ee", "me2.do", "muz.so", "myip.kr", 
+        "naver.me", "ouo.io", "ow.ly", "qrco.de", "rb.gy", "rebrand.ly", "reurl.kr", 
+        "sbz.kr", "short.io", "shorter.me", "shorturl.at", "shrl.me", "shrtco.de", 
+        "t.co", "t.ly", "t.me", "t2m.kr", "tiny.cc", "tinyurl.com", "tne.kr", "tny.im", "tr.ee", "tuney.kr",
+        "url.kr", "uto.kr", "v.gd", "vo.la", "vvd.bz", "vvd.im", "wp.me", "youtu.be", "yun.kr", "zrr.kr"
+    }
+    result = []
+    for url in urls:
+        url = url.rstrip('.,;!?)]}"\'')
+        clean_url = re.sub(r'^https?://', '', url.lower())
+        clean_url = re.sub(r'^www\.', '', clean_url)
+        is_short = any(clean_url.startswith(domain) for domain in shortener_domains)
+        if not is_short and url:
+            result.append(url)
+    return {"urls": result}
+
+@app.post("/api/ibse/extract")
+async def api_extract_ibse(req: TextRequest):
+    # ibse_service is instantiated globally at lines 728-735
+    result = await ibse_service.process_message(req.message)
+    return result
 
 @app.put("/api/excel/update-row")
 async def update_excel_row(update: ExcelRowUpdate):
@@ -1951,9 +1990,10 @@ async def update_excel_row(update: ExcelRowUpdate):
         global_urls_in_message = extract_urls_from_message(update.message)
         sync_run = False
         
-        spam_fill = PatternFill(start_color="FFE699", end_color="FFE699", fill_type="solid")
+        spam_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+        type_b_fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
         no_fill = PatternFill(fill_type=None)
-        wrap_vcenter_align = Alignment(wrap_text=True, vertical='center')
+        wrap_vcenter_align = Alignment(wrap_text=False, vertical='center')
         
         final_row_idx = update.excel_row_number
         
@@ -2007,6 +2047,9 @@ async def update_excel_row(update: ExcelRowUpdate):
             if prob_col: ws.cell(row=found_row, column=prob_col, value=sanitize(f"{int(update.spam_probability * 100)}%"))
             if reason_col: ws.cell(row=found_row, column=reason_col, value=sanitize(update.reason))
             
+            red_group_col = get_col_idx("Red Group")
+            if red_group_col: ws.cell(row=found_row, column=red_group_col, value="o" if update.red_group else "")
+            
             # 메인 값 셀 채우기(황금색/투명) 변환
             if msg_col:
                 cell = ws.cell(row=found_row, column=msg_col)
@@ -2032,14 +2075,23 @@ async def update_excel_row(update: ExcelRowUpdate):
                 for i, row_data in enumerate(data_rows):
                     r_idx = i + 2
                     for c_idx, value in enumerate(row_data, start=1):
-                        ws.cell(row=r_idx, column=c_idx, value=value)
+                        cell = ws.cell(row=r_idx, column=c_idx)
+                        cell.value = value
+                        if cell.hyperlink:
+                            cell.hyperlink = None
                 
                 # 재정렬 후 색상 서식 보정
                 for r_idx in range(2, ws.max_row + 1):
                     g_val = ws.cell(row=r_idx, column=gubun_col).value
                     if msg_col:
                         cell = ws.cell(row=r_idx, column=msg_col)
-                        cell.fill = spam_fill if g_val == "o" else no_fill
+                        reason_val = str(ws.cell(row=r_idx, column=reason_col).value or "") if reason_col else ""
+                        if "[텍스트 HAM + 악성 URL 분리 감지]" in reason_val or "[본문 추출 URL 악성 감지]" in reason_val:
+                            cell.fill = type_b_fill
+                        elif g_val == "o":
+                            cell.fill = spam_fill
+                        else:
+                            cell.fill = no_fill
                         cell.alignment = wrap_vcenter_align
 
             sync_run = True
@@ -2076,7 +2128,7 @@ async def update_excel_row(update: ExcelRowUpdate):
                         
                 elif not global_was_spam and update.is_spam: # HAM -> SPAM (URL 추가)
                     existing_urls = set(url_ws.cell(row=r, column=1).value for r in range(2, url_ws.max_row + 1) if url_ws.cell(row=r, column=1).value)
-                    for url in global_urls_in_message:
+                    for url in update.added_urls:
                         if url not in existing_urls:
                             url_ws.append([url, _lenb(url), global_new_code])
                             
@@ -2117,13 +2169,22 @@ async def update_excel_row(update: ExcelRowUpdate):
                         s_sen = bl_ws.cell(row=r, column=4).value
                         if s_str: signatures_to_remove.add(str(s_str))
                         if s_sen: signatures_to_remove.add(str(s_sen))
+                            
+            elif not global_was_spam and update.is_spam and update.added_signature:
+                sig = update.added_signature
+                slen = _lenb(sig)
+                str_sig = sig if slen <= 20 else ""
+                str_len = slen if slen <= 20 else ""
+                sen_sig = sig if slen > 20 else ""
+                sen_len = slen if slen > 20 else ""
+                bl_ws.append([clean_msg, str_sig, str_len, sen_sig, sen_len, global_new_code])
 
         # 3.3) 문자열/문장열 순수 중복제거 시트 동기화 (연쇄 삭제)
+        derive_sheets = [
+            "TRAP.문자열 중복제거" if update.is_trap else "문자열중복제거",
+            "TRAP.문장 중복제거" if update.is_trap else "문장중복제거"
+        ]
         if signatures_to_remove:
-            derive_sheets = [
-                "TRAP.문자열 중복제거" if update.is_trap else "문자열중복제거",
-                "TRAP.문장 중복제거" if update.is_trap else "문장중복제거"
-            ]
             
             # 삭제 전: 타 스팸이 이 시그니처를 쓰고 있는지 확인(문자문장차단등록 시트 스캔)
             other_signatures = set()
@@ -2151,6 +2212,82 @@ async def update_excel_row(update: ExcelRowUpdate):
                             key_val = d_ws.cell(row=r, column=1).value
                             if key_val and str(key_val) in signatures_to_remove:
                                 d_ws.cell(row=r, column=3, value=global_new_code)
+        
+        # 신규 시그니처가 추가된 경우 중복제거 시트에 추가
+        if not global_was_spam and update.is_spam and update.added_signature:
+            slen = _lenb(update.added_signature)
+            d_sheet = derive_sheets[0] if slen <= 20 else derive_sheets[1]
+            if d_sheet in wb.sheetnames:
+                d_ws = wb[d_sheet]
+                existing_sigs = set(d_ws.cell(row=r, column=1).value for r in range(2, d_ws.max_row + 1) if d_ws.cell(row=r, column=1).value)
+                if update.added_signature not in existing_sigs:
+                     d_ws.append([update.added_signature, slen, global_new_code])
+                     
+        # 3.4) 삽입된 데이터 정렬 보정 (Append 시 맨 밑에 붙으므로 수동 정렬 필요)
+        def _sort_worksheet(ws, key_func):
+            if ws.max_row <= 2: return
+            data = []
+            max_col = ws.max_column
+            for r in range(2, ws.max_row + 1):
+                data.append([ws.cell(row=r, column=c).value for c in range(1, max_col + 1)])
+            data.sort(key=key_func)
+            for r_idx, row_vals in enumerate(data, start=2):
+                for c_idx, val in enumerate(row_vals, start=1):
+                    cell = ws.cell(row=r_idx, column=c_idx)
+                    cell.value = val
+                    if cell.hyperlink:
+                        cell.hyperlink = None
+
+        for u_sheet in url_sheet_names:
+            if u_sheet in wb.sheetnames:
+                _sort_worksheet(wb[u_sheet], lambda row: (int(row[1]) if row[1] else 0, str(row[0] or "")))
+        
+        if bl_sheet_name in wb.sheetnames:
+            def bl_key(row):
+                str_len = row[2] or 0
+                sen_len = row[4] or 0
+                sig = str(row[3] or row[1] or "")
+                item_len = int(sen_len) if sen_len else (int(str_len) if str_len else 0)
+                is_sentence = item_len > 20
+                return (is_sentence, -item_len, sig)
+            _sort_worksheet(wb[bl_sheet_name], bl_key)
+            
+        if derive_sheets[0] in wb.sheetnames:
+            _sort_worksheet(wb[derive_sheets[0]], lambda row: (int(row[1]) if row[1] else 0, str(row[0] or "")))
+            
+        if derive_sheets[1] in wb.sheetnames:
+            _sort_worksheet(wb[derive_sheets[1]], lambda row: (-(int(row[1]) if row[1] else 0), str(row[0] or "")))
+
+        # 3.5) 통계 요약 테이블 갱신
+        from app.utils.excel_handler import ExcelHandler
+        handler = ExcelHandler()
+        
+        actual_spam_cnt = 0
+        for m_sheet in target_sheet_names:
+            if m_sheet in wb.sheetnames:
+                col_i = 1
+                headers_m = [c.value for c in wb[m_sheet][1]]
+                if "구분" in headers_m: col_i = headers_m.index("구분") + 1
+                actual_spam_cnt = sum(1 for r in range(2, wb[m_sheet].max_row + 1) if wb[m_sheet].cell(row=r, column=col_i).value == "o")
+                break # count only first sheet found
+
+        url_cnt = 0
+        url_sheet = "TRAP.URL중복 제거" if update.is_trap else "URL중복 제거"
+        if url_sheet in wb.sheetnames:
+            url_cnt = max(0, wb[url_sheet].max_row - 1)
+
+        str_cnt = 0
+        str_sheet = derive_sheets[0]
+        if str_sheet in wb.sheetnames:
+            str_cnt = max(0, wb[str_sheet].max_row - 1)
+        
+        sen_cnt = 0
+        sen_sheet = derive_sheets[1]
+        if sen_sheet in wb.sheetnames:
+            sen_cnt = max(0, wb[sen_sheet].max_row - 1)
+            
+        # Call update stats!
+        handler._update_summary_table(wb, update.is_trap, update.filename, actual_spam_cnt, url_cnt, str_cnt, sen_cnt)
         
         # 4. 저장 및 결과 반환
         wb.save(file_path)
