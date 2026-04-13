@@ -1206,12 +1206,10 @@ class ExcelHandler:
             
             sheet_name_str = "TRAP.문자열 중복제거" if is_trap else "문자열중복제거"
             sheet_name_sen = "TRAP.문장 중복제거" if is_trap else "문장중복제거"
-            self._create_split_dedup_sheets(wb, blocklist_data, sheet_name_str, sheet_name_sen)
+            str_cnt, sen_cnt = self._create_split_dedup_sheets(wb, blocklist_data, sheet_name_str, sheet_name_sen)
             
-            # 7. Update Summary Table on "TRAP.문장 중복제거" 
+            # 7. Update Summary Table
             url_cnt = len(unique_urls) + len(unique_short_urls)
-            str_cnt = sum(1 for item in blocklist_data if (item.get('len') or 0) <= 20)
-            sen_cnt = sum(1 for item in blocklist_data if (item.get('len') or 0) > 20)
             actual_spam_cnt = stats["spam_count"]
             self._update_summary_table(wb, is_trap, output_filename, actual_spam_cnt, url_cnt, str_cnt, sen_cnt)
                 
@@ -1360,3 +1358,5 @@ class ExcelHandler:
             c_ws.column_dimensions['A'].width = 80
             c_ws.column_dimensions['B'].width = 10
             c_ws.column_dimensions['C'].width = 10
+
+        return len(unique_str), len(unique_sen)
