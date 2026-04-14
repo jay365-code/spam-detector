@@ -50,7 +50,9 @@ class ExcelHandler:
                 cell.fill = header_fill
                 
         # 자동 저장
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        dirname = os.path.dirname(output_path)
+        if dirname:
+            os.makedirs(dirname, exist_ok=True)
         wb.save(output_path)
         return True
         
@@ -317,10 +319,13 @@ class ExcelHandler:
                 is_separated = False
                 if reason_val and "[텍스트 HAM + 악성 URL 분리 감지" in str(reason_val):
                     is_separated = True
+                    
+                red_col = get_col_idx("Red Group")
+                is_red_group = (ws.cell(row=row_idx, column=red_col).value == "O") if red_col else False
 
                 cell = ws.cell(row=row_idx, column=msg_col)
                 vcenter_align = Alignment(vertical='center', wrap_text=False)
-                if is_separated: # TEXT-HAM + URL-SPAM
+                if is_separated or is_red_group: # TEXT-HAM + URL-SPAM or Red Group
                     # 사용자 요청: 텍스트 HAM + 악성 URL 분리 감지 오버라이딩은 기존 Type B 처리 방식(FFCCCC) 유지
                     type_b_fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
                     cell.fill = type_b_fill
@@ -605,7 +610,8 @@ class ExcelHandler:
                     semantic_val = result.get("semantic_class", "")
                     is_type_b = str(semantic_val).startswith("Type_B")
                     
-                    if is_separated:
+                    is_red_group = bool(result.get("red_group"))
+                    if is_separated or is_red_group:
                         # 오버라이딩 된 경우 기존 Type B 처리 방식 (구분 공란)
                         gubun_val = ""
                         raw_val = str(result.get("classification_code", ""))
@@ -1009,7 +1015,8 @@ class ExcelHandler:
                     reason_val = result.get("reason", "")
                     is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in str(reason_val)
                     
-                    if is_separated:
+                    is_red_group = bool(result.get("red_group"))
+                    if is_separated or is_red_group:
                         # 오버라이딩 된 경우 기존 Type B 처리 방식 (구분 공란)
                         gubun_val = ""
                         raw_code = str(result.get("classification_code", ""))
@@ -1102,7 +1109,7 @@ class ExcelHandler:
                     # --- URL Collection Logic ---
                     # Only collect URLs from SPAM messages or extracted from HAM
                     # drop_url이 True인 경우 (위장 URL, 가비지 URL 등) 중복제거 시트에서도 완벽히 배제
-                    if (result.get("is_spam") is True or result.get("malicious_url_extracted")) and not result.get("drop_url"):
+                    if (result.get("is_spam") is True or result.get("malicious_url_extracted") or result.get("red_group")) and not result.get("drop_url"):
                         target_url = url_val
                         # --- [UI vs KISA Export Separation] ---
                         # 도메인 난독화로 추출된 URL은 엑셀(UI 표시용)에는 로깅하되,
@@ -1151,8 +1158,9 @@ class ExcelHandler:
                     # 1) AI가 명시적으로 ibse_signature를 추출한 경우에만 컬렉션에 추가
                     # (일반 스팸 본문을 억지로 잘라서 시그니처로 만드는 Fallback 제거)
                     
-                    if result.get("ibse_signature") and str(result.get("ibse_signature")).strip().lower() not in ["none", "unextractable"]:
-                        clean_sig = str(result.get("ibse_signature")).replace(" ", "").replace("\n", "").replace("\r", "")
+                    if result.get("is_spam") or result.get("red_group"):
+                        if result.get("ibse_signature") and str(result.get("ibse_signature")).strip().lower() not in ["none", "unextractable"]:
+                            clean_sig = str(result.get("ibse_signature")).replace(" ", "").replace("\n", "").replace("\r", "")
                         
                         raw_ibse_code = str(result.get("classification_code", ""))
                         m_ibse = re.search(r'\d+', raw_ibse_code)
@@ -1360,3 +1368,249 @@ class ExcelHandler:
             c_ws.column_dimensions['C'].width = 10
 
         return len(unique_str), len(unique_sen)
+
+    def generate_excel_from_json(self, logs: list, output_path: str, is_trap: bool, original_filename: str = None) -> dict:
+        """
+        Re-generate the Excel file entirely from the UI's JSON state (logs).
+        """
+        # 1. 템플릿 생성 및 로딩 (14개 기본 시트 보존)
+        self.create_template_workbook(output_path)
+        wb = load_workbook(output_path)
+        
+        # 2. 메인 시트 접근
+        main_sheet_name = "TRAP.육안분석(시뮬결과35_150)" if is_trap else "육안분석(시뮬결과35_150)"
+        ws = wb[main_sheet_name]
+        
+        sim_sheet_name = "TRAP.시뮬결과전체" if is_trap else "시뮬결과전체"
+        sim_ws = wb[sim_sheet_name]
+        
+        # 육안분석 시트 동적 헤더 처리
+        headers = [cell.value for cell in ws[1]]
+        def get_col_idx(name, default_idx):
+            try:
+                return headers.index(name) + 1
+            except ValueError:
+                ws.cell(row=1, column=default_idx, value=name)
+                headers.append(name)
+                return default_idx
+                
+        # 기본 템플릿: "메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Reason", "Red Group"
+        in_token_col_idx = get_col_idx("In_Token", len(headers) + 1)
+        out_token_col_idx = get_col_idx("Out_Token", len(headers) + 1)
+        
+        # 시뮬결과전체 시트 초기화 (템플릿이 안 만들었을 수도 있음)
+        if sim_ws.max_row <= 1 and not sim_ws.cell(row=1, column=1).value:
+            sim_headers = ["메시지", "URL", "구분", "메시지길이", "URL길이"]
+            for c_idx, h_val in enumerate(sim_headers, start=1):
+                sim_ws.cell(row=1, column=c_idx, value=h_val)
+            for cell in sim_ws[1]:
+                cell.font = Font(bold=True, size=10)
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                cell.fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+            sim_ws.column_dimensions['A'].width = 100
+            sim_ws.column_dimensions['B'].width = 50
+            sim_ws.column_dimensions['C'].width = 10
+            sim_ws.column_dimensions['D'].width = 15
+            sim_ws.column_dimensions['E'].width = 15
+
+        unique_urls = {}
+        unique_short_urls = {}
+        blocklist_data = []
+        stats = {"spam_count": 0}
+        
+        sim_start_row = sim_ws.max_row + 1 if sim_ws.cell(row=1, column=1).value else 1
+        ws_start_row = 2
+        
+        for idx, log_item in enumerate(logs):
+            result = log_item.get("result", {})
+            msg_val = log_item.get("message", "") # Fallback
+            if not msg_val:
+                msg_val = result.get("message", "")
+                
+            # 원본 URL (시뮬결과전체 기록용)
+            req_obj = log_item.get("request", {})
+            original_url = req_obj.get("url", "")
+            
+            # --- 시뮬결과전체 시트 기록 ---
+            msg_cell = sim_ws.cell(row=sim_start_row + idx, column=1, value=self._sanitize_cell_value(msg_val))
+            msg_cell.alignment = Alignment(vertical='center', wrap_text=False)
+            sim_ws.cell(row=sim_start_row + idx, column=2, value=self._sanitize_cell_value(original_url))
+            sim_ws.cell(row=sim_start_row + idx, column=4, value=self._lenb(msg_val))
+            sim_ws.cell(row=sim_start_row + idx, column=5, value=self._lenb(original_url))
+            
+            if result.get("exclude_from_excel"):
+                continue
+                
+            # 기본적으로 UI 수정된 본문 추출 URL을 사용
+            url_val = result.get("message_extracted_url", "")
+            
+            req_obj = log_item.get("request", {})
+            input_url_val = req_obj.get("url", "")
+            
+            # 본문 추출 URL이 없으면 입력 파일 URL을 안전망(Fallback)으로 적용
+            if not url_val:
+                url_val = input_url_val
+            
+            is_red_group = bool(result.get("red_group"))
+            
+            # [사용자 요청] Red Group일 경우 무조건 입력파일 URL을 우선 사용
+            if is_red_group:
+                url_val = input_url_val
+                
+            is_spam = result.get("is_spam")
+            semantic_class = result.get("semantic_class", "")
+            reason_val = result.get("reason", "")
+            
+            is_type_b = str(semantic_class).startswith("Type_B")
+            is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in str(reason_val)
+            
+            if is_separated or is_red_group:
+                gubun_val = ""
+                raw_code = str(result.get("classification_code", ""))
+                import re
+                match = re.search(r'\d+', raw_code)
+                code_val = match.group(0) if match else raw_code
+            elif is_type_b or is_spam is True:
+                gubun_val = "o"
+                stats["spam_count"] += 1
+                raw_code = str(result.get("classification_code", ""))
+                import re
+                match = re.search(r'\d+', raw_code)
+                code_val = match.group(0) if match else raw_code
+            else:
+                gubun_val = ""
+                code_val = ""
+
+            extracted_url_code = ""
+            if result.get("malicious_url_extracted"):
+                raw_ext_code = str(result.get("url_spam_code", ""))
+                m_ext = re.search(r'\d+', raw_ext_code)
+                extracted_url_code = m_ext.group(0) if m_ext else raw_ext_code
+
+            prob_float = result.get("spam_probability", 0.0)
+            prob_val = f"{int(float(prob_float) * 100)}%"
+            
+            # Lengths
+            msg_len = self._lenb(msg_val)
+            url_len = self._lenb(url_val)
+            
+            if result.get("drop_url"):
+                url_val = ""
+                url_len = 0
+                
+            if is_separated and not url_val:
+                url_val = result.get("message_extracted_url", "")
+                url_len = self._lenb(url_val)
+                
+            # [사용자 요청] 완전히 정상(HAM)으로 탈바꿈한 항목은 육안분석 시트의 URL 컬럼을 비움
+            if not result.get("is_spam") and not result.get("red_group") and not is_separated:
+                url_val = ""
+                url_len = 0
+
+            in_token_val = result.get("input_tokens", 0)
+            out_token_val = result.get("output_tokens", 0)
+
+            # Write Row to 육안분석
+            ws.cell(row=ws_start_row, column=1, value=self._sanitize_cell_value(msg_val))
+            ws.cell(row=ws_start_row, column=2, value=self._sanitize_cell_value(url_val))
+            ws.cell(row=ws_start_row, column=3, value=self._sanitize_cell_value(gubun_val))
+            ws.cell(row=ws_start_row, column=4, value=self._sanitize_cell_value(code_val))
+            ws.cell(row=ws_start_row, column=5, value=msg_len)
+            ws.cell(row=ws_start_row, column=6, value=url_len)
+            ws.cell(row=ws_start_row, column=7, value=self._sanitize_cell_value(prob_val))
+            ws.cell(row=ws_start_row, column=8, value=self._sanitize_cell_value(semantic_class))
+            ws.cell(row=ws_start_row, column=9, value=self._sanitize_cell_value(reason_val))
+            ws.cell(row=ws_start_row, column=10, value=self._sanitize_cell_value("O" if result.get("red_group") else ""))
+            ws.cell(row=ws_start_row, column=in_token_col_idx, value=in_token_val)
+            ws.cell(row=ws_start_row, column=out_token_col_idx, value=out_token_val)
+            ws_start_row += 1
+            
+            if str(code_val) == "3":
+                finance_ws = wb["금융.SPAM"] if "금융.SPAM" in wb.sheetnames else wb.create_sheet("금융.SPAM")
+                if msg_val:
+                    finance_ws.append([self._sanitize_cell_value(msg_val)])
+                    
+            # --- URL Collection Logic ---
+            if (result.get("is_spam") is True or result.get("malicious_url_extracted") or result.get("red_group")) and not result.get("drop_url"):
+                target_url = url_val
+                is_obfuscated = "[FP Sentinel Override] 도메인 난독화" in str(result.get("reason", ""))
+                
+                if target_url and not is_obfuscated:
+                    import urllib.parse
+                    import re
+                    
+                    for raw_u in target_url.split(","):
+                        u = raw_u.strip().rstrip('.,;:!?)}"\'')
+                        if not u: continue
+                        
+                        target_u = u
+                        
+                        raw_url_code = str(result.get("classification_code", ""))
+                        _m = re.search(r'\d+', raw_url_code)
+                        url_dedup_code = _m.group(0) if _m else raw_url_code
+                        
+                        # [FIX 1] Red Group일 경우 UI가 직접 `malicious_url_extracted`를 제어하지 못하더라도 원본 코드 유지
+                        if not result.get("is_spam") and not result.get("red_group"):
+                            url_dedup_code = extracted_url_code
+                            
+                        # 단일 도메인 40바이트 제한 평가 로직 적용 (여러 URL 생성 시 개별적으로 평가)
+                        if not self.is_short_url(target_u):
+                            if target_u not in unique_urls and self._lenb(target_u) <= 40:
+                                unique_urls[target_u] = {
+                                    "len": self._lenb(target_u),
+                                    "code": url_dedup_code,
+                                    "malicious_url_extracted": result.get("malicious_url_extracted", False)
+                                }
+                        else:
+                            if target_u not in unique_short_urls and self._lenb(target_u) <= 40:
+                                unique_short_urls[target_u] = {
+                                    "len": self._lenb(target_u),
+                                    "code": url_dedup_code,
+                                    "malicious_url_extracted": result.get("malicious_url_extracted", False)
+                                }
+                            
+            # --- IBSE Collection Logic ---
+            ibse_sig = result.get("ibse_signature")
+            if result.get("is_spam") or result.get("red_group"):
+                if ibse_sig and str(ibse_sig).strip().lower() not in ["none", "unextractable"]:
+                    clean_sig = str(ibse_sig).replace(" ", "").replace("\n", "").replace("\r", "")
+                
+                    raw_ibse_code = str(result.get("classification_code", ""))
+                    m_ibse = re.search(r'\d+', raw_ibse_code)
+                    ibse_code = m_ibse.group(0) if m_ibse else raw_ibse_code
+                    
+                    sig_len_raw = result.get("ibse_len")
+                    sig_len = int(sig_len_raw) if sig_len_raw is not None else self._lenb(clean_sig)
+                    
+                    if 20 < sig_len < 39 or sig_len < 9:
+                        pass
+                    else:
+                        import re
+                        blocklist_data.append({
+                            "msg": re.sub(r'[ \t\r\n\f\v]+', '', msg_val),
+                            "sig": clean_sig,
+                            "len": sig_len,
+                            "code": ibse_code
+                        })
+
+        # Sort & Format
+        self._sort_sheet_by_type(ws, headers)
+        self._apply_formatting(ws, headers)
+        
+        # Create sheets (these will just update existing ones now!)
+        dedup_sheet_name = "TRAP.URL중복 제거" if is_trap else "URL중복 제거"
+        self._create_dedup_sheet(wb, unique_urls, unique_short_urls, sheet_name=dedup_sheet_name)
+        
+        blocklist_sheet_name = "TRAP.문자문장차단등록" if is_trap else "문자문장차단등록"
+        self._create_blocklist_sheet(wb, blocklist_data, sheet_name=blocklist_sheet_name)
+        
+        sheet_name_str = "TRAP.문자열 중복제거" if is_trap else "문자열중복제거"
+        sheet_name_sen = "TRAP.문장 중복제거" if is_trap else "문장중복제거"
+        str_cnt, sen_cnt = self._create_split_dedup_sheets(wb, blocklist_data, sheet_name_str, sheet_name_sen)
+        
+        url_cnt = len(unique_urls) + len(unique_short_urls)
+        actual_spam_cnt = stats["spam_count"]
+        self._update_summary_table(wb, is_trap, original_filename or "generated.xlsx", actual_spam_cnt, url_cnt, str_cnt, sen_cnt)
+        
+        wb.save(output_path)
+        return {"success": True, "output_path": output_path, "filename": original_filename, "total_rows": len(logs)}

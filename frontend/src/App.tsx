@@ -177,6 +177,7 @@ function App() {
   const [wizardStep, setWizardStep] = useState<1 | 2>(1);
   const [extractedUrls, setExtractedUrls] = useState<string[]>([]);
   const [extractedSignature, setExtractedSignature] = useState<string>('');
+  const [inputUrl, setInputUrl] = useState<string>('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [isUrlExtracting, setIsUrlExtracting] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
@@ -208,6 +209,7 @@ function App() {
     setWizardStep(1);
     setExtractedUrls([]);
     setExtractedSignature('');
+    setInputUrl(log.request?.url || '');
     setEditModalOpen(true);
   };
 
@@ -272,58 +274,29 @@ function App() {
 
   // 수정 저장
   const saveEdit = async () => {
-    if (!editingLog || !downloadFilename) return;
-
-    // Validate excel_row_number exists
-    let rowNum = editingLog.excel_row_number;
-    if (rowNum === undefined || rowNum === null) {
-      // Only fallback if really missing. If 0, we fix below.
-      alert('Excel 행 번호 정보가 없습니다.');
-      return;
-    }
-    // [Fix] Double-check for 0-based index
-    if (rowNum < 2) {
-      rowNum = rowNum + 2;
-    }
+    if (!editingLog) return;
 
     setEditSaving(true);
     try {
-      // 1. 백엔드 API로 엑셀 업데이트
-      const response = await fetch('http://localhost:8000/api/excel/update-row', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename: downloadFilename,
-          excel_row_number: rowNum,  // Use corrected rowNum
-          message: editingLog.message,
-          is_spam: editingLog.is_spam,
-          classification_code: editingLog.classification_code,
-          reason: editingLog.reason,
-          spam_probability: editingLog.spam_probability,
-          is_trap: editingLog.is_trap || false,
-          red_group: editingLog.red_group || false,
-          added_urls: extractedUrls,
-          added_signature: extractedSignature || null
-        })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Update failed');
-      }
-
-      // 2. UI 상태 업데이트
+      // UI 상태만 즉각 업데이트 (백엔드는 엑셀 최종 저장 시 JSON 전체 기반으로 재생성)
       setLogs(prev => {
         const newLogs = [...prev];
         if (newLogs[editingLog.index]) {
           newLogs[editingLog.index] = {
             ...newLogs[editingLog.index],
+            request: {
+              ...newLogs[editingLog.index].request,
+              url: inputUrl
+            },
             result: {
               ...newLogs[editingLog.index].result,
               is_spam: editingLog.is_spam,
               classification_code: editingLog.classification_code,
               reason: editingLog.reason,
-              spam_probability: editingLog.spam_probability
+              red_group: editingLog.red_group || false,
+              spam_probability: editingLog.spam_probability,
+              message_extracted_url: extractedUrls.join(', '),
+              ibse_signature: extractedSignature
             }
           };
         }
@@ -374,6 +347,7 @@ function App() {
   // Progress State
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isRegeneratingExcel, setIsRegeneratingExcel] = useState(false);
   const [startedAt, setStartedAt] = useState<number | null>(null); // [New] Start Time
   const [endTime, setEndTime] = useState<number | null>(null); // [New] End Time
 
@@ -438,35 +412,51 @@ function App() {
     try {
       // 항상 엑셀 분석 결과의 원본 파일네이밍(downloadFilename)을 우선 사용합니다.
       const suggestedExcelName = downloadFilename;
+      let fileHandle = null;
 
-      // 1. Fetch the file from server first (Include suggested name for header consistency)
-      const fetchUrl = `${downloadUrl}${downloadUrl.includes('?') ? '&' : '?'}suggested_name=${encodeURIComponent(suggestedExcelName)}`;
-      const response = await fetch(fetchUrl);
-      const blob = await response.blob();
-
-      // 2. Open Save File Picker
+      // 1. Open Save File Picker FIRST 
+      // (This must happen immediately after click to satisfy browser security before network await)
       if ('showSaveFilePicker' in window) {
         // @ts-ignore
-        const handle = await window.showSaveFilePicker({
+        fileHandle = await window.showSaveFilePicker({
           suggestedName: suggestedExcelName,
-
           types: [{
             description: 'Excel File',
             accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] },
           }],
         });
+      }
 
-        const writable = await handle.createWritable();
+      // 2. UI에 저장된 전체 JSON 상태를 백엔드로 보내 백지에서 완성본 엑셀 생성 (Regenerate)
+      setIsRegeneratingExcel(true);
+      const response = await fetch('http://localhost:8000/api/excel/regenerate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: suggestedExcelName,
+          is_trap: logs.some(log => log?.is_trap) || false,
+          logs: logs
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`서버 응답 오류: ${response.status}`);
+      }
+      const blob = await response.blob();
+
+      // 3. Write to selected file
+      if (fileHandle) {
+        const writable = await fileHandle.createWritable();
         await writable.write(blob);
         await writable.close();
       } else {
-        // Fallback
-        const suggestedExcelName = activeReportFileName
+        // Fallback (Safari, Firefox 등)
+        const fallbackName = activeReportFileName
           ? activeReportFileName.replace(/\.json$/i, ".xlsx")
           : downloadFilename;
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = suggestedExcelName;
+        link.download = fallbackName;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -474,7 +464,10 @@ function App() {
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         console.error('Excel Save As failed:', err);
+        alert(`엑셀 재생성 및 다운로드 실패: ${(err as Error).message}`);
       }
+    } finally {
+      setIsRegeneratingExcel(false);
     }
   };
 
@@ -1466,13 +1459,28 @@ function App() {
                 </div>
               </div>
 
+              {/* Input URL Field */}
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">입력 파일 URL (수동/테스트용 지시)</label>
+                <input
+                  type="text"
+                  value={inputUrl}
+                  onChange={(e) => setInputUrl(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="원본에 URL이 없는 경우 시험용으로 직접 타이핑할 수 있습니다."
+                />
+              </div>
+
               {/* Status Grid */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">판정</label>
                   <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
                     <button
-                      onClick={() => setEditingLog({ ...editingLog, is_spam: true, classification_code: editingLog.classification_code || '1' })}
+                      onClick={() => {
+                          const newReason = editingLog.reason ? `[수동 SPAM 전환] ${editingLog.reason.replace(/\[수동 HAM 전환\]\s*/g, '')}` : '[수동 SPAM 전환]';
+                          setEditingLog({ ...editingLog, is_spam: true, classification_code: editingLog.classification_code || '1', reason: newReason });
+                        }}
                       className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${editingLog.is_spam
                         ? 'bg-rose-500/20 text-rose-400 shadow-sm'
                         : 'text-slate-500 hover:text-slate-300'
@@ -1481,7 +1489,11 @@ function App() {
                       SPAM
                     </button>
                     <button
-                      onClick={() => setEditingLog({ ...editingLog, is_spam: false, classification_code: '' })}
+                      onClick={() => {
+                          let newReason = editingLog.reason ? `[수동 HAM 전환] ${editingLog.reason.replace(/\[수동 SPAM 전환\]\s*/g, '')}` : '[수동 HAM 전환]';
+                          newReason = newReason.replace(/\[수동 Red Group 지정\]\s*/g, '');
+                          setEditingLog({ ...editingLog, is_spam: false, classification_code: '', red_group: false, reason: newReason });
+                        }}
                       className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${!editingLog.is_spam
                         ? 'bg-emerald-500/20 text-emerald-400 shadow-sm'
                         : 'text-slate-500 hover:text-slate-300'
@@ -1507,7 +1519,16 @@ function App() {
                           <option value="3">3 - 불법 도박/대출</option>
                         </select>
                         <button
-                          onClick={() => setEditingLog({ ...editingLog, red_group: !editingLog.red_group })}
+                          onClick={() => {
+                            const isTurningOn = !editingLog.red_group;
+                            let newReason = editingLog.reason || '';
+                            if (isTurningOn && !newReason.includes('[수동 Red Group 지정]')) {
+                              newReason = `[수동 Red Group 지정] ${newReason}`;
+                            } else if (!isTurningOn) {
+                              newReason = newReason.replace(/\[수동 Red Group 지정\]\s*/g, '');
+                            }
+                            setEditingLog({ ...editingLog, red_group: isTurningOn, reason: newReason });
+                          }}
                           title="악성 위험 수위가 높은 스팸 (Red Group 지정)"
                           className={`px-4 py-3 rounded-xl border text-sm font-bold transition-all flex items-center justify-center gap-2 ${editingLog.red_group ? 'bg-rose-500/20 border-rose-500/50 text-rose-500' : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'}`}
                         >
@@ -1593,16 +1614,37 @@ function App() {
                       
                       <div className="space-y-3">
                           <div className="flex items-center gap-3">
-                              <button onClick={handleExtractUrl} disabled={isUrlExtracting} className="px-3 py-2 bg-slate-800 text-slate-300 rounded hover:bg-slate-700 text-xs font-bold transition-all w-28 text-center border border-slate-700 flex justify-center items-center">
+                              <button 
+                                onClick={handleExtractUrl} 
+                                disabled={isUrlExtracting || editingLog.red_group} 
+                                title={editingLog.red_group ? "Red Group은 본문 추출이 금지됩니다." : ""}
+                                className={`px-3 py-2 rounded text-xs font-bold transition-all w-28 text-center border flex justify-center items-center ${editingLog.red_group ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed' : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700'}`}
+                              >
                                   {isUrlExtracting ? <Loader2 className="w-3 h-3 animate-spin"/> : 'URL 추출'}
                               </button>
                               <div className="flex-1 flex gap-2 overflow-x-auto custom-scrollbar">
-                                  {extractedUrls.length > 0 ? extractedUrls.map(u => <span key={u} className="text-xs px-2 py-1 bg-slate-950/50 rounded text-blue-300 whitespace-nowrap">{u}</span>) : <span className="text-xs text-slate-500 italic mt-1">없음</span>}
+                                  {editingLog.red_group ? (
+                                      inputUrl ? (
+                                          <span className="text-xs px-2 py-1 bg-pink-950/50 border border-pink-900/50 rounded text-pink-300 whitespace-nowrap truncate" title="Red Group: 입력 파일 URL 사용">{inputUrl}</span>
+                                      ) : (
+                                          <span className="text-xs text-slate-600 italic mt-1">상단 '입력 파일 URL'에서 타이핑해주세요.</span>
+                                      )
+                                  ) : (
+                                      extractedUrls.length > 0 ? extractedUrls.map(u => <span key={u} className="text-xs px-2 py-1 bg-slate-950/50 rounded text-blue-300 whitespace-nowrap">{u}</span>) : (
+                                          inputUrl ? (
+                                              <span className="text-xs px-2 py-1 bg-slate-800 border border-slate-700/50 rounded text-slate-400 whitespace-nowrap truncate shadow-inner flex items-center gap-1" title="본문 추출 URL이 없어 상단 입력 URL이 대체 사용됩니다.">
+                                                <span className="opacity-50 text-[10px]">🔗대체:</span> {inputUrl}
+                                              </span>
+                                          ) : (
+                                              <span className="text-xs text-slate-500 italic mt-1">없음</span>
+                                          )
+                                      )
+                                  )}
                               </div>
                           </div>
                           
                           <div className="flex items-center gap-3">
-                              <button onClick={handleExtractSignature} disabled={isExtracting} className="px-3 py-2 bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded hover:bg-indigo-600/40 text-xs font-bold transition-all w-28 text-center flex justify-center items-center">
+                              <button onClick={handleExtractSignature} disabled={isExtracting} className="px-3 py-2 bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded hover:bg-indigo-600/40 text-xs font-bold transition-all min-w-[112px] whitespace-nowrap text-center flex justify-center items-center">
                                   {isExtracting ? <Loader2 className="w-3 h-3 animate-spin"/> : '✨ LLM 시그니처'}
                               </button>
                               <input 
@@ -1699,8 +1741,26 @@ function App() {
         isOpen={isDbManagerOpen}
         onClose={() => setIsDbManagerOpen(false)}
       />
+
+      {/* 엑셀 재생성 오버레이 */}
+      {isRegeneratingExcel && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-indigo-500/30 rounded-2xl p-8 flex flex-col items-center gap-5 max-w-sm w-full mx-4 shadow-2xl shadow-indigo-500/10">
+            <div className="relative">
+              <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-xl animate-pulse"></div>
+              <Loader2 className="w-12 h-12 text-indigo-400 animate-spin relative z-10" />
+            </div>
+            <div className="text-center space-y-2">
+              <h3 className="text-lg font-bold text-white tracking-tight">수정본 엑셀 재생성 중...</h3>
+              <p className="text-sm text-slate-400 leading-relaxed">
+                 화면의 최신 결과를 바탕으로 엑셀 파일을 백지부터 완벽하게 새로 짜맞추고 있습니다.<br/>
+                 <span className="text-indigo-300 font-medium mt-1 inline-block">수 초 가량 소요될 수 있습니다.</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
 export default App;

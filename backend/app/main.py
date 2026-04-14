@@ -1851,19 +1851,11 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
                 except Exception as del_err:
                     logger.warning(f"Could not delete temp file {tmp_file}: {del_err}")
 
-class ExcelRowUpdate(BaseModel):
-    """엑셀 행 업데이트 요청"""
+class RegenerateExcelRequest(BaseModel):
+    """엑셀 전체 재생성 요청"""
     filename: str
-    excel_row_number: int  # Required: Direct row number for update
-    message: str  # For validation only
-    is_spam: bool
-    classification_code: str
-    reason: str
-    spam_probability: float = 0.95
     is_trap: bool = False
-    red_group: bool = False
-    added_urls: list[str] = []
-    added_signature: str | None = None
+    logs: list[dict] = []
 
 class TextRequest(BaseModel):
     message: str
@@ -1901,416 +1893,35 @@ async def api_extract_ibse(req: TextRequest):
     result = await ibse_service.process_message(req.message)
     return result
 
-@app.put("/api/excel/update-row")
-async def update_excel_row(update: ExcelRowUpdate):
-    """엑셀 파일의 모든 메인 시트 행을 업데이트 + 부가 시트(URL/시그니처)의 연쇄 동기화(삭제 등) 수행"""
-    import re
-    from openpyxl import load_workbook
-    from openpyxl.styles import PatternFill, Alignment
-    
-    file_path = os.path.join(OUTPUT_DIR, update.filename)
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail=f"File not found: {update.filename}")
-    
-    def extract_urls_from_message(message: str) -> list:
-        url_pattern = r'(?:https?://|www\.)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-        urls = re.findall(url_pattern, message)
-        shortener_domains = {
-            "a.to", "abit.ly", "adf.ly", "adfoc.us", "aka.ms", "amzn.to", "apple.co", "asq.kr", 
-            "bit.do", "bit.ly", "bitly.com", "bitly.kr", "bl.ink", "blow.pw", "buff.ly", "buly.kr", 
-            "c11.kr", "clic.ke", "cogi.cc", "coupa.ng", "cutt.it", "cutt.ly", 
-            "di.do", "dokdo.in", "dub.co", 
-            "fb.me", 
-            "gmarket.it", "goo.gl", "goo.su", "gooal.kr", 
-            "han.gl", "horturl.at", 
-            "ii.ad", "iii.ad", "instagr.am", "is.gd", 
-            "j.mp", 
-            "kakaolink.com", "ko.gl", "koe.kr", 
-            "link24.kr", "linktr.ee", "lrl.kr", 
-            "mcaf.ee", "me2.do", "muz.so", "myip.kr", 
-            "naver.me", 
-            "ouo.io", "ow.ly", 
-            "qrco.de", 
-            "rb.gy", "rebrand.ly", "reurl.kr", 
-            "sbz.kr", "short.io", "shorter.me", "shorturl.at", "shrl.me", "shrtco.de", 
-            "t.co", "t.ly", "t.me", "t2m.kr", "tiny.cc", "tinyurl.com", "tne.kr", "tny.im", "tr.ee", "tuney.kr",
-            "url.kr", "uto.kr", 
-            "v.gd", "vo.la", "vvd.bz", "vvd.im", 
-            "wp.me", 
-            "youtu.be", "yun.kr", 
-            "zrr.kr"
-        }
-        
-        try:
-            list_path = os.path.join(os.path.dirname(__file__), "utils", "shorteners_list.txt")
-            if os.path.exists(list_path):
-                with open(list_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip().lower()
-                        if line and not line.startswith("#"):
-                            shortener_domains.add(line)
-        except Exception as e:
-            logger.warning(f"Failed to load shorteners_list.txt in main.py: {e}")
-            
-        result = []
-        for url in urls:
-            url = url.rstrip('.,;!?)]}"\'')
-            clean_url = re.sub(r'^https?://', '', url.lower())
-            clean_url = re.sub(r'^www\.', '', clean_url)
-            is_short = any(clean_url.startswith(domain) for domain in shortener_domains)
-            if not is_short and url:
-                result.append(url)
-        return result
-    
-    def _lenb(text: str) -> int:
-        if not isinstance(text, str):
-            text = str(text) if text is not None else ""
-        try:
-            return len(text.encode('cp949'))
-        except UnicodeEncodeError:
-            return len(text.encode('utf-8'))
-            
-    def sanitize(val):
-        if isinstance(val, str) and val.startswith(('=', '+', '-', '@')):
-             return "'" + val
-        return val
-
+@app.post("/api/excel/regenerate")
+async def regenerate_excel(req: RegenerateExcelRequest):
+    """프론트엔드의 최종 상태(logs)를 전체 전달받아 엑셀 파일을 백지에서 새로 생성합니다."""
     try:
-        wb = load_workbook(file_path)
+        from fastapi.responses import FileResponse
+        # 1. 파일명 분석 및 경로 설정
+        base_filename = req.filename
+        if not base_filename.endswith('.xlsx'):
+            base_filename += '.xlsx'
+        output_path = os.path.join(OUTPUT_DIR, base_filename)
         
-        # 1. 대상 메인 시트 탐침 (원천 데이터 + 결과 데이터)
-        target_sheet_names = ["TRAP.육안분석(시뮬결과35_150)", "TRAP.시뮬결과전체"] if update.is_trap else ["육안분석(시뮬결과35_150)", "시뮬결과전체"]
-        valid_sheets = [wb[name] for name in target_sheet_names if name in wb.sheetnames]
-        if not valid_sheets:
-            valid_sheets = [wb.active] # Fallback
-            
-        global_was_spam = False
-        global_new_code = ""
-        global_old_code = ""
-        global_urls_in_message = extract_urls_from_message(update.message)
-        sync_run = False
+        # 기존 파일 덮어쓰기를 피하려면 백업하거나 새 이름을 부여할 수도 있으나, Save As 개념이므로 동일하게 덮어씁니다.
+        # 2. 엑셀 생성기 호출
+        result = excel_handler.generate_excel_from_json(
+            logs=req.logs,
+            output_path=output_path,
+            is_trap=req.is_trap,
+            original_filename=base_filename
+        )
         
-        spam_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
-        type_b_fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
-        no_fill = PatternFill(fill_type=None)
-        wrap_vcenter_align = Alignment(wrap_text=False, vertical='center')
-        
-        final_row_idx = update.excel_row_number
-        
-        # 2. 메인 데이터 업데이트 및 정렬
-        for ws in valid_sheets:
-            headers = [cell.value for cell in ws[1]]
-            def get_col_idx(name):
-                try: return headers.index(name) + 1
-                except ValueError: return None
-            
-            msg_col = get_col_idx("메시지")
-            gubun_col = get_col_idx("구분")
-            code_col = get_col_idx("분류")
-            prob_col = get_col_idx("Probability")
-            reason_col = get_col_idx("Reason")
-            
-            if not msg_col: continue
-            
-            # 행 번호 복구(Smart Recovery)
-            found_row = update.excel_row_number
-            if found_row < 2 or found_row > ws.max_row: found_row = None
-            if found_row is not None:
-                cell_value = ws.cell(row=found_row, column=msg_col).value
-                if not cell_value or str(cell_value).strip() != update.message.strip():
-                    found_row = None
-            if found_row is None:
-                candidates = []
-                for r in range(2, ws.max_row + 1):
-                    r_msg = ws.cell(row=r, column=msg_col).value
-                    if r_msg and str(r_msg).strip() == update.message.strip():
-                        candidates.append(r)
-                if candidates:
-                    found_row = min(candidates, key=lambda r: abs(r - update.excel_row_number))
-                else: continue
-            
-            # 상태 기록 (첫 시트 기준)
-            if not sync_run:
-                gubun_val = ws.cell(row=found_row, column=gubun_col).value if gubun_col else None
-                global_was_spam = (gubun_val == "o")
-                global_old_code = str(ws.cell(row=found_row, column=code_col).value or "") if code_col else ""
-                
-                if update.is_spam:
-                    match = re.search(r'\d+', str(update.classification_code))
-                    global_new_code = match.group(0) if match else update.classification_code
-                else:
-                    global_new_code = ""
-
-            # 메인 값 변경 (SPAM 처리)
-            if gubun_col: ws.cell(row=found_row, column=gubun_col, value=sanitize("o" if update.is_spam else ""))
-            if code_col: ws.cell(row=found_row, column=code_col, value=sanitize(global_new_code))
-            if prob_col: ws.cell(row=found_row, column=prob_col, value=sanitize(f"{int(update.spam_probability * 100)}%"))
-            if reason_col: ws.cell(row=found_row, column=reason_col, value=sanitize(update.reason))
-            
-            red_group_col = get_col_idx("Red Group")
-            if red_group_col: ws.cell(row=found_row, column=red_group_col, value="o" if update.red_group else "")
-            
-            # 메인 값 셀 채우기(황금색/투명) 변환
-            if msg_col:
-                cell = ws.cell(row=found_row, column=msg_col)
-                if not global_was_spam and update.is_spam:
-                    cell.fill, cell.alignment = spam_fill, wrap_vcenter_align
-                elif global_was_spam and not update.is_spam:
-                    cell.fill, cell.alignment = no_fill, wrap_vcenter_align
-
-            # [메인 시트 재정렬] - 오직 구분(o) 기준
-            if global_was_spam != update.is_spam and gubun_col:
-                data_rows = []
-                for row_idx in range(2, ws.max_row + 1):
-                    row_data = []
-                    for col_idx in range(1, ws.max_column + 1):
-                        row_data.append(ws.cell(row=row_idx, column=col_idx).value)
-                    data_rows.append(row_data)
-                
-                def sort_key(row):
-                    g_val = row[gubun_col - 1] if len(row) >= gubun_col else ""
-                    return 0 if g_val == "o" else 1
-                data_rows.sort(key=sort_key)
-                
-                for i, row_data in enumerate(data_rows):
-                    r_idx = i + 2
-                    for c_idx, value in enumerate(row_data, start=1):
-                        cell = ws.cell(row=r_idx, column=c_idx)
-                        cell.value = value
-                        if cell.hyperlink:
-                            cell.hyperlink = None
-                
-                # 재정렬 후 색상 서식 보정
-                for r_idx in range(2, ws.max_row + 1):
-                    g_val = ws.cell(row=r_idx, column=gubun_col).value
-                    if msg_col:
-                        cell = ws.cell(row=r_idx, column=msg_col)
-                        reason_val = str(ws.cell(row=r_idx, column=reason_col).value or "") if reason_col else ""
-                        if "[텍스트 HAM + 악성 URL 분리 감지]" in reason_val or "[본문 추출 URL 악성 감지]" in reason_val:
-                            cell.fill = type_b_fill
-                        elif g_val == "o":
-                            cell.fill = spam_fill
-                        else:
-                            cell.fill = no_fill
-                        cell.alignment = wrap_vcenter_align
-
-            sync_run = True
-
-        # =======================================================
-        # 3. 부가 시트(URL/시그니처) 연쇄 동기화 (루프 밖 1회)
-        # =======================================================
-        
-        # 3.1) URL 중복 제거 시트 동기화
-        url_sheet_names = ["TRAP.URL중복 제거"] if update.is_trap else ["URL중복 제거"]
-        for u_sheet in url_sheet_names:
-            if u_sheet in wb.sheetnames and global_urls_in_message:
-                url_ws = wb[u_sheet]
-                
-                if global_was_spam and not update.is_spam: # SPAM -> HAM (URL 삭제)
-                    # 타 스팸 메시지의 URL 점유 여부 확인
-                    other_spam_urls = set()
-                    for check_ws in valid_sheets:
-                        h = [c.value for c in check_ws[1]]
-                        if "구분" in h and "메시지" in h:
-                            c_g, c_m = h.index("구분") + 1, h.index("메시지") + 1
-                            for r_idx in range(2, check_ws.max_row + 1):
-                                if check_ws.cell(row=r_idx, column=c_g).value == "o":
-                                    o_msg = check_ws.cell(row=r_idx, column=c_m).value
-                                    if o_msg: other_spam_urls.update(extract_urls_from_message(str(o_msg)))
-                    
-                    rows_to_delete = []
-                    for r in range(2, url_ws.max_row + 1):
-                        val = url_ws.cell(row=r, column=1).value
-                        if val and val in global_urls_in_message and val not in other_spam_urls:
-                            rows_to_delete.append(r)
-                    for r in sorted(rows_to_delete, reverse=True):
-                        url_ws.delete_rows(r)
-                        
-                elif not global_was_spam and update.is_spam: # HAM -> SPAM (URL 추가)
-                    existing_urls = set(url_ws.cell(row=r, column=1).value for r in range(2, url_ws.max_row + 1) if url_ws.cell(row=r, column=1).value)
-                    for url in update.added_urls:
-                        if url not in existing_urls:
-                            url_ws.append([url, _lenb(url), global_new_code])
-                            
-                elif global_was_spam and update.is_spam and global_old_code != global_new_code:
-                    for r in range(2, url_ws.max_row + 1):
-                        val = url_ws.cell(row=r, column=1).value
-                        if val and val in global_urls_in_message:
-                            url_ws.cell(row=r, column=3, value=global_new_code)
-
-        # 3.2) 시그니처 연쇄 동기화 (문자문장차단 + 문자열 + 문장열)
-        clean_msg = re.sub(r'[ \t\r\n\f\v]+', '', update.message)
-        bl_sheet_name = "TRAP.문자문장차단등록" if update.is_trap else "문자문장차단등록"
-        
-        signatures_to_remove = set()
-        
-        if bl_sheet_name in wb.sheetnames:
-            bl_ws = wb[bl_sheet_name]
-            
-            if global_was_spam and not update.is_spam: # SPAM -> HAM (차단등록 삭제 및 시그니처 확보)
-                rows_to_delete = []
-                for r in range(2, bl_ws.max_row + 1):
-                    bl_msg = bl_ws.cell(row=r, column=1).value
-                    if bl_msg and str(bl_msg).strip() == clean_msg.strip():
-                        s_str = bl_ws.cell(row=r, column=2).value
-                        s_sen = bl_ws.cell(row=r, column=4).value
-                        if s_str: signatures_to_remove.add(str(s_str))
-                        if s_sen: signatures_to_remove.add(str(s_sen))
-                        rows_to_delete.append(r)
-                for r in sorted(rows_to_delete, reverse=True):
-                    bl_ws.delete_rows(r)
-                    
-            elif global_was_spam and update.is_spam and global_old_code != global_new_code:
-                for r in range(2, bl_ws.max_row + 1):
-                    bl_msg = bl_ws.cell(row=r, column=1).value
-                    if bl_msg and str(bl_msg).strip() == clean_msg.strip():
-                        bl_ws.cell(row=r, column=6, value=global_new_code) # 분류 업데이트
-                        s_str = bl_ws.cell(row=r, column=2).value
-                        s_sen = bl_ws.cell(row=r, column=4).value
-                        if s_str: signatures_to_remove.add(str(s_str))
-                        if s_sen: signatures_to_remove.add(str(s_sen))
-                            
-            elif not global_was_spam and update.is_spam and update.added_signature:
-                sig = update.added_signature
-                slen = _lenb(sig)
-                str_sig = sig if slen <= 20 else ""
-                str_len = slen if slen <= 20 else ""
-                sen_sig = sig if slen > 20 else ""
-                sen_len = slen if slen > 20 else ""
-                bl_ws.append([clean_msg, str_sig, str_len, sen_sig, sen_len, global_new_code])
-
-        # 3.3) 문자열/문장열 순수 중복제거 시트 동기화 (연쇄 삭제)
-        derive_sheets = [
-            "TRAP.문자열 중복제거" if update.is_trap else "문자열중복제거",
-            "TRAP.문장 중복제거" if update.is_trap else "문장중복제거"
-        ]
-        if signatures_to_remove:
-            
-            # 삭제 전: 타 스팸이 이 시그니처를 쓰고 있는지 확인(문자문장차단등록 시트 스캔)
-            other_signatures = set()
-            if bl_sheet_name in wb.sheetnames:
-                for r in range(2, wb[bl_sheet_name].max_row + 1):
-                    o_str = wb[bl_sheet_name].cell(row=r, column=2).value
-                    o_sen = wb[bl_sheet_name].cell(row=r, column=4).value
-                    if o_str: other_signatures.add(str(o_str))
-                    if o_sen: other_signatures.add(str(o_sen))
-            
-            for d_sheet in derive_sheets:
-                if d_sheet in wb.sheetnames:
-                    d_ws = wb[d_sheet]
-                    if global_was_spam and not update.is_spam: # 연쇄 삭제 적용
-                        rows_to_delete = []
-                        for r in range(2, d_ws.max_row + 1):
-                            key_val = d_ws.cell(row=r, column=1).value
-                            if key_val and str(key_val) in signatures_to_remove and str(key_val) not in other_signatures:
-                                rows_to_delete.append(r)
-                        for r in sorted(rows_to_delete, reverse=True):
-                            d_ws.delete_rows(r)
-                            
-                    elif global_was_spam and update.is_spam and global_old_code != global_new_code:
-                        for r in range(2, d_ws.max_row + 1):
-                            key_val = d_ws.cell(row=r, column=1).value
-                            if key_val and str(key_val) in signatures_to_remove:
-                                d_ws.cell(row=r, column=3, value=global_new_code)
-        
-        # 신규 시그니처가 추가된 경우 중복제거 시트에 추가
-        if not global_was_spam and update.is_spam and update.added_signature:
-            slen = _lenb(update.added_signature)
-            d_sheet = derive_sheets[0] if slen <= 20 else derive_sheets[1]
-            if d_sheet in wb.sheetnames:
-                d_ws = wb[d_sheet]
-                existing_sigs = set(d_ws.cell(row=r, column=1).value for r in range(2, d_ws.max_row + 1) if d_ws.cell(row=r, column=1).value)
-                if update.added_signature not in existing_sigs:
-                     d_ws.append([update.added_signature, slen, global_new_code])
-                     
-        # 3.4) 삽입된 데이터 정렬 보정 (Append 시 맨 밑에 붙으므로 수동 정렬 필요)
-        def _sort_worksheet(ws, key_func):
-            if ws.max_row <= 2: return
-            data = []
-            max_col = ws.max_column
-            for r in range(2, ws.max_row + 1):
-                data.append([ws.cell(row=r, column=c).value for c in range(1, max_col + 1)])
-            data.sort(key=key_func)
-            for r_idx, row_vals in enumerate(data, start=2):
-                for c_idx, val in enumerate(row_vals, start=1):
-                    cell = ws.cell(row=r_idx, column=c_idx)
-                    cell.value = val
-                    if cell.hyperlink:
-                        cell.hyperlink = None
-
-        for u_sheet in url_sheet_names:
-            if u_sheet in wb.sheetnames:
-                _sort_worksheet(wb[u_sheet], lambda row: (int(row[1]) if row[1] else 0, str(row[0] or "")))
-        
-        if bl_sheet_name in wb.sheetnames:
-            def bl_key(row):
-                str_len = row[2] or 0
-                sen_len = row[4] or 0
-                sig = str(row[3] or row[1] or "")
-                item_len = int(sen_len) if sen_len else (int(str_len) if str_len else 0)
-                is_sentence = item_len > 20
-                return (is_sentence, -item_len, sig)
-            _sort_worksheet(wb[bl_sheet_name], bl_key)
-            
-        if derive_sheets[0] in wb.sheetnames:
-            _sort_worksheet(wb[derive_sheets[0]], lambda row: (int(row[1]) if row[1] else 0, str(row[0] or "")))
-            
-        if derive_sheets[1] in wb.sheetnames:
-            _sort_worksheet(wb[derive_sheets[1]], lambda row: (-(int(row[1]) if row[1] else 0), str(row[0] or "")))
-
-        # 3.5) 통계 요약 테이블 갱신
-        from app.utils.excel_handler import ExcelHandler
-        handler = ExcelHandler()
-        
-        actual_spam_cnt = 0
-        for m_sheet in target_sheet_names:
-            if m_sheet in wb.sheetnames:
-                col_i = 1
-                headers_m = [c.value for c in wb[m_sheet][1]]
-                if "구분" in headers_m: col_i = headers_m.index("구분") + 1
-                actual_spam_cnt = sum(1 for r in range(2, wb[m_sheet].max_row + 1) if wb[m_sheet].cell(row=r, column=col_i).value == "o")
-                break # count only first sheet found
-
-        url_cnt = 0
-        url_sheet = "TRAP.URL중복 제거" if update.is_trap else "URL중복 제거"
-        if url_sheet in wb.sheetnames:
-            url_cnt = max(0, wb[url_sheet].max_row - 1)
-
-        str_cnt = 0
-        str_sheet = derive_sheets[0]
-        if str_sheet in wb.sheetnames:
-            str_cnt = max(0, wb[str_sheet].max_row - 1)
-        
-        sen_cnt = 0
-        sen_sheet = derive_sheets[1]
-        if sen_sheet in wb.sheetnames:
-            sen_cnt = max(0, wb[sen_sheet].max_row - 1)
-            
-        # Call update stats!
-        handler._update_summary_table(wb, update.is_trap, update.filename, actual_spam_cnt, url_cnt, str_cnt, sen_cnt)
-        
-        # 4. 저장 및 결과 반환
-        wb.save(file_path)
-        
-        sync_info = []
-        if global_was_spam != update.is_spam:
-            sync_info.append(f"{'SPAM→HAM' if global_was_spam else 'HAM→SPAM'}")
-        if global_was_spam and update.is_spam and global_old_code != global_new_code:
-            sync_info.append(f"Code: {global_old_code}→{global_new_code}")
-            
-        return {
-            "success": True,
-            "message": f"Row updated successfully across sheets",
-            "sync": sync_info if sync_info else None,
-            "urls_affected": len(global_urls_in_message)
-        }
-        
-    except HTTPException:
-        raise
+        # 3. 완성된 엑셀 파일 다운로드 응답 반환
+        return FileResponse(
+            path=output_path,
+            filename=base_filename,
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
     except Exception as e:
-        logger.error(f"Error updating Excel row: {e}")
+        logger.error(f"Error regenerating Excel: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
 @app.get("/download/{filename}")
 async def download_file(filename: str, suggested_name: str = None):
     file_path = os.path.join(OUTPUT_DIR, filename)
