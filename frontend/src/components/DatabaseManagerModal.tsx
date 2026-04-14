@@ -134,7 +134,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
     }
   }, [isOpen]);
 
-  // Debounces
+  // Debounces for Search & Sort
   useEffect(() => {
     if (activeTab === 'signatures' && isOpen) {
       const timer = setTimeout(() => { setSigPage(1); fetchSignatures(1, sigSearch); }, 500);
@@ -156,8 +156,29 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
     }
   }, [historySearch, historySort]);
 
+  // Page Change Fetchers
+  useEffect(() => {
+    if (activeTab === 'signatures' && isOpen) fetchSignatures(sigPage, sigSearch);
+  }, [sigPage]);
+
+  useEffect(() => {
+    if (activeTab === 'url' && isOpen) fetchUrls(urlPage, urlSearch);
+  }, [urlPage]);
+
+  useEffect(() => {
+    if (activeTab === 'history' && isOpen) fetchHistory(historyPage, historySearch);
+  }, [historyPage]);
+
   const currentFilteredRecords = activeTab === 'url' ? urlRecords : (activeTab === 'history' ? historyRecords : signatureRecords);
   const currentFilteredTotal = activeTab === 'url' ? urlTotal : (activeTab === 'history' ? historyTotal : sigTotal);
+
+  const currentPage = activeTab === 'url' ? urlPage : (activeTab === 'history' ? historyPage : sigPage);
+  const totalPages = Math.ceil(currentFilteredTotal / 500) || 1;
+  const setPage = (updater: React.SetStateAction<number>) => {
+    if (activeTab === 'url') setUrlPage(updater);
+    else if (activeTab === 'history') setHistoryPage(updater);
+    else setSigPage(updater);
+  };
 
   const handleToggleSelect = (id: string) => {
     const newSet = new Set(selectedItems);
@@ -303,10 +324,6 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
 
   if (!isOpen) return null;
 
-  const currentTotal = activeTab === 'url' ? urlTotal : (activeTab === 'history' ? historyTotal : sigTotal);
-  const currentPage = activeTab === 'url' ? urlPage : (activeTab === 'history' ? historyPage : sigPage);
-  const totalPages = Math.ceil(currentTotal / 500) || 1;
-  const setPage = activeTab === 'url' ? setUrlPage : (activeTab === 'history' ? setHistoryPage : setSigPage);
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[100] p-2 sm:p-4 text-slate-200 transition-opacity duration-300">
