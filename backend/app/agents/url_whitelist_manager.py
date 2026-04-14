@@ -189,7 +189,7 @@ class UrlWhitelistManager:
 
     @staticmethod
     def get_all_records() -> list:
-        """프론트엔드 관리를 위한 전체 목록 조회 (최신 1000건)"""
+        """프론트엔드 관리를 위한 전체 목록 조회 (백업용/디폴트 1000건)"""
         try:
             with sqlite3.connect(DB_PATH) as conn:
                 cursor = conn.cursor()
@@ -198,6 +198,52 @@ class UrlWhitelistManager:
         except Exception as e:
             logger.error(f"[UrlWhitelist] get_all_records Error: {e}")
             return []
+
+    @staticmethod
+    def get_url_paginated(page: int = 1, limit: int = 500, search_query: str = "", sort_col: str = "last_updated", sort_order: str = "desc") -> dict:
+        """서버사이드 페이징 및 검색 지원"""
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                cursor = conn.cursor()
+                
+                # 검색 조건
+                where_clause = ""
+                params = []
+                if search_query:
+                    where_clause = "WHERE domain_path LIKE ?"
+                    params.append(f"%{search_query}%")
+                    
+                # 정렬 조건
+                valid_cols = ["domain_path", "status", "hit_count", "last_updated", "created_at"]
+                if sort_col not in valid_cols:
+                    sort_col = "last_updated"
+                order = "ASC" if sort_order.lower() == "asc" else "DESC"
+                
+                # 전체 개수 조회
+                cursor.execute(f'SELECT COUNT(*) FROM safe_urls {where_clause}', params)
+                total = cursor.fetchone()[0]
+                
+                # 페이징 데이터 조회
+                offset = (page - 1) * limit
+                query = f'''
+                    SELECT domain_path, status, hit_count, last_updated, created_at 
+                    FROM safe_urls 
+                    {where_clause} 
+                    ORDER BY {sort_col} {order} 
+                    LIMIT ? OFFSET ?
+                '''
+                cursor.execute(query, params + [limit, offset])
+                data = [{"domain_path": row[0], "status": row[1], "hit_count": row[2], "last_updated": row[3], "created_at": row[4]} for row in cursor.fetchall()]
+                
+                return {
+                    "data": data,
+                    "total": total,
+                    "page": page,
+                    "limit": limit
+                }
+        except Exception as e:
+            logger.error(f"[UrlWhitelist] get_url_paginated Error: {e}")
+            return {"data": [], "total": 0, "page": page, "limit": limit}
 
     @staticmethod
     def delete_record(domain_path: str) -> bool:

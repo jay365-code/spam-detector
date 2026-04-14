@@ -127,11 +127,53 @@ class HistoryManager:
 
     @staticmethod
     def get_all_records() -> list:
-        """프론트엔드 관리를 위한 전체 목록 조회 (최신 1000건)"""
+        """프론트엔드 관리를 위한 전체 목록 조회 (백업용/디폴트 1000건)"""
         with sqlite3.connect(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT normalized_text, count, last_updated FROM spam_history ORDER BY last_updated DESC LIMIT 1000')
             return [{"normalized_text": row[0], "count": row[1], "last_updated": row[2]} for row in cursor.fetchall()]
+
+    @staticmethod
+    def get_history_paginated(page: int = 1, limit: int = 500, search_query: str = "", sort_col: str = "last_updated", sort_order: str = "desc") -> dict:
+        """서버사이드 페이징 및 검색 지원"""
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            
+            # 검색 조건
+            where_clause = ""
+            params = []
+            if search_query:
+                where_clause = "WHERE normalized_text LIKE ?"
+                params.append(f"%{search_query}%")
+                
+            # 정렬 조건
+            valid_cols = ["normalized_text", "count", "last_updated"]
+            if sort_col not in valid_cols:
+                sort_col = "last_updated"
+            order = "ASC" if sort_order.lower() == "asc" else "DESC"
+            
+            # 전체 개수 조회
+            cursor.execute(f'SELECT COUNT(*) FROM spam_history {where_clause}', params)
+            total = cursor.fetchone()[0]
+            
+            # 페이징 데이터 조회
+            offset = (page - 1) * limit
+            query = f'''
+                SELECT normalized_text, count, last_updated 
+                FROM spam_history 
+                {where_clause} 
+                ORDER BY {sort_col} {order} 
+                LIMIT ? OFFSET ?
+            '''
+            cursor.execute(query, params + [limit, offset])
+            data = [{"normalized_text": row[0], "count": row[1], "last_updated": row[2]} for row in cursor.fetchall()]
+            
+            return {
+                "data": data,
+                "total": total,
+                "page": page,
+                "limit": limit
+            }
 
     @staticmethod
     def add_manual_record(text: str, count: int = 1) -> bool:

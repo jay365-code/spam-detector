@@ -32,16 +32,20 @@ interface SignatureRecord {
 export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState<'url' | 'history' | 'signatures'>('url');
   
-  // URL State
-  const [urlRecords, setUrlRecords] = useState<UrlRecord[]>([]);
-  const [urlSearch, setUrlSearch] = useState('');
-  const [newUrl, setNewUrl] = useState('');
-  
   // History State
   const [historyRecords, setHistoryRecords] = useState<HistoryRecord[]>([]);
   const [historySearch, setHistorySearch] = useState('');
   const [newHistoryText, setNewHistoryText] = useState('');
   const [newHistoryCount, setNewHistoryCount] = useState(1);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
+
+  // URL State
+  const [urlRecords, setUrlRecords] = useState<UrlRecord[]>([]);
+  const [urlSearch, setUrlSearch] = useState('');
+  const [newUrl, setNewUrl] = useState('');
+  const [urlPage, setUrlPage] = useState(1);
+  const [urlTotal, setUrlTotal] = useState(0);
   
   // Signature State
   const [signatureRecords, setSignatureRecords] = useState<SignatureRecord[]>([]);
@@ -65,34 +69,31 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
   // Window State
   const [isMaximized, setIsMaximized] = useState(false);
 
-  // Clear selection when tab changes
-  useEffect(() => {
-    setSelectedItems(new Set());
-    if (activeTab === 'signatures') {
-      fetchSignatures();
-    }
-  }, [activeTab]);
-
-  useEffect(() => {
-    if (isOpen && activeTab !== 'signatures') {
-      fetchData();
-    }
-    if (isOpen && activeTab === 'signatures') {
-      fetchSignatures();
-    }
-  }, [isOpen, activeTab]);
-
-  const fetchData = async () => {
+  const fetchUrls = async (page = urlPage, query = urlSearch) => {
     setLoading(true);
     try {
-      if (activeTab === 'url') {
-        const res = await fetch('http://localhost:8000/api/db/url-whitelist');
-        const json = await res.json();
-        if (json.success) setUrlRecords(json.data);
-      } else if (activeTab === 'history') {
-        const res = await fetch('http://localhost:8000/api/db/spam-history');
-        const json = await res.json();
-        if (json.success) setHistoryRecords(json.data);
+      const res = await fetch(`http://localhost:8000/api/db/url-whitelist?page=${page}&limit=500&q=${encodeURIComponent(query)}&sort=${urlSort.key}&order=${urlSort.dir}`);
+      const json = await res.json();
+      if (json.success) {
+        setUrlRecords(json.data.data);
+        setUrlTotal(json.data.total);
+        setUrlPage(json.data.page);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
+  const fetchHistory = async (page = historyPage, query = historySearch) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`http://localhost:8000/api/db/spam-history?page=${page}&limit=500&q=${encodeURIComponent(query)}&sort=${historySort.key}&order=${historySort.dir}`);
+      const json = await res.json();
+      if (json.success) {
+        setHistoryRecords(json.data.data);
+        setHistoryTotal(json.data.total);
+        setHistoryPage(json.data.page);
       }
     } catch (err) {
       console.error(err);
@@ -116,38 +117,47 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
     setLoading(false);
   };
 
-  // Debounce search on signatures
+  // Clear selection and fetch on tab switch
+  useEffect(() => {
+    setSelectedItems(new Set());
+    if (activeTab === 'url') fetchUrls();
+    else if (activeTab === 'history') fetchHistory();
+    else if (activeTab === 'signatures') fetchSignatures();
+  }, [activeTab]);
+
+  // Initial load
+  useEffect(() => {
+    if (isOpen) {
+      if (activeTab === 'url' && urlRecords.length === 0) fetchUrls();
+      else if (activeTab === 'history' && historyRecords.length === 0) fetchHistory();
+      else if (activeTab === 'signatures' && signatureRecords.length === 0) fetchSignatures();
+    }
+  }, [isOpen]);
+
+  // Debounces
   useEffect(() => {
     if (activeTab === 'signatures' && isOpen) {
-      const timer = setTimeout(() => {
-        setSigPage(1);
-        fetchSignatures(1, sigSearch);
-      }, 500);
+      const timer = setTimeout(() => { setSigPage(1); fetchSignatures(1, sigSearch); }, 500);
       return () => clearTimeout(timer);
     }
   }, [sigSearch, sigSortCol, sigSortOrder]);
 
-  const sortedUrlRecords = useMemo(() => {
-    let sorted = [...urlRecords];
-    sorted.sort((a, b) => {
-      if (a[urlSort.key] < b[urlSort.key]) return urlSort.dir === 'asc' ? -1 : 1;
-      if (a[urlSort.key] > b[urlSort.key]) return urlSort.dir === 'asc' ? 1 : -1;
-      return 0;
-    });
-    return sorted.filter(r => r.domain_path.toLowerCase().includes(urlSearch.toLowerCase()));
-  }, [urlRecords, urlSort, urlSearch]);
+  useEffect(() => {
+    if (activeTab === 'url' && isOpen) {
+      const timer = setTimeout(() => { setUrlPage(1); fetchUrls(1, urlSearch); }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [urlSearch, urlSort]);
 
-  const sortedHistoryRecords = useMemo(() => {
-    let sorted = [...historyRecords];
-    sorted.sort((a, b) => {
-      if (a[historySort.key] < b[historySort.key]) return historySort.dir === 'asc' ? -1 : 1;
-      if (a[historySort.key] > b[historySort.key]) return historySort.dir === 'asc' ? 1 : -1;
-      return 0;
-    });
-    return sorted.filter(r => r.normalized_text.toLowerCase().includes(historySearch.toLowerCase()));
-  }, [historyRecords, historySort, historySearch]);
+  useEffect(() => {
+    if (activeTab === 'history' && isOpen) {
+      const timer = setTimeout(() => { setHistoryPage(1); fetchHistory(1, historySearch); }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [historySearch, historySort]);
 
-  const currentFilteredRecords = activeTab === 'url' ? sortedUrlRecords : (activeTab === 'history' ? sortedHistoryRecords : signatureRecords);
+  const currentFilteredRecords = activeTab === 'url' ? urlRecords : (activeTab === 'history' ? historyRecords : signatureRecords);
+  const currentFilteredTotal = activeTab === 'url' ? urlTotal : (activeTab === 'history' ? historyTotal : sigTotal);
 
   const handleToggleSelect = (id: string) => {
     const newSet = new Set(selectedItems);
@@ -186,7 +196,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
       await Promise.all(promises);
       setSelectedItems(new Set());
       if (activeTab === 'signatures') fetchSignatures();
-      else fetchData();
+      else activeTab === 'url' ? fetchUrls() : fetchHistory();
     } catch (err) {
       console.error("Bulk delete error", err);
     }
@@ -204,7 +214,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
       if (res.ok) {
         setNewUrl('');
         setPromptData(null);
-        fetchData();
+        activeTab === 'url' ? fetchUrls() : fetchHistory();
       } else {
         alert("URL 추가 실패");
       }
@@ -239,7 +249,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
       const res = await fetch(`http://localhost:8000/api/db/url-whitelist/${encodeURIComponent(domainPath)}`, {
         method: 'DELETE'
       });
-      if (res.ok) fetchData();
+      if (res.ok) activeTab === 'url' ? fetchUrls() : fetchHistory();
     } catch (err) {}
   };
 
@@ -255,7 +265,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
       if (res.ok) {
         setNewHistoryText('');
         setNewHistoryCount(1);
-        fetchData();
+        activeTab === 'url' ? fetchUrls() : fetchHistory();
       } else {
         alert("텍스트 추가 실패");
       }
@@ -271,7 +281,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
       const res = await fetch(`http://localhost:8000/api/db/spam-history/${encodeURIComponent(text)}`, {
         method: 'DELETE'
       });
-      if (res.ok) fetchData();
+      if (res.ok) activeTab === 'url' ? fetchUrls() : fetchHistory();
     } catch (err) {}
   };
 
@@ -293,7 +303,10 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
 
   if (!isOpen) return null;
 
-  const totalPages = Math.ceil(sigTotal / 500) || 1;
+  const currentTotal = activeTab === 'url' ? urlTotal : (activeTab === 'history' ? historyTotal : sigTotal);
+  const currentPage = activeTab === 'url' ? urlPage : (activeTab === 'history' ? historyPage : sigPage);
+  const totalPages = Math.ceil(currentTotal / 500) || 1;
+  const setPage = activeTab === 'url' ? setUrlPage : (activeTab === 'history' ? setHistoryPage : setSigPage);
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[100] p-2 sm:p-4 text-slate-200 transition-opacity duration-300">
@@ -375,7 +388,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
               <ShieldCheck className={`w-5 h-5 transition-transform duration-300 flex-shrink-0 ${activeTab === 'url' ? 'scale-110 drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'group-hover:scale-110'}`} />
               <span className="font-semibold text-sm whitespace-nowrap flex-1 text-left">URL 화이트리스트</span>
               <span className="bg-black/30 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider flex-shrink-0 opacity-80 group-hover:opacity-100 transition-opacity shadow-inner">
-                {urlRecords.length}
+                {urlTotal}
               </span>
             </button>
             
@@ -388,7 +401,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
               <FileText className={`w-5 h-5 transition-transform duration-300 flex-shrink-0 ${activeTab === 'history' ? 'scale-110 drop-shadow-[0_0_8px_rgba(236,72,153,0.5)]' : 'group-hover:scale-110'}`} />
               <span className="font-semibold text-sm whitespace-nowrap flex-1 text-left">짧은 난독 리스트</span>
               <span className="bg-black/30 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider flex-shrink-0 opacity-80 group-hover:opacity-100 transition-opacity shadow-inner">
-                {historyRecords.length}
+                {historyTotal}
               </span>
             </button>
 
@@ -430,7 +443,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                 
                 <div className="flex items-center space-x-1.5 bg-black/20 px-2.5 py-1 rounded-md border border-slate-800/80 shadow-inner">
                   <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">검색결과</span>
-                  <span className="text-sm font-mono text-slate-200 font-bold">{activeTab === 'signatures' ? sigTotal : currentFilteredRecords.length}</span>
+                  <span className="text-sm font-mono text-slate-200 font-bold">{currentFilteredTotal}</span>
                 </div>
               </div>
 
@@ -717,24 +730,24 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
               )}
             </div>
             
-            {/* Pagination Footer for Signatures */}
-            {activeTab === 'signatures' && sigTotal > 0 && (
+            {/* Dynamic Pagination Footer */}
+            {currentFilteredTotal > 0 && (
               <div className="bg-slate-900/80 border-t border-slate-800/60 p-3 flex justify-between items-center px-5">
-                <span className="text-xs text-slate-400 tracking-wide font-medium">전체 <strong className="text-slate-200">{sigTotal}</strong> 건 중 {(sigPage-1)*500+1} ~ {Math.min(sigPage*500, sigTotal)} 출력</span>
+                <span className="text-xs text-slate-400 tracking-wide font-medium">전체 <strong className="text-slate-200">{currentFilteredTotal}</strong> 건 중 {(currentPage-1)*500+1} ~ {Math.min(currentPage*500, currentFilteredTotal)} 출력</span>
                 <div className="flex items-center space-x-1">
                   <button 
-                    disabled={sigPage <= 1} 
-                    onClick={() => setSigPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1} 
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
                     className="px-3 py-1.5 rounded bg-slate-800 text-slate-300 disabled:opacity-30 hover:bg-slate-700 text-sm font-semibold transition-all"
                   >
                     이전
                   </button>
                   <div className="px-3 py-1 bg-slate-950/50 rounded text-slate-300 font-mono text-sm border border-slate-800">
-                    <strong className="text-purple-400">{sigPage}</strong> / {totalPages}
+                    <strong className={activeTab === 'url' ? 'text-blue-400' : (activeTab === 'history' ? 'text-pink-400' : 'text-purple-400')}>{currentPage}</strong> / {totalPages}
                   </div>
                   <button 
-                    disabled={sigPage >= totalPages} 
-                    onClick={() => setSigPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages} 
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                     className="px-3 py-1.5 rounded bg-slate-800 text-slate-300 disabled:opacity-30 hover:bg-slate-700 text-sm font-semibold transition-all"
                   >
                     다음

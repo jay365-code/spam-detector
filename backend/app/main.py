@@ -396,9 +396,9 @@ class UrlAddRequest(BaseModel):
     raw: bool = False
 
 @app.get("/api/db/url-whitelist")
-async def get_url_whitelist():
-    records = UrlWhitelistManager.get_all_records()
-    return {"success": True, "data": records}
+async def get_url_whitelist(page: int = 1, limit: int = 500, q: str = "", sort: str = "last_updated", order: str = "desc"):
+    result = UrlWhitelistManager.get_url_paginated(page=page, limit=limit, search_query=q, sort_col=sort, sort_order=order)
+    return {"success": True, "data": result}
 
 @app.post("/api/db/url-whitelist")
 async def add_url_whitelist(request: UrlAddRequest):
@@ -419,9 +419,9 @@ class HistoryAddRequest(BaseModel):
     count: int = 1
 
 @app.get("/api/db/spam-history")
-async def get_spam_history():
-    records = HistoryManager.get_all_records()
-    return {"success": True, "data": records}
+async def get_spam_history(page: int = 1, limit: int = 500, q: str = "", sort: str = "last_updated", order: str = "desc"):
+    result = HistoryManager.get_history_paginated(page=page, limit=limit, search_query=q, sort_col=sort, sort_order=order)
+    return {"success": True, "data": result}
 
 @app.post("/api/db/spam-history")
 async def add_spam_history(request: HistoryAddRequest):
