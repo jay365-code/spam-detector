@@ -1547,6 +1547,7 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
                                         "type": "BATCH_PROCESS_UPDATE",
                                         "index": idx + start_index,  # Use Global Index for updating specific row
                                         "message": msg,
+                                        "request": {"url": _url_at(index)},
                                         "status": "done",
                                         "result": ws_res,
                                         "current": start_index + completed_count, # Monotonic progress
@@ -1648,9 +1649,11 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
                     except Exception as cleanup_err:
                         logger.warning(f"Cleanup warning: {cleanup_err}")
 
-            # Run Async Pipeline
             try:
-                s2_results = asyncio.run(run_batch_pipeline())
+                # [Fix] Run on main event loop instead of creating a new isolated loop
+                # This prevents "<asyncio.locks.Condition object at ...> is bound to a different event loop"
+                future = asyncio.run_coroutine_threadsafe(run_batch_pipeline(), loop)
+                s2_results = future.result()
             except CancellationException:
                 raise  # [Phase 4] 취소는 상위로 재전파
             except Exception as e:

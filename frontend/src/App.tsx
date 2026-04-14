@@ -102,7 +102,7 @@ const formatMessageWithLinks = (text: string) => {
 
 function App() {
   const [clientId] = useState(() => 'client-' + Math.random().toString(36).substr(2, 9));
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<Record<number, any>>({});
   const [reportTab, setReportTab] = useState<'MAIN' | 'TRAP' | 'ALL'>('MAIN');
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadFilename, setDownloadFilename] = useState<string | null>(null);
@@ -280,7 +280,7 @@ function App() {
     try {
       // UI 상태만 즉각 업데이트 (백엔드는 엑셀 최종 저장 시 JSON 전체 기반으로 재생성)
       setLogs(prev => {
-        const newLogs = [...prev];
+        const newLogs = { ...prev };
         if (newLogs[editingLog.index]) {
           newLogs[editingLog.index] = {
             ...newLogs[editingLog.index],
@@ -379,12 +379,15 @@ function App() {
       try {
         const data = JSON.parse(event.target?.result as string);
 
-        // Restore logs and associated filename
-        const validLogs = (data.logs || []).filter((l: any) => l !== null && l !== undefined);
-        setLogs(validLogs.map((l: any) => ({
-          ...l,
-          timestamp: l.timestamp ? new Date(l.timestamp) : new Date()
-        })));
+        const validLogsRaw = (data.logs || []).filter((l: any) => l !== null && l !== undefined);
+        const logMap: Record<number, any> = {};
+        validLogsRaw.forEach((l: any, i: number) => {
+          logMap[l.excel_row_number ? l.excel_row_number - 2 : i] = {
+            ...l,
+            timestamp: l.timestamp ? new Date(l.timestamp) : new Date()
+          };
+        });
+        setLogs(logMap);
         setDownloadFilename(data.source_filename);
         if (data.kisa_filename) setKisaFilename(data.kisa_filename);
         if (data.trap_filename) setTrapFilename(data.trap_filename);
@@ -434,13 +437,14 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filename: suggestedExcelName,
-          is_trap: logs.some(log => log?.is_trap) || false,
-          logs: logs
+          is_trap: (suggestedExcelName || '').toLowerCase().includes('trap'),
+          logs: Object.values(logs).filter(l => l !== null && l !== undefined && typeof l === 'object')
         })
       });
       
       if (!response.ok) {
-        throw new Error(`서버 응답 오류: ${response.status}`);
+        const errText = await response.text();
+        throw new Error(`서버 응답 오류: ${response.status}\n${errText}`);
       }
       const blob = await response.blob();
 
@@ -625,45 +629,54 @@ function App() {
             }
   
             setLogs(prev => {
-              const newLogs = [...prev];
-              // Construct Log Object
               const logItem = {
                 excel_row_number: data.index + 2, // [Fix] Store Excel Row Number (Index + Header + 1-based)
                 message: data.message,
+                request: data.request || {},
                 result: data.result,
                 is_trap: data.is_trap,
                 timestamp: new Date()
               };
-  
-              newLogs[data.index] = logItem;
-              return newLogs;
+              
+              return {
+                ...prev,
+                [data.index]: logItem
+              };
             });
             return;
           }
 
-        // Handle Progress/Log with Deduplication
+        // Handle Progress/Log with Deduplication (Legacy/Direct)
         setLogs(prev => {
+          const prevValues = Object.entries(prev);
+          
           // If this is a result message (has result), look for matching pending message
           if (data.result && data.message) {
-            const index = prev.findIndex(l => l && l.message === data.message && !l.result);
-            if (index !== -1) {
-              // Found pending log -> matching result; Update it
-              const newLogs = [...prev];
-              newLogs[index] = { ...data, timestamp: newLogs[index]?.timestamp || new Date() };
-              return newLogs;
+            const matchIndex = prevValues.findIndex(([_, l]) => l && l.message === data.message && !l.result);
+            if (matchIndex !== -1) {
+              const [keyStr, oldLog] = prevValues[matchIndex];
+              const logKey = Number(keyStr);
+              return {
+                ...prev,
+                [logKey]: { ...data, timestamp: oldLog?.timestamp || new Date() }
+              };
             }
           }
 
           // Safety check: Avoid adding exact duplicate results if already present
-          const exists = prev.some(l =>
+          const exists = prevValues.some(([_, l]) =>
             l && l.message === data.message &&
             l.result && data.result &&
             l.result.reason === data.result.reason
           );
           if (exists) return prev;
 
-          // Otherwise append new log
-          return [...prev, { ...data, timestamp: new Date() }];
+          // Otherwise append new log at the next available numeric index
+          const nextIndex = prevValues.length > 0 ? Math.max(...prevValues.map(([k]) => Number(k))) + 1 : 0;
+          return {
+            ...prev,
+            [nextIndex]: { ...data, timestamp: new Date() }
+          };
         });
 
         // Update Progress
@@ -719,7 +732,7 @@ function App() {
   // --- Prevent Accidental Close or Refresh ---
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (logs.length > 0 || isProcessing) {
+      if (Object.keys(logs).length > 0 || isProcessing) {
         e.preventDefault();
         // Chrome, Edge 등 현대 브라우저에서 사용자에게 기본 경고창을 띄우기 위한 필수 설정
         e.returnValue = ''; 
@@ -728,7 +741,7 @@ function App() {
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [logs.length, isProcessing]);
+  }, [logs, isProcessing]);
 
   // --- Auto Save & Restore State for Sleep Mode / Refresh (Session Storage) ---
   const saveTimerRef = useRef<number | null>(null);
@@ -739,11 +752,16 @@ function App() {
       const backup = sessionStorage.getItem('spamDetectorBackupState');
       if (backup) {
         const parsed = JSON.parse(backup);
-        if (parsed.logs && parsed.logs.length > 0 && logs.length === 0) {
-           setLogs(parsed.logs.map((l: any) => ({
-             ...l,
-             timestamp: l.timestamp ? new Date(l.timestamp) : new Date()
-           })));
+        if (parsed.logs && parsed.logs.length > 0 && Object.keys(logs).length === 0) {
+           const validLogsRaw = parsed.logs.filter((l: any) => l !== null && l !== undefined);
+           const logMap: Record<number, any> = {};
+           validLogsRaw.forEach((l: any, i: number) => {
+             logMap[l.excel_row_number ? l.excel_row_number - 2 : i] = {
+               ...l,
+               timestamp: l.timestamp ? new Date(l.timestamp) : new Date()
+             };
+           });
+           setLogs(logMap);
            if (parsed.progress) setProgress(parsed.progress);
            if (parsed.startedAt) setStartedAt(parsed.startedAt);
            if (parsed.endTime) setEndTime(parsed.endTime);
@@ -766,7 +784,7 @@ function App() {
 
   // Auto-Save State changes with 2s Debounce (Optimized to not freeze UI)
   useEffect(() => {
-    if (logs.length === 0) return; // 빈 상태면 저장 안 함
+    if (Object.keys(logs).length === 0) return; // 빈 상태면 저장 안 함
 
     if (saveTimerRef.current) {
       window.clearTimeout(saveTimerRef.current);
@@ -775,8 +793,9 @@ function App() {
     // @ts-ignore
     saveTimerRef.current = window.setTimeout(() => {
       try {
+        const logsArray = Object.values(logs); // Save as array for compatibility
         const stateToSave = {
-          logs,
+          logs: logsArray,
           progress,
           startedAt,
           endTime,
@@ -836,7 +855,7 @@ function App() {
   };
 
   const handleUploadStart = () => {
-    setLogs([]);
+    setLogs({});
     setProgress({ current: 0, total: 0 });
     setIsProcessing(true);
     setStartedAt(Date.now()); // [New] Set Start Time
@@ -930,19 +949,29 @@ function App() {
 
   // [New] Filter & Count Logic
   // Filter out completely undefined/null items from sparse arrays safely
-  const hasTrapData = logs.some(log => log?.is_trap);
-  const baseValidLogs = logs.map((log, originalIdx) => ({ log, originalIdx })).filter(item => item.log != null);
-  const validLogs = baseValidLogs.filter(item => reportTab === 'TRAP' ? item.log.is_trap : !item.log.is_trap);
-  
-  console.log("DEBUG: All logs size:", logs.length);
-  console.log("DEBUG: Valid logs size for tab", reportTab, ":", validLogs.length);
-  
-  const allCount = validLogs.length;
-  const spamCount = validLogs.filter(({ log }) => log?.result?.is_spam).length;
-  const hamCount = validLogs.filter(({ log }) => log?.result && !log.result.is_spam).length;
-  const redGroupCount = validLogs.filter(({ log }) => log?.result?.red_group).length;
+  const validLogs = Object.keys(logs).map(key => {
+    const originalIdx = Number(key);
+    return { log: logs[originalIdx], originalIdx };
+  }).filter(item => item.log != null);
 
-  const filteredLogs = validLogs
+  const hasTrapData = validLogs.some(item => item.log.is_trap);
+
+  // [UI Fix] If the user wants to filter by TRAP/MAIN, we do it inline here:
+  const displayLogs = validLogs.filter(item => {
+    if (reportTab === 'ALL') return true;
+    if (reportTab === 'TRAP') return item.log.is_trap;
+    return !item.log.is_trap; // Default to 'MAIN'
+  });
+  
+  console.log("DEBUG: All sparse logs size:", logs.length);
+  console.log("DEBUG: Disp logs:", displayLogs.length);
+  
+  const allCount = displayLogs.length;
+  const spamCount = displayLogs.filter(({ log }) => log?.result?.is_spam).length;
+  const hamCount = displayLogs.filter(({ log }) => log?.result && !log.result.is_spam).length;
+  const redGroupCount = displayLogs.filter(({ log }) => log?.result?.red_group).length;
+
+  const filteredLogs = displayLogs
     .filter(({ log }) => {
       // Apply Filter
       if (logFilter === 'SPAM' && (!log.result || !log.result.is_spam)) return false;
@@ -1032,7 +1061,7 @@ function App() {
                 onFileSelect={() => {
                   setProgress({ current: 0, total: 0 });
                   setDownloadUrl(null);
-                  setLogs([]);
+                  setLogs({});
                   setIsCancelling(false);
                   setCancellationMessage('');
                 }}
@@ -1234,7 +1263,6 @@ function App() {
                               onClick={() => openEditModal(idx, log)}
                               className="p-1 rounded hover:bg-slate-700 transition-colors text-slate-500 hover:text-yellow-400"
                               title="결과 수정"
-                              disabled={!downloadFilename}
                             >
                               <Pencil className="w-3 h-3" />
                             </button>
