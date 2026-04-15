@@ -550,7 +550,7 @@ function App() {
 
   // Handle Save Report (Force Windows Save As Explorer)
   const handleDownloadReport = async () => {
-    if (logs.length === 0) return;
+    if (Object.keys(logs).length === 0) return;
 
     try {
       // 업로드된 파일명에서 날짜 패턴(20260101_A 등) 추출 시도
@@ -1036,7 +1036,7 @@ function App() {
     return !item.log.is_trap; // Default to 'MAIN'
   });
   
-  console.log("DEBUG: All sparse logs size:", logs.length);
+  console.log("DEBUG: All sparse logs size:", Object.keys(logs).length);
   console.log("DEBUG: Disp logs:", displayLogs.length);
   
   const allCount = displayLogs.length;
@@ -1327,7 +1327,7 @@ function App() {
               )}
               <button
                 onClick={handleDownloadReport}
-                disabled={logs.length === 0}
+                disabled={Object.keys(logs).length === 0}
                 className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-blue-400 transition-colors disabled:opacity-50"
                 title="리포트 저장 (JSON)"
               >
