@@ -1786,7 +1786,7 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
                 result = await loop.run_in_executor(None, run_kisa)
 
             # e. Process TRAP
-            if input_path_trap:
+            if input_path_trap and trap_row_count > 0:
                 logger.info(f"Processing TRAP component from {trap_file.filename} (found {trap_row_count} lines) with index_offset={kisa_row_count}")
                 
                 def run_trap(in_path=input_path_trap, orig_name=trap_file.filename):
@@ -1798,6 +1798,30 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
                     )
                     
                 result = await loop.run_in_executor(None, run_trap)
+            
+            else:
+                # TRAP 파일이 없거나 데이터가 0줄인 경우:
+                # create_template_workbook()이 TRAP 시트 껍데기는 만들어 놓지만,
+                # _update_summary_table() 등 후처리는 process_kisa_txt() 내부에서만 호출되므로
+                # 여기서 직접 호출하여 TRAP 시트 서식/통계 테이블을 완성시켜야 함.
+                logger.info("TRAP file is empty or not provided. Finalizing TRAP sheet formatting with empty data.")
+                
+                def finalize_trap_sheets(out_path=output_path, out_filename=final_filename):
+                    from openpyxl import load_workbook
+                    wb = load_workbook(out_path)
+                    # 빈 TRAP 시트에 대한 후처리 메서드들을 직접 호출
+                    # 1) URL 중복제거 시트 (빈 데이터)
+                    excel_handler._create_dedup_sheet(wb, {}, {}, sheet_name="TRAP.URL중복 제거")
+                    # 2) 문자문장차단등록 시트 (빈 데이터)
+                    excel_handler._create_blocklist_sheet(wb, [], sheet_name="TRAP.문자문장차단등록")
+                    # 3) 문자열/문장 중복제거 시트 (빈 데이터)
+                    excel_handler._create_split_dedup_sheets(wb, [], "TRAP.문자열 중복제거", "TRAP.문장 중복제거")
+                    # 4) 통계 요약 테이블 (모두 0으로 초기화)
+                    excel_handler._update_summary_table(wb, is_trap=True, filename=out_filename, spam_cnt=0, url_cnt=0, str_cnt=0, sen_cnt=0)
+                    wb.save(out_path)
+                    logger.info("TRAP empty sheet finalization complete.")
+
+                await loop.run_in_executor(None, finalize_trap_sheets)
                         
             output_filename = final_filename
         
@@ -1892,9 +1916,51 @@ def api_extract_url(req: TextRequest):
 
 @app.post("/api/ibse/extract")
 async def api_extract_ibse(req: TextRequest):
-    # ibse_service is instantiated globally at lines 728-735
+    """
+    수동 시그니처 추출 API.
+    런타임 배치와 동일한 순서로 조회합니다:
+      1. 영구 DB 스캔 (SignatureDB)
+      2. 런타임 메모리 캐시 (ibse_service.signature_cache)
+      3. LLM 호출 (IBSE 에이전트)
+    """
+    import re
+    from app.core.signature_db import SignatureDBManager
+
+    # 공백 제거 후 비교 (런타임 배치와 동일한 전처리)
+    clean_msg = re.sub(r'\s+', '', req.message)
+
+    # 1단계: 영구 DB 스캔
+    db_matched_sig = SignatureDBManager.find_matching_signature(clean_msg)
+    if db_matched_sig:
+        try:
+            sig_len = len(db_matched_sig.encode('cp949'))
+        except UnicodeEncodeError:
+            sig_len = len(db_matched_sig.encode('utf-8'))
+        return {
+            "decision": "use_string (db_cache)",
+            "signature": db_matched_sig,
+            "byte_len": sig_len,
+            "reason": "영구 DB 시그니처 매칭 성공 (LLM 스킵)"
+        }
+
+    # 2단계: 런타임 메모리 캐시 스캔
+    for cached_sig in ibse_service.signature_cache:
+        if cached_sig in clean_msg:
+            try:
+                sig_len = len(cached_sig.encode('cp949'))
+            except UnicodeEncodeError:
+                sig_len = len(cached_sig.encode('utf-8'))
+            return {
+                "decision": "use_string (runtime_cache)",
+                "signature": cached_sig,
+                "byte_len": sig_len,
+                "reason": "런타임 캐시 시그니처 매칭 성공 (LLM 스킵)"
+            }
+
+    # 3단계: LLM 호출 (ibse_service는 L728-735에서 전역 초기화됨)
     result = await ibse_service.process_message(req.message)
     return result
+
 
 @app.post("/api/excel/regenerate")
 async def regenerate_excel(req: RegenerateExcelRequest):

@@ -204,11 +204,12 @@ function App() {
       reason: log.result.reason || '',
       spam_probability: log.result.spam_probability || 0.95,
       is_trap: log.is_trap || false,
-      red_group: false
+      // [Fix] 기존 Red Group 상태 복원: 모달 열 때 항상 false로 초기화하던 버그 수정
+      red_group: log.result.red_group || false
     });
     setWizardStep(1);
     setExtractedUrls([]);
-    setExtractedSignature('');
+    setExtractedSignature(log.result.ibse_signature || ''); // 기존 시그니처 유지 (저장 시 빈값으로 덮어쓰는 것 방지)
     setInputUrl(log.request?.url || '');
     setEditModalOpen(true);
   };
@@ -276,6 +277,17 @@ function App() {
   const saveEdit = async () => {
     if (!editingLog) return;
 
+    // 시그니처 바이트 길이 검증 (있을 경우에만)
+    if (extractedSignature && !['none', 'unextractable'].includes(extractedSignature.toLowerCase().trim())) {
+        const calcByteLen = (str: string) => [...(str || '')].reduce((acc, ch) => acc + (ch.charCodeAt(0) > 127 ? 2 : 1), 0);
+        const sigLen = calcByteLen(extractedSignature.trim());
+        
+        if (!((sigLen >= 9 && sigLen <= 20) || (sigLen >= 39 && sigLen <= 40))) {
+            alert(`[저장 실패] 시그니처 길이가 정책에 어긋납니다.\n현재 길이: ${sigLen} byte\n허용 길이: 9~20 byte 또는 39~40 byte\n(공백 제거 후 다시 시도해보세요)`);
+            return;
+        }
+    }
+
     setEditSaving(true);
     try {
       // UI 상태만 즉각 업데이트 (백엔드는 엑셀 최종 저장 시 JSON 전체 기반으로 재생성)
@@ -294,9 +306,14 @@ function App() {
               classification_code: editingLog.classification_code,
               reason: editingLog.reason,
               red_group: editingLog.red_group || false,
+              // [Fix] 수동 Red Group 지정 시, AI가 설정한 drop_url 플래그를 해제하여 URL이 엑셀에 표시되도록 함.
+              // 사용자가 Red Group을 수동으로 지정한다는 것은 "이 URL은 악성이다"는 명시적 의사 표현이므로
+              // AI의 URL 제거 결정(drop_url)을 사용자 의사로 덮어씁니다.
+              ...(editingLog.red_group && { drop_url: false, drop_url_reason: null }),
               spam_probability: editingLog.spam_probability,
               message_extracted_url: extractedUrls.join(', '),
-              ibse_signature: extractedSignature
+              ibse_signature: extractedSignature ? extractedSignature.trim() : extractedSignature,
+              ibse_len: extractedSignature ? [...(extractedSignature.trim() || '')].reduce((acc, ch) => acc + (ch.charCodeAt(0) > 127 ? 2 : 1), 0) : 0
             }
           };
         }
@@ -363,6 +380,24 @@ function App() {
   // Filter & Search State
   const [logFilter, setLogFilter] = useState<'ALL' | 'SPAM' | 'HAM' | 'RED_GROUP' | 'FP_SENSITIVE'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Advanced Filter State
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState({
+    msgLenMin: '' as string,
+    msgLenMax: '' as string,
+    classificationCodes: [] as string[],
+    hasUrl: 'all' as 'all' | 'yes' | 'no',
+    hasSignature: 'all' as 'all' | 'yes' | 'no',
+    probMin: '' as string,
+    probMax: '' as string,
+  });
+  // CP949 근사 바이트 계산 (비ASCII = 2byte, ASCII = 1byte)
+  const calcByteLen = (str: string) =>
+    [...(str || '')].reduce((acc, ch) => acc + (ch.charCodeAt(0) > 127 ? 2 : 1), 0);
+  const isAdvancedFilterActive = advancedFilters.msgLenMin !== '' || advancedFilters.msgLenMax !== '' ||
+    advancedFilters.classificationCodes.length > 0 || advancedFilters.hasUrl !== 'all' ||
+    advancedFilters.hasSignature !== 'all' || advancedFilters.probMin !== '' || advancedFilters.probMax !== '';
 
   // Report Management State
   const [activeReportName, setActiveReportName] = useState<string | null>(null);
@@ -978,6 +1013,35 @@ function App() {
       if (logFilter === 'HAM' && (!log.result || log.result.is_spam)) return false;
       if (logFilter === 'RED_GROUP' && (!log.result || !log.result.red_group)) return false;
 
+      // Apply Advanced Filters
+      const af = advancedFilters;
+      const msgByteLen = calcByteLen(log.message || '');
+      if (af.msgLenMin !== '' && msgByteLen < Number(af.msgLenMin)) return false;
+      if (af.msgLenMax !== '' && msgByteLen > Number(af.msgLenMax)) return false;
+      if (af.classificationCodes.length > 0) {
+        const code = String(log.result?.classification_code ?? '');
+        if (!af.classificationCodes.includes(code)) return false;
+      }
+      if (af.hasUrl !== 'all') {
+        const hasUrl = !!(log.request?.url && String(log.request.url).trim());
+        if (af.hasUrl === 'yes' && !hasUrl) return false;
+        if (af.hasUrl === 'no' && hasUrl) return false;
+      }
+      if (af.hasSignature !== 'all') {
+        const hasSig = !!(log.result?.ibse_signature && String(log.result.ibse_signature).trim() &&
+          !['none', 'unextractable'].includes(String(log.result.ibse_signature).toLowerCase()));
+        if (af.hasSignature === 'yes' && !hasSig) return false;
+        if (af.hasSignature === 'no' && hasSig) return false;
+      }
+      if (af.probMin !== '') {
+        const prob = log.result?.spam_probability ?? 0;
+        if (prob < Number(af.probMin)) return false;
+      }
+      if (af.probMax !== '') {
+        const prob = log.result?.spam_probability ?? 0;
+        if (prob > Number(af.probMax)) return false;
+      }
+
       // Apply Search
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
@@ -1170,6 +1234,20 @@ function App() {
               {filteredLogs.length} results
             </div>
 
+            {/* Advanced Filter Toggle Button */}
+            <button
+              onClick={() => setFilterPanelOpen(v => !v)}
+              className={`relative ml-2 p-1.5 rounded-lg transition-colors ${filterPanelOpen ? 'bg-blue-600 text-white' : 'hover:bg-slate-700 text-slate-400 hover:text-slate-200'}`}
+              title="고급 필터"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+              </svg>
+              {isAdvancedFilterActive && (
+                <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-blue-400 rounded-full" />
+              )}
+            </button>
+
             {/* Client Status */}
             <div className="flex items-center border-l border-slate-700 pl-4 ml-auto">
               <div
@@ -1215,6 +1293,124 @@ function App() {
               </button>
             </div>
           </div>
+
+          {/* Advanced Filter Panel */}
+          {filterPanelOpen && (
+            <div className="border-t border-slate-700 bg-slate-900/80 px-6 py-4 flex flex-col gap-4">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-widest">고급 필터</span>
+                {isAdvancedFilterActive && (
+                  <button
+                    onClick={() => setAdvancedFilters({ msgLenMin: '', msgLenMax: '', classificationCodes: [], hasUrl: 'all', hasSignature: 'all', probMin: '', probMax: '' })}
+                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                    초기화
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-4 lg:grid-cols-3">
+
+                {/* 메시지 길이 */}
+                <div>
+                  <label className="text-xs text-slate-400 mb-1.5 block">메시지 길이 (byte)</label>
+                  <div className="flex items-center gap-2">
+                    <input type="number" min="0" placeholder="최소"
+                      value={advancedFilters.msgLenMin}
+                      onChange={e => setAdvancedFilters(f => ({ ...f, msgLenMin: e.target.value }))}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                    />
+                    <span className="text-slate-500 text-xs">~</span>
+                    <input type="number" min="0" placeholder="최대"
+                      value={advancedFilters.msgLenMax}
+                      onChange={e => setAdvancedFilters(f => ({ ...f, msgLenMax: e.target.value }))}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* 분류 코드 */}
+                <div>
+                  <label className="text-xs text-slate-400 mb-1.5 block">분류 코드</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {['0','1','2','3'].map(code => (
+                      <button key={code}
+                        onClick={() => setAdvancedFilters(f => ({
+                          ...f,
+                          classificationCodes: f.classificationCodes.includes(code)
+                            ? f.classificationCodes.filter(c => c !== code)
+                            : [...f.classificationCodes, code]
+                        }))}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
+                          advancedFilters.classificationCodes.includes(code)
+                            ? 'bg-blue-600 border-blue-500 text-white'
+                            : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'
+                        }`}
+                      >
+                        {code}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 스팸 확률 */}
+                <div>
+                  <label className="text-xs text-slate-400 mb-1.5 block">스팸 확률</label>
+                  <div className="flex items-center gap-2">
+                    <input type="number" min="0" max="1" step="0.01" placeholder="최소 (0.0)"
+                      value={advancedFilters.probMin}
+                      onChange={e => setAdvancedFilters(f => ({ ...f, probMin: e.target.value }))}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                    />
+                    <span className="text-slate-500 text-xs">~</span>
+                    <input type="number" min="0" max="1" step="0.01" placeholder="최대 (1.0)"
+                      value={advancedFilters.probMax}
+                      onChange={e => setAdvancedFilters(f => ({ ...f, probMax: e.target.value }))}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* URL 유무 */}
+                <div>
+                  <label className="text-xs text-slate-400 mb-1.5 block">URL 유무</label>
+                  <div className="flex gap-2">
+                    {(['all','yes','no'] as const).map(v => (
+                      <button key={v}
+                        onClick={() => setAdvancedFilters(f => ({ ...f, hasUrl: v }))}
+                        className={`flex-1 py-1 rounded-lg text-xs font-bold border transition-all ${
+                          advancedFilters.hasUrl === v
+                            ? 'bg-blue-600 border-blue-500 text-white'
+                            : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'
+                        }`}
+                      >
+                        {v === 'all' ? '전체' : v === 'yes' ? 'URL 있음' : 'URL 없음'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 시그니처 유무 */}
+                <div>
+                  <label className="text-xs text-slate-400 mb-1.5 block">시그니처 유무</label>
+                  <div className="flex gap-2">
+                    {(['all','yes','no'] as const).map(v => (
+                      <button key={v}
+                        onClick={() => setAdvancedFilters(f => ({ ...f, hasSignature: v }))}
+                        className={`flex-1 py-1 rounded-lg text-xs font-bold border transition-all ${
+                          advancedFilters.hasSignature === v
+                            ? 'bg-blue-600 border-blue-500 text-white'
+                            : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'
+                        }`}
+                      >
+                        {v === 'all' ? '전체' : v === 'yes' ? '있음' : '없음'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          )}
 
           <div
             ref={logContainerRef}
@@ -1548,6 +1744,7 @@ function App() {
                         </select>
                         <button
                           onClick={() => {
+                            if (!inputUrl) return; // URL 없으면 동작 차단
                             const isTurningOn = !editingLog.red_group;
                             let newReason = editingLog.reason || '';
                             if (isTurningOn && !newReason.includes('[수동 Red Group 지정]')) {
@@ -1557,8 +1754,15 @@ function App() {
                             }
                             setEditingLog({ ...editingLog, red_group: isTurningOn, reason: newReason });
                           }}
-                          title="악성 위험 수위가 높은 스팸 (Red Group 지정)"
-                          className={`px-4 py-3 rounded-xl border text-sm font-bold transition-all flex items-center justify-center gap-2 ${editingLog.red_group ? 'bg-rose-500/20 border-rose-500/50 text-rose-500' : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'}`}
+                          disabled={!inputUrl}
+                          title={!inputUrl ? 'URL이 없는 항목은 Red Group 지정 불가' : '악성 위험 수위가 높은 스팸 (Red Group 지정)'}
+                          className={`px-4 py-3 rounded-xl border text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                            !inputUrl
+                              ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed opacity-40'
+                              : editingLog.red_group
+                                ? 'bg-rose-500/20 border-rose-500/50 text-rose-500'
+                                : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'
+                          }`}
                         >
                            🔥 RED 
                         </button>
@@ -1605,6 +1809,45 @@ function App() {
                   placeholder="Intent / Tactics / Action (의도 / 전술 / 행동)"
                 />
               </div>
+
+              {/* 시그니처 추출 - SPAM 항목에서만 표시 */}
+              {editingLog.is_spam && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">시그니처 (IBSE)</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={extractedSignature}
+                      onChange={(e) => setExtractedSignature(e.target.value)}
+                      placeholder="시그니처 없음 (추출 버튼으로 생성)"
+                      className="flex-1 px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder-slate-600"
+                    />
+                    <button
+                      onClick={() => setExtractedSignature((editingLog?.message || '').replace(/\s/g, ''))}
+                      title="공백 제거한 메시지를 시그니처 입력창에 표시"
+                      className="px-4 py-3 rounded-xl border text-sm font-bold transition-all flex items-center gap-2 bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-slate-200 whitespace-nowrap"
+                    >
+                      📄 문자열보기
+                    </button>
+                    <button
+                      onClick={handleExtractSignature}
+                      disabled={isExtracting}
+                      className="px-4 py-3 rounded-xl border text-sm font-bold transition-all flex items-center gap-2 bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                    >
+                      {isExtracting ? (
+                        <><span className="animate-spin">⟳</span> 추출 중...</>
+                      ) : (
+                        <>🔬 시그니처 추출</>
+                      )}
+                    </button>
+                  </div>
+                  {extractedSignature && (
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      바이트 길이: {new TextEncoder().encode(extractedSignature).length}byte
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Footer / Wizard Logic */}
