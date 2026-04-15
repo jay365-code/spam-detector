@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { CheckCircle, AlertCircle, User, Database, Server, Pencil, X, Save, Loader2, Search, FileText, FolderOpen, Settings, MessageSquare } from 'lucide-react';
 import { FileUpload } from './components/FileUpload';
 import { StatusPanel } from './components/StatusPanel';
@@ -398,6 +398,42 @@ function App() {
   const isAdvancedFilterActive = advancedFilters.msgLenMin !== '' || advancedFilters.msgLenMax !== '' ||
     advancedFilters.classificationCodes.length > 0 || advancedFilters.hasUrl !== 'all' ||
     advancedFilters.hasSignature !== 'all' || advancedFilters.probMin !== '' || advancedFilters.probMax !== '';
+
+  const activeFilterTags = useMemo(() => {
+    const tags: { label: string, action: () => void }[] = [];
+    const af = advancedFilters;
+    if (af.msgLenMin || af.msgLenMax) {
+      tags.push({
+         label: `길이:${af.msgLenMin || '0'}~${af.msgLenMax || '∞'}B`,
+         action: () => setAdvancedFilters(prev => ({ ...prev, msgLenMin: '', msgLenMax: '' }))
+      });
+    }
+    if (af.classificationCodes.length > 0) {
+      tags.push({
+         label: `코드:${af.classificationCodes.join(',')}`,
+         action: () => setAdvancedFilters(prev => ({ ...prev, classificationCodes: [] }))
+      });
+    }
+    if (af.probMin || af.probMax) {
+      tags.push({
+         label: `확률:${af.probMin || '0'}~${af.probMax || '1'}`,
+         action: () => setAdvancedFilters(prev => ({ ...prev, probMin: '', probMax: '' }))
+      });
+    }
+    if (af.hasUrl !== 'all') {
+      tags.push({
+         label: `URL:${af.hasUrl === 'yes' ? 'O' : 'X'}`,
+         action: () => setAdvancedFilters(prev => ({ ...prev, hasUrl: 'all' }))
+      });
+    }
+    if (af.hasSignature !== 'all') {
+      tags.push({
+         label: `시그니처:${af.hasSignature === 'yes' ? 'O' : 'X'}`,
+         action: () => setAdvancedFilters(prev => ({ ...prev, hasSignature: 'all' }))
+      });
+    }
+    return tags;
+  }, [advancedFilters]);
 
   // Report Management State
   const [activeReportName, setActiveReportName] = useState<string | null>(null);
@@ -1230,8 +1266,8 @@ function App() {
             </div>
 
             {/* Search Result Count */}
-            <div className="ml-3 text-xs text-slate-400 font-mono whitespace-nowrap">
-              {filteredLogs.length} results
+            <div className="ml-3 px-2.5 py-1 bg-slate-800 rounded-md text-xs text-slate-300 font-bold whitespace-nowrap border border-slate-700/80 shadow-sm">
+              <span className="text-blue-400">{filteredLogs.length}</span> <span className="text-slate-500 font-normal">/ {displayLogs.length} 건</span>
             </div>
 
             {/* Advanced Filter Toggle Button */}
@@ -1247,6 +1283,24 @@ function App() {
                 <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-blue-400 rounded-full" />
               )}
             </button>
+
+            {/* Active Filter Tags */}
+            {isAdvancedFilterActive && (
+              <div className="flex gap-1 items-center ml-2 mr-1">
+                {activeFilterTags.map(tag => (
+                  <span key={tag.label} className="bg-slate-800/80 text-blue-300 border border-slate-700/80 pl-2 pr-1 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1 whitespace-nowrap shadow-sm">
+                    {tag.label}
+                    <button 
+                      onClick={tag.action} 
+                      className="p-0.5 ml-0.5 hover:bg-slate-600 rounded-full transition-colors text-slate-400 hover:text-blue-200"
+                      title="필터 해제"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
 
             {/* Client Status */}
             <div className="flex items-center border-l border-slate-700 pl-4 ml-auto">

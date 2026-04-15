@@ -152,14 +152,7 @@ obfuscated_urls: {obfuscated_urls}
         return await self._call_llm(system_prompt, user_prompt)
 
     async def _call_llm(self, system_prompt: str, user_prompt: str) -> dict:
-        @retry(
-            stop=stop_after_attempt(2),
-            wait=wait_exponential(multiplier=1, min=1, max=5),
-            retry=retry_if_exception(lambda e: "No retry." not in str(e)),
-            before_sleep=before_sleep_log(logger, logging.WARNING),
-            reraise=True
-        )
-        async def do_call():
+        async def _raw_call():
             provider = self.provider
             if self._key_manager.is_quota_exhausted(provider):
                 raise Exception(f"{provider} quota globally exhausted. No retry.")
@@ -184,23 +177,11 @@ obfuscated_urls: {obfuscated_urls}
                         _kwargs["temperature"] = 0.0
                     response = await asyncio.wait_for(client_instance.chat.completions.create(**_kwargs), timeout=65.0)
                     content = response.choices[0].message.content
-                    
-                    try:
-                        usage = getattr(response, "usage", None)
-                        if usage:
-                            self._key_manager.add_tokens(current_model, getattr(usage, "prompt_tokens", 0), getattr(usage, "completion_tokens", 0))
-                    except Exception as e:
-                        logger.error(f"[IBSE] Token collection failed: {e}")
                 elif provider == "GEMINI":
                     from langchain_core.messages import SystemMessage, HumanMessage
                     messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
                     response = await asyncio.wait_for(client_instance.ainvoke(messages), timeout=65.0)
                     content = _normalize_llm_content(response.content)
-                    
-                    try:
-                        self._key_manager.extract_and_add_tokens(provider, response)
-                    except Exception as e:
-                        logger.error(f"[IBSE] Token collection failed: {e}")
                     if not content or "SAFETY" in str(response.response_metadata):
                         return '{"decision": "unextractable"}'
                 elif provider == "CLAUDE":
@@ -209,13 +190,6 @@ obfuscated_urls: {obfuscated_urls}
                         messages=[{"role": "user", "content": user_prompt}]
                     ), timeout=65.0)
                     content = response.content[0].text
-                    
-                    try:
-                        usage = getattr(response, "usage", None)
-                        if usage:
-                            self._key_manager.add_tokens(current_model, getattr(usage, "input_tokens", 0), getattr(usage, "output_tokens", 0))
-                    except Exception as e:
-                        logger.error(f"[IBSE] Token collection failed: {e}")
                 else:
                     raise Exception("Unsupported Provider")
                 self._key_manager.report_success(provider)
@@ -226,16 +200,42 @@ obfuscated_urls: {obfuscated_urls}
                 if is_quota:
                     if not self._key_manager.rotate_key(provider, failed_key=api_key):
                         raise Exception("Quota exhausted globally") from e
-                    raise e
-                if isinstance(e, asyncio.TimeoutError):
-                    self._use_fallback = True
-                    raise Exception("Timeout") from e
                 raise e
 
+        @retry(
+            stop=stop_after_attempt(2),
+            wait=wait_exponential(multiplier=1, min=1, max=5),
+            retry=retry_if_exception(lambda e: "No retry." not in str(e)),
+            before_sleep=before_sleep_log(logger, logging.WARNING),
+            reraise=True
+        )
+        async def main_call_with_retry():
+            return await _raw_call()
+
         try:
-            content = await do_call()
-            return self._parse_json(content)
+            content = await main_call_with_retry()
+            parsed = self._parse_json(content)
+            if "error" in parsed:
+                raise Exception(parsed["error"])
+                
+            # [사용자 요청 반영] 메인 모델이 시그니처가 없다고(unextractable) 포기하더라도, 곧바로 서브 모델에 기회를 주어 크로스체크 하도록 강제
+            if parsed.get("decision") == "unextractable" and not getattr(self, "_use_fallback", False):
+                logger.warning("[IBSE] Main model decided 'unextractable'. Refusing to give up. Passing to Fallback model.")
+                raise Exception("Main model concluded unextractable. Delegating to Fallback model.")
+                
+            return parsed
         except Exception as e:
+            if not getattr(self, "_use_fallback", False):
+                logger.warning(f"[IBSE] Main model failed with '{e}'. Attempting Fallback Mode (One attempt only)...")
+                self._use_fallback = True
+                try:
+                    # Retry with fallback model (No Tenacity Retries - exactly 1 attempt)
+                    content_fb = await _raw_call()
+                    return self._parse_json(content_fb)
+                except Exception as e2:
+                    logger.error(f"[IBSE] Fallback also failed: {e2}")
+                    return {"error": str(e2), "decision": "unextractable"}
+            
             return {"error": str(e), "decision": "unextractable"}
 
     def _parse_json(self, content: str) -> dict:
