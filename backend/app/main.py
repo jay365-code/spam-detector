@@ -1230,9 +1230,6 @@ async def cancel_processing(client_id: str):
     logger.info(f"Cancellation requested for client {client_id}")
     return {"message": f"Cancellation requested for {client_id}"}
 
-
-    ws.cell(row=excel_row, column=output_columns["Reason"]).value = sanitize(reason)
-
 # ==========================================
 # [Helper] URL Detection for Smart Concurrency
 # ==========================================
