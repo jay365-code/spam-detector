@@ -313,7 +313,8 @@ function App() {
               spam_probability: editingLog.spam_probability,
               message_extracted_url: extractedUrls.join(', '),
               ibse_signature: extractedSignature ? extractedSignature.trim() : extractedSignature,
-              ibse_len: extractedSignature ? [...(extractedSignature.trim() || '')].reduce((acc, ch) => acc + (ch.charCodeAt(0) > 127 ? 2 : 1), 0) : 0
+              ibse_len: extractedSignature ? [...(extractedSignature.trim() || '')].reduce((acc, ch) => acc + (ch.charCodeAt(0) > 127 ? 2 : 1), 0) : 0,
+              ...(editingLog.malicious_url_extracted !== undefined ? { malicious_url_extracted: editingLog.malicious_url_extracted } : {})
             }
           };
         }
@@ -1770,7 +1771,10 @@ function App() {
                       onClick={() => {
                           let newReason = editingLog.reason ? `[수동 HAM 전환] ${editingLog.reason.replace(/\[수동 SPAM 전환\]\s*/g, '')}` : '[수동 HAM 전환]';
                           newReason = newReason.replace(/\[수동 Red Group 지정\]\s*/g, '');
-                          setEditingLog({ ...editingLog, is_spam: false, classification_code: '', red_group: false, reason: newReason });
+                          newReason = newReason.replace(/\[텍스트 HAM \+ 악성 URL 분리 감지:.*?\]\s*/g, '');
+                          newReason = newReason.replace(/\[URL SPAM:.*?\]\s*/g, '');
+                          newReason = newReason.replace(/\|\s*$/, '').trim();
+                          setEditingLog({ ...editingLog, is_spam: false, classification_code: '', red_group: false, reason: newReason, malicious_url_extracted: false });
                         }}
                       className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${!editingLog.is_spam
                         ? 'bg-emerald-500/20 text-emerald-400 shadow-sm'
@@ -1897,7 +1901,7 @@ function App() {
                   </div>
                   {extractedSignature && (
                     <p className="mt-1.5 text-xs text-slate-500">
-                      바이트 길이: {new TextEncoder().encode(extractedSignature).length}byte
+                      바이트 길이: {[...(extractedSignature || '')].reduce((acc, ch) => acc + (ch.charCodeAt(0) > 127 ? 2 : 1), 0)}byte
                     </p>
                   )}
                 </div>
