@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { CheckCircle, AlertCircle, User, Database, Server, Pencil, X, Save, Loader2, Search, FileText, FolderOpen, Settings, MessageSquare } from 'lucide-react';
+import { CheckCircle, AlertCircle, User, Database, Server, Pencil, X, Save, Loader2, Search, FileText, FolderOpen, Settings, MessageSquare, Copy } from 'lucide-react';
 import { FileUpload } from './components/FileUpload';
 import { StatusPanel } from './components/StatusPanel';
 import { ChatInterface } from './components/ChatInterface';
@@ -1546,8 +1546,24 @@ function App() {
                         </span>
                       </div>
 
-                      <div className="text-slate-300 break-all text-sm">
+                      <div className="text-slate-300 break-all text-sm relative group pr-8">
                         {formatMessageWithLinks(log.message)}
+                        {log.message && (
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(log.message);
+                              const btn = document.getElementById(`copy-msg-${log.excel_row_number}`);
+                              if (btn) {
+                                btn.classList.replace('text-slate-500', 'text-green-400');
+                                setTimeout(() => btn.classList.replace('text-green-400', 'text-slate-500'), 1500);
+                              }
+                            }}
+                            className="absolute -top-1 right-0 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 rounded-md hover:bg-slate-700 active:scale-95 border border-slate-700 shadow-sm"
+                            title="메시지 복사"
+                          >
+                            <Copy id={`copy-msg-${log.excel_row_number}`} className="w-3.5 h-3.5 text-slate-500 transition-colors" />
+                          </button>
+                        )}
                       </div>
 
                       {log.result && (
