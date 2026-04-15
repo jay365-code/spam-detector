@@ -171,6 +171,7 @@ function App() {
     spam_probability: number;
     is_trap?: boolean;
     red_group?: boolean;
+    malicious_url_extracted?: boolean;
   } | null>(null);
   
   // Wizard State
