@@ -172,6 +172,8 @@ function App() {
     is_trap?: boolean;
     red_group?: boolean;
     malicious_url_extracted?: boolean;
+    drop_url?: boolean;
+    drop_url_reason?: string | null;
   } | null>(null);
   
   // Wizard State
@@ -206,7 +208,10 @@ function App() {
       spam_probability: log.result.spam_probability || 0.95,
       is_trap: log.is_trap || false,
       // [Fix] 기존 Red Group 상태 복원: 모달 열 때 항상 false로 초기화하던 버그 수정
-      red_group: log.result.red_group || false
+      red_group: log.result.red_group || false,
+      malicious_url_extracted: log.result.malicious_url_extracted,
+      drop_url: log.result.drop_url,
+      drop_url_reason: log.result.drop_url_reason
     });
     setWizardStep(1);
     setExtractedUrls([]);
@@ -315,7 +320,9 @@ function App() {
               message_extracted_url: extractedUrls.join(', '),
               ibse_signature: extractedSignature ? extractedSignature.trim() : extractedSignature,
               ibse_len: extractedSignature ? [...(extractedSignature.trim() || '')].reduce((acc, ch) => acc + (ch.charCodeAt(0) > 127 ? 2 : 1), 0) : 0,
-              ...(editingLog.malicious_url_extracted !== undefined ? { malicious_url_extracted: editingLog.malicious_url_extracted } : {})
+              ...(editingLog.malicious_url_extracted !== undefined ? { malicious_url_extracted: editingLog.malicious_url_extracted } : {}),
+              ...(editingLog.drop_url !== undefined ? { drop_url: editingLog.drop_url } : {}),
+              ...(editingLog.drop_url_reason !== undefined ? { drop_url_reason: editingLog.drop_url_reason } : {})
             }
           };
         }
@@ -1787,11 +1794,11 @@ function App() {
                     <button
                       onClick={() => {
                           let newReason = editingLog.reason ? `[수동 HAM 전환] ${editingLog.reason.replace(/\[수동 SPAM 전환\]\s*/g, '')}` : '[수동 HAM 전환]';
-                          newReason = newReason.replace(/\[수동 Red Group 지정\]\s*/g, '');
-                          newReason = newReason.replace(/\[텍스트 HAM \+ 악성 URL 분리 감지:.*?\]\s*/g, '');
-                          newReason = newReason.replace(/\[URL SPAM:.*?\]\s*/g, '');
+                          newReason = newReason.replace(/\[수동 Red Group 지정\]\s*\|?\s*/g, '');
+                          newReason = newReason.replace(/\[텍스트 HAM \+ 악성 URL 분리 감지[^\]]*\]\s*\|?\s*/g, '');
+                          newReason = newReason.replace(/\[URL SPAM[^\]]*\]\s*\|?\s*/g, '');
                           newReason = newReason.replace(/\|\s*$/, '').trim();
-                          setEditingLog({ ...editingLog, is_spam: false, classification_code: '', red_group: false, reason: newReason, malicious_url_extracted: false });
+                          setEditingLog({ ...editingLog, is_spam: false, classification_code: '', red_group: false, reason: newReason, malicious_url_extracted: false, drop_url: false, drop_url_reason: null });
                         }}
                       className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${!editingLog.is_spam
                         ? 'bg-emerald-500/20 text-emerald-400 shadow-sm'

@@ -1693,10 +1693,7 @@ class ExcelHandler:
                 url_val = result.get("message_extracted_url", "")
                 url_len = self._lenb(url_val)
                 
-            # [사용자 요청] 완전히 정상(HAM)으로 탈바꿈한 항목은 육안분석 시트의 URL 컬럼을 비움
-            if not result.get("is_spam") and not result.get("red_group") and not is_separated:
-                url_val = ""
-                url_len = 0
+            # [사용자 요청 복구] 육안분석 시트의 URL 컬럼은 정상 요소(HAM)이건 스팸이건 모두 원본 입력 그대로 유지합니다.
 
             in_token_val = result.get("input_tokens", 0)
             out_token_val = result.get("output_tokens", 0)

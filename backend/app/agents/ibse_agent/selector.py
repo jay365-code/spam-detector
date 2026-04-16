@@ -226,14 +226,14 @@ obfuscated_urls: {obfuscated_urls}
             return parsed
         except Exception as e:
             if not getattr(self, "_use_fallback", False):
-                logger.warning(f"[IBSE] Main model failed with '{e}'. Attempting Fallback Mode (One attempt only)...")
+                logger.warning(f"[IBSE] Main model failed with '{type(e).__name__} - {e}'. Attempting Fallback Mode (One attempt only)...")
                 self._use_fallback = True
                 try:
                     # Retry with fallback model (No Tenacity Retries - exactly 1 attempt)
                     content_fb = await _raw_call()
                     return self._parse_json(content_fb)
                 except Exception as e2:
-                    logger.error(f"[IBSE] Fallback also failed: {e2}")
+                    logger.error(f"[IBSE] Fallback also failed: {type(e2).__name__} - {e2}")
                     return {"error": str(e2), "decision": "unextractable"}
             
             return {"error": str(e), "decision": "unextractable"}
