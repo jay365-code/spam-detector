@@ -34,6 +34,9 @@ class SpamState(TypedDict):
     # Content Agent 연동
     content_context: Optional[Dict[str, Any]]  # Content Agent 분석 결과 (연관성 확보용)
     
+    # [Context Passing] 안전 지대 컨텍스트 체인
+    has_safe_domain_context: Optional[bool]     # 이전 도메인(쇼핑몰 등)이 안전하다고 수용된 경우 플래그 전달
+    
     # [Infrastructure] Localized Browser Manager (Prevent Global State Issues)
     playwright_manager: Optional[Any] # PlaywrightManager Instance passed from caller
     

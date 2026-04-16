@@ -753,6 +753,20 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
             seen.add(converted)
             unique_urls.append(converted)
     
+    # [Intelligent Sorting] 일반 도메인(쇼핑몰, 기업사이트 등)을 먼저 검사하기 위해 
+    # SNS/UGC/단축 도메인은 리스트 뒤쪽으로 보냄.
+    ugc_and_shorteners = UGC_DOMAINS + ['bit.ly', 'me2.do', 'vo.la', 'han.gl', 'url.kr', 'sbz.kr', 'cutt.ly', 'tinyurl.com', 'naver.me', 'kko.to', 't.ly', 't.co', 'g.co']
+    def sort_key(u):
+        try:
+            domain = u.split('/')[2].lower() if '://' in u else u.split('/')[0].lower()
+            if any(domain == s or domain.endswith('.' + s) for s in ugc_and_shorteners):
+                return 1 # 우선순위 낮춤 (뒤로 배치)
+        except:
+            pass
+        return 0 # 일반 도메인 우선순위 높임
+        
+    unique_urls.sort(key=sort_key)
+
     # 메시지당 URL 상한 (처리 시간 단축, 자원 고갈 방지)
     max_urls = int(os.getenv("MAX_URLS_PER_MESSAGE", "3"))
     if len(unique_urls) > max_urls:
@@ -1038,17 +1052,30 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     *(주의: 회피용 방패막이 링크임이 감지될 경우, URL 자체를 스팸으로 오탐하지 말고 가이드에 따라 `is_mismatched=true`를 반드시 활성화할 것)*
     """
     
-    # 대표님 지침: 1000명 제한 등 특정 케이스 제약을 다른 지침과 섞이지 않게 독립적으로 주입. (모든 채널 유형에 보편 적용)
+    # 대표님 지침: 1000명 제한 등 특정 케이스 제약 주입 (단, 사적 모임 단체방 오탐을 방지하기 위한 유일한 예외 조항 포함)
     operational_rules_inject = ""
     if channel_subs != -1:
         operational_rules_inject = f"""
     [독립 운영 지침 (Independent Operational Rules)]
-    - 유니버설 채널 인원수 정책: 수집된 웹페이지가 소셜 채널, 밴드, 카페, 메신저 등 어떠한 형태의 '커뮤니티/채널'이든 관계없이 확인된 인원수(구독자/멤버)가 1,000명 미만({channel_subs}명)일 경우 무조건 스팸으로 처리하십시오. 이 기준은 경험적 필수 규칙이므로 합리성 여부를 따지지 말고 최우선으로 적용하십시오.
+    - 유니버설 채널 인원수 정책 및 예외: 수집된 웹페이지가 소셜 채널, 그룹 채팅, 밴드, 카페 등 형태의 '커뮤니티'일 경우, 기본적으로 인원수(구독자/멤버)가 1,000명 미만({channel_subs}명)이면 위험도가 높아 스팸 처리 대상입니다. 
+    - 단, 1000명 미만이라도 수집된 페이지 내의 **'방 제목(채널명)', '해시태그(#)', '소개글'**의 성격을 반드시 먼저 분석하십시오.
+       1) 예외 허용 (Inconclusive): 이름이나 소개글이 명백히 **'사적인 모임(친목, 가족, 동창회, 취미 동호회, 개인 스터디 등)'**으로 파악된다면 인원수 미달을 이유로 스팸 처리하지 말고 `is_spam: null`(판정불가)로 처리하십시오.
+       2) 강경 제재 (SPAM): 반대로 이름이나 설명이 "주식, 코인, 무료픽, 수혜주, 입장대기방, VVIP, 부업, 부수익, 예약상담" 등 상업적, 금전 유도, 혹은 정체를 알 수 없는 모호한 목적이라면 기존 원칙에 따라 단호하게 무조건 SPAM 처리하십시오.
 """
     
     # 대표님 지침: 카카오 계정 로그인 등 인증 벽(Auth Wall) 페이지에 대한 화이트리스트 등재 방지
     auth_wall_rules_inject = """
     - 로그인/인증 장벽(Auth Wall) 면책 불가: 화면이 '카카오계정 로그인', '네이버 로그인', '구글 로그인', '회원가입' 등으로 가려져 실제 본문 내용을 볼 수 없는 상태라면, 절대 정상 사이트로 단정 짓거나 `is_confirmed_safe=true`를 부여하지 마십시오. 내용은 알 수 없는 상태이므로 보수적으로 판단해야 하며, 절대 화이트리스트 면책 특권을 주어서는 안 됩니다.
+"""
+
+    has_safe_domain = state.get("has_safe_domain_context", False)
+    cross_validation_inject = ""
+    if has_safe_domain:
+        cross_validation_inject = """
+    [교차 검증 특별 면책 조항 (Cross-Validation Bypass)]
+    - 앞서 검사한 다른 URL이 이 문자의 발송 주체인 정상 상거래/기업 사이트로 이미 검열 통과되었습니다.
+    - 따라서 현재 분석 중인 이 웹페이지가 카카오톡 오픈채팅방, 네이버 밴드, 텔레그램 등 소통 채널 형태이며 멤버 수/구독자 수가 적더라도(1,000명 미만 포함), 해당 기업의 합법적인 이벤트/고객센터/소통 채널로 보인다면 인원수 미달 스팸 룰을 특별 예외 처리하여 HAM으로 판정하십시오.
+    - 단, 도박, 불법 등 명백한 유해 콘텐츠가 시각적으로 증명될 경우는 예외 없이 스팸으로 처리합니다.
 """
 
     prompt = f"""
@@ -1059,6 +1086,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     - 페이지 제목: {page_title}{platform_metadata}
     {operational_rules_inject}
     {auth_wall_rules_inject}
+    {cross_validation_inject}
     - 봇 감지 여부: {is_captcha}
     - 웹 페이지 콘텐츠 (증거 텍스트):
     {raw_text}
@@ -1235,10 +1263,13 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
             if vision_result.get("analysis_type") == "vision" and vision_result.get("is_spam") is not None:
                 logger.info("Vision 분석 완료 → Vision 결과 사용")
                 is_spam = vision_result.get("is_spam")
+                v_confirmed_safe = vision_result.get("is_confirmed_safe", False)
+                new_safe_context = has_safe_domain or v_confirmed_safe
                 
                 return {
                     "is_spam": is_spam,
-                    "is_confirmed_safe": vision_result.get("is_confirmed_safe", False),
+                    "is_confirmed_safe": v_confirmed_safe,
+                    "has_safe_domain_context": new_safe_context,
                     "is_mismatched": vision_result.get("is_mismatched", False),
                     "is_consistently_transactional": vision_result.get("is_consistently_transactional", False),
                     "spam_probability": vision_result.get("spam_probability", 0.0),
@@ -1255,12 +1286,16 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         if status_cb and not is_inconclusive:
             await status_cb("✅ [시각적 분석] 완료")
             
+        # 상태 업데이트: 현재까지 확인된 것이 safe라면 context 유지
+        new_safe_context = has_safe_domain or is_confirmed_safe
+            
         # 1차 분석 결과 반환 (확정 판단 또는 Vision 실패 시)
         # SPAM이면 즉시 종료 (is_final=True)
         # HAM/Inconclusive면 다음 URL 확인 (is_final=False)
         return {
             "is_spam": is_spam,
             "is_confirmed_safe": is_confirmed_safe,
+            "has_safe_domain_context": new_safe_context,
             "is_mismatched": is_mismatched,
             "is_consistently_transactional": is_consistently_transactional,
             "spam_probability": prob,

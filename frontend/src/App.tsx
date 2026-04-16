@@ -1896,32 +1896,34 @@ function App() {
               {editingLog.is_spam && (
                 <div>
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">시그니처 (IBSE)</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
+                  <div className="flex gap-2 items-stretch">
+                    <textarea
                       value={extractedSignature}
                       onChange={(e) => setExtractedSignature(e.target.value)}
-                      placeholder="시그니처 없음 (추출 버튼으로 생성)"
-                      className="flex-1 px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder-slate-600"
+                      placeholder="시그니처 없음 (문자열셋팅 또는 추출 버튼으로 생성)"
+                      rows={4}
+                      className="flex-1 px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white text-[13px] font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all placeholder-slate-600 resize-y min-h-[96px]"
                     />
-                    <button
-                      onClick={() => setExtractedSignature((editingLog?.message || '').replace(/\s/g, ''))}
-                      title="공백 제거한 메시지를 시그니처 입력창에 표시"
-                      className="px-4 py-3 rounded-xl border text-sm font-bold transition-all flex items-center gap-2 bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-slate-200 whitespace-nowrap"
-                    >
-                      📄 문자열보기
-                    </button>
-                    <button
-                      onClick={handleExtractSignature}
-                      disabled={isExtracting}
-                      className="px-4 py-3 rounded-xl border text-sm font-bold transition-all flex items-center gap-2 bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                    >
-                      {isExtracting ? (
-                        <><span className="animate-spin">⟳</span> 추출 중...</>
-                      ) : (
-                        <>🔬 시그니처 추출</>
-                      )}
-                    </button>
+                    <div className="flex flex-col gap-2 w-36 shrink-0">
+                      <button
+                        onClick={() => setExtractedSignature((editingLog?.message || '').replace(/\s/g, ''))}
+                        title="본문의 공백을 모두 제거하여 시그니처 편집창으로 가져옵니다."
+                        className="flex-1 px-3 py-2 rounded-xl border text-xs font-bold transition-all flex justify-center items-center gap-1.5 bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-white whitespace-nowrap"
+                      >
+                        📄 문자열 원본가져오기
+                      </button>
+                      <button
+                        onClick={handleExtractSignature}
+                        disabled={isExtracting}
+                        className="flex-1 px-3 py-2 rounded-xl border text-xs font-bold transition-all flex justify-center items-center gap-1.5 bg-slate-800 border-slate-700 text-indigo-400 hover:bg-slate-700 hover:text-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                      >
+                        {isExtracting ? (
+                          <><span className="animate-spin">⟳</span> 추출 중...</>
+                        ) : (
+                          <>🔬 AI 시그니처 추출</>
+                        )}
+                      </button>
+                    </div>
                   </div>
                   {extractedSignature && (
                     <p className="mt-1.5 text-xs text-slate-500">

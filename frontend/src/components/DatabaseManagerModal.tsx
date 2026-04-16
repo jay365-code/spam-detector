@@ -567,17 +567,20 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                       )}
                       {activeTab === 'signatures' && (
                         <>
-                          <th className="py-2.5 px-3 font-semibold cursor-pointer hover:bg-white/5" onClick={() => { setSigSortOrder(sigSortCol==='signature'&&sigSortOrder==='asc'?'desc':'asc'); setSigSortCol('signature'); }}>
+                          <th className="py-2.5 px-3 font-semibold whitespace-nowrap cursor-pointer hover:bg-white/5" onClick={() => { setSigSortOrder(sigSortCol==='signature'&&sigSortOrder==='asc'?'desc':'asc'); setSigSortCol('signature'); }}>
                             시그니처 패턴 <SortIcon col="signature" currentSort={{key: sigSortCol, dir: sigSortOrder}} />
                           </th>
-                          <th className="py-2.5 px-3 font-semibold text-center w-24 cursor-pointer hover:bg-white/5" onClick={() => { setSigSortOrder(sigSortCol==='byte_length'&&sigSortOrder==='asc'?'desc':'asc'); setSigSortCol('byte_length'); }}>
+                          <th className="py-2.5 px-3 font-semibold text-center w-24 whitespace-nowrap cursor-pointer hover:bg-white/5" onClick={() => { setSigSortOrder(sigSortCol==='byte_length'&&sigSortOrder==='asc'?'desc':'asc'); setSigSortCol('byte_length'); }}>
                             바이트 <SortIcon col="byte_length" currentSort={{key: sigSortCol, dir: sigSortOrder}} />
                           </th>
-                          <th className="py-2.5 px-3 font-semibold text-center w-24 cursor-pointer hover:bg-white/5" onClick={() => { setSigSortOrder(sigSortCol==='hit_count'&&sigSortOrder==='asc'?'desc':'asc'); setSigSortCol('hit_count'); }}>
+                          <th className="py-2.5 px-3 font-semibold text-center w-28 whitespace-nowrap cursor-pointer hover:bg-white/5" onClick={() => { setSigSortOrder(sigSortCol==='hit_count'&&sigSortOrder==='asc'?'desc':'asc'); setSigSortCol('hit_count'); }}>
                             적중(Hit) <SortIcon col="hit_count" currentSort={{key: sigSortCol, dir: sigSortOrder}} />
                           </th>
-                          <th className="py-2.5 px-3 font-semibold w-40 cursor-pointer hover:bg-white/5" onClick={() => { setSigSortOrder(sigSortCol==='last_hit'&&sigSortOrder==='asc'?'desc':'asc'); setSigSortCol('last_hit'); }}>
-                            마지막 통과 <SortIcon col="last_hit" currentSort={{key: sigSortCol, dir: sigSortOrder}} />
+                          <th className="py-2.5 px-3 font-semibold w-40 whitespace-nowrap cursor-pointer hover:bg-white/5" onClick={() => { setSigSortOrder(sigSortCol==='created_at'&&sigSortOrder==='asc'?'desc':'asc'); setSigSortCol('created_at'); }}>
+                            최근 업데이트 <SortIcon col="created_at" currentSort={{key: sigSortCol, dir: sigSortOrder}} />
+                          </th>
+                          <th className="py-2.5 px-3 font-semibold w-40 whitespace-nowrap cursor-pointer hover:bg-white/5" onClick={() => { setSigSortOrder(sigSortCol==='last_hit'&&sigSortOrder==='asc'?'desc':'asc'); setSigSortCol('last_hit'); }}>
+                            마지막 HIT <SortIcon col="last_hit" currentSort={{key: sigSortCol, dir: sigSortOrder}} />
                           </th>
                         </>
                       )}
@@ -724,7 +727,10 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                           </span>
                         </td>
                         <td className="py-1.5 px-3 text-slate-500 text-xs whitespace-nowrap font-mono tracking-tight">
-                          {row.last_hit || row.created_at || '-'}
+                          {row.created_at || '-'}
+                        </td>
+                        <td className="py-1.5 px-3 text-slate-500 text-xs whitespace-nowrap font-mono tracking-tight">
+                          {row.last_hit || '-'}
                         </td>
                         <td className="py-1.5 px-3 text-center">
                           <button 
