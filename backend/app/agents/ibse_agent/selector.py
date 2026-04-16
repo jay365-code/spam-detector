@@ -269,6 +269,12 @@ async def select_signature_node(state: IBSEState) -> dict:
     pass
 
     if "signature" in result and result["signature"] and result.get("decision") in ["use_string", "use_sentence"]:
+        # [자동 승격 방어망] 단축 URL 등이 20바이트를 넘어 use_string 제약을 어기는 경우, 40바이트(use_sentence) 등급으로 자동 승격시켜 물리적 패딩 기회를 부여.
+        sig_text = result["signature"]
+        encoded = sig_text.encode("cp949", errors="replace")
+        if result["decision"] == "use_string" and len(encoded) > 20:
+            result["decision"] = "use_sentence"
+            
         max_bytes = 20 if result["decision"] == "use_string" else 40
         sig_text = result["signature"]
         
@@ -367,7 +373,14 @@ async def select_signature_node(state: IBSEState) -> dict:
                     preserved = True
 
             if not preserved:
-                # 앞에서부터 1글자 단위로 바이트를 채움
+                # [저주받은 길이 방어망] 보존해야 할 URL이 max_bytes(예: 20바이트)보다 너무 길어서 룰 안으로 욱여넣는 것이 물리적으로 불가능할 경우, 억지로 반토막 내지 않고 미련 없이 포기 처리함.
+                if url_to_preserve and url_to_preserve != "null" and isinstance(url_to_preserve, str):
+                    if len(url_to_preserve.encode("cp949", errors="replace")) > max_bytes:
+                        result["decision"] = "unextractable"
+                        result["signature"] = ""
+                        return {"final_result": result, "extracted_signature": "", "extraction_type": "unextractable", "error": None}
+
+                # 앞에서부터 1글자 단위로 바이트를 채움 (안전한 무손실 절단)
                 valid_len = 0
                 for i in range(1, len(sig_text) + 1):
                     if len(sig_text[:i].encode("cp949", errors="replace")) <= max_bytes:

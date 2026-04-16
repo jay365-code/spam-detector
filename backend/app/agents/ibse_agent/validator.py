@@ -34,7 +34,16 @@ class Validator:
                 
                 # Check if the signature is ENTIRELY contained within the URL
                 if sig_start >= u_start and sig_end <= u_end:
-                    return {**result, "error": f"URL(또는 도메인)의 일부나 전체만 단독으로 시그니처에 사용하는 것은 금지됩니다. 반드시 URL 밖의 한글 텍스트(문자열)를 함께 포함하여 유니크하게 만들거나 unextractable 처리하세요. (추출된 시그니처: {signature})"}
+                    from urllib.parse import urlparse
+                    url_str = signature if signature.startswith("http") else "http://" + signature
+                    parsed = urlparse(url_str)
+                    
+                    # 패스(Path)나 쿼리 파라미터(Query) 없이 루트 도메인 껍데기만 남은 경우 차단
+                    if (not parsed.path or parsed.path == '/') and not parsed.query:
+                        return {**result, "error": f"루트 도메인 껍데기만 단독으로 추출하는 것은 금지됩니다. 주변 악성 문구를 포함하거나 포기(unextractable)하세요. 단, 고유 Path나 쿼리 파라미터가 있는 특수/단축 주소는 단독 추출이 허용됩니다. (추출된: {signature})"}
+                    else:
+                        # 고유 Path(`/xyz123`)나 Query(`?id=`)가 포함되어 있으므로 단독 추출 승인 (Pass)
+                        pass
                         
         # 3. Blacklist Check
         blacklist = ["광고", "(광고)", "[광고]", "080-", "무료거부", "수신거부", "무료수신거부"]
