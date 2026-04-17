@@ -314,15 +314,14 @@ function App() {
               red_group: editingLog.red_group || false,
               // [Fix] 수동 Red Group 지정 시, AI가 설정한 drop_url 플래그를 해제하여 URL이 엑셀에 표시되도록 함.
               // 사용자가 Red Group을 수동으로 지정한다는 것은 "이 URL은 악성이다"는 명시적 의사 표현이므로
-              // AI의 URL 제거 결정(drop_url)을 사용자 의사로 덮어씁니다.
-              ...(editingLog.red_group && { drop_url: false, drop_url_reason: null }),
+              // AI의 URL 제거 결정을 무시하고 drop_url을 false로 오버라이드 합니다.
               spam_probability: editingLog.spam_probability,
               message_extracted_url: extractedUrls.join(', '),
               ibse_signature: extractedSignature ? extractedSignature.trim() : extractedSignature,
               ibse_len: extractedSignature ? [...(extractedSignature.trim() || '')].reduce((acc, ch) => acc + (ch.charCodeAt(0) > 127 ? 2 : 1), 0) : 0,
               ...(editingLog.malicious_url_extracted !== undefined ? { malicious_url_extracted: editingLog.malicious_url_extracted } : {}),
-              ...(editingLog.drop_url !== undefined ? { drop_url: editingLog.drop_url } : {}),
-              ...(editingLog.drop_url_reason !== undefined ? { drop_url_reason: editingLog.drop_url_reason } : {})
+              ...(editingLog.drop_url !== undefined ? { drop_url: editingLog.red_group ? false : editingLog.drop_url } : {}),
+              ...(editingLog.drop_url_reason !== undefined ? { drop_url_reason: editingLog.red_group ? null : editingLog.drop_url_reason } : {})
             }
           };
         }

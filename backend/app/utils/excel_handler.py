@@ -144,7 +144,9 @@ class ExcelHandler:
             "v.gd", "vo.la", "vvd.bz", "vvd.im", 
             "wp.me", 
             "youtu.be", "yun.kr", 
-            "zrr.kr"
+            "zrr.kr",
+            # 새롭게 식별된 단축 URL 추가
+            "tnia.cc", "2.lnkme.net", "lnkme.net", "alie.kr"
         }
         
         # 외부 클론잡 동작용 txt 파일이 존재하면 정적으로 병합 구성
@@ -649,6 +651,11 @@ class ExcelHandler:
                 msg_col_idx = headers.index("메시지") + 1 # 1-based index
             except ValueError:
                 raise ValueError("'메시지' column not found.")
+            
+            try:
+                url_col_idx = headers.index("URL") + 1 # 1-based index
+            except ValueError:
+                url_col_idx = -1
                 
             # Add or Find Output Columns (Cols setup logic same as before)
             
@@ -688,14 +695,24 @@ class ExcelHandler:
                 # Extract messages
                 messages = [item[1] for item in batch_buffer]
                 
+                # Extract URLs
+                pre_parsed_urls = []
+                for item in batch_buffer:
+                    r_obj = item[2]
+                    u = r_obj[url_col_idx - 1].value if url_col_idx > 0 else ""
+                    pre_parsed_urls.append(str(u).strip() if u else "")
+                
                 # Call Processing Function (Expects List -> Returns List)
                 try:
                     # Pass start_index (global offset) to processing function for correct UI mapping
                     # processing_function signature: processing_function(messages, start_index=0, total_count=0)
-                    results = processing_function(messages, start_index=start_index, total_count=total_rows)
+                    results = processing_function(messages, start_index=start_index, total_count=total_rows, pre_parsed_urls=pre_parsed_urls)
                 except TypeError:
                      # Fallback for backward compatibility if function doesn't accept start_index yet
-                     results = processing_function(messages)
+                     try:
+                         results = processing_function(messages, start_index=start_index, total_count=total_rows)
+                     except TypeError:
+                         results = processing_function(messages)
                 except Exception as e:
                     from ..main import CancellationException
                     if isinstance(e, CancellationException):
