@@ -1493,3 +1493,4 @@ tnia.cc
 2.lnkme.net
 lnkme.net
 alie.kr
+bz.kr

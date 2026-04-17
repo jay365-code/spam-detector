@@ -34,8 +34,12 @@ URL_LOCKS: Dict[str, asyncio.Condition] = {}
 URL_STRIKES: Dict[str, int] = {}
 URL_IN_PROGRESS = set()
 
-def clear_signature_cache():
+def clear_batch_caches():
     BATCH_SIGNATURE_CACHE.clear()
+    BATCH_URL_CACHE.clear()
+    URL_LOCKS.clear()
+    URL_STRIKES.clear()
+    URL_IN_PROGRESS.clear()
 
 def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manager: Optional[Any] = None):
     """

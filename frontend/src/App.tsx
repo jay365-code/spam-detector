@@ -388,6 +388,29 @@ function App() {
   // Filter & Search State
   const [logFilter, setLogFilter] = useState<'ALL' | 'SPAM' | 'HAM' | 'RED_GROUP' | 'FP_SENSITIVE'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const preSearchScrollTopRef = useRef<number | null>(null);
+
+  const handleSearchChange = (val: string) => {
+    if (!searchQuery && val) {
+      // 처음 검색어를 입력하기 시작할 때 현재 스크롤 위치 저장
+      if (logContainerRef.current) {
+        preSearchScrollTopRef.current = logContainerRef.current.scrollTop;
+      }
+    } else if (searchQuery && !val) {
+      // 검색어를 완전히 지웠을 때 기존 스크롤 위치 복원
+      if (logContainerRef.current && preSearchScrollTopRef.current !== null) {
+        const targetScroll = preSearchScrollTopRef.current;
+        // React 렌더링 사이클(리스트 복구) 이후에 스크롤을 이동시키기 위해 setTimeout 사용
+        setTimeout(() => {
+          if (logContainerRef.current) {
+            logContainerRef.current.scrollTop = targetScroll;
+          }
+          preSearchScrollTopRef.current = null;
+        }, 0);
+      }
+    }
+    setSearchQuery(val);
+  };
 
   // Advanced Filter State
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
@@ -1260,17 +1283,62 @@ function App() {
                 type="text"
                 placeholder="결과 내 검색..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-8 py-1.5 text-slate-200 focus:outline-none focus:border-blue-500 transition-colors"
               />
               {searchQuery && (
                 <button
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => handleSearchChange('')}
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-slate-700 rounded"
                 >
                   <X className="w-3.5 h-3.5 text-slate-400" />
                 </button>
               )}
+            </div>
+
+            {/* Go To Item Input */}
+            <div className="relative flex items-center max-w-[100px] ml-4 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 transition-colors focus-within:border-blue-500">
+              <span className="text-[10px] text-slate-500 font-bold whitespace-nowrap mr-1.5 mt-0.5">No.</span>
+              <input
+                type="number"
+                min="1"
+                placeholder="이동명령"
+                className="w-full bg-transparent text-xs text-slate-200 outline-none placeholder:text-slate-600 font-mono"
+                title="Enter 키를 누르면 해당 번호의 항목으로 스크롤 이동합니다."
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const val = e.currentTarget.value;
+                    const num = parseInt(val, 10);
+                    if (!isNaN(num) && num > 0) {
+                      const el = document.getElementById(`log-item-${num}`);
+                      if (el && logContainerRef.current) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        // 약간의 강조 이펙트 적용
+                        el.classList.add('bg-blue-500/30');
+                        el.classList.add('border-blue-500/50');
+                        setTimeout(() => {
+                          if (el) {
+                            el.classList.remove('bg-blue-500/30');
+                            el.classList.remove('border-blue-500/50');
+                          }
+                        }, 1500);
+                        e.currentTarget.blur();
+                      } else {
+                        // 찾지 못한 경우 입력칸을 붉게 깜빡임
+                        const inputWrap = e.currentTarget.parentElement;
+                        if (inputWrap) {
+                          inputWrap.classList.add('border-red-500');
+                          inputWrap.classList.add('animate-pulse');
+                          setTimeout(() => {
+                            inputWrap.classList.remove('border-red-500');
+                            inputWrap.classList.remove('animate-pulse');
+                          }, 1000);
+                        }
+                      }
+                    }
+                  }
+                }}
+              />
             </div>
 
             {/* Search Result Count */}
@@ -1485,7 +1553,7 @@ function App() {
                 const idx = log.originalIdx;
 
                 return (
-                  <div key={idx} className="flex gap-4 items-start animate-fade-in group hover:bg-slate-800/50 p-3 rounded-xl font-mono text-sm border border-transparent hover:border-slate-800/80 transition-all duration-200">
+                  <div key={idx} id={`log-item-${idx + 1}`} className="flex gap-4 items-start animate-fade-in group hover:bg-slate-800/50 p-3 rounded-xl font-mono text-sm border border-transparent hover:border-slate-800/80 transition-all duration-500">
                     <span className="text-slate-600 min-w-[30px] text-xs pt-1.5 font-bold">
                       {String(idx + 1).padStart(3, '0')}
                     </span>
