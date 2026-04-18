@@ -971,7 +971,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                  response_text += f"🔧 **전처리(공백제거)**: `{spaceless_msg}`\n\n"
                                  
                                  if sig:
-                                     source_tag = " ⚡ **(DB 스피드 캐시)**" if "db_cache" in str(decision) else (" ⚡ **(실시간 캐시)**" if "cache" in str(decision) else " 🤖 **(LLM 단독 생성)**")
+                                     source_tag = " ⚡ **[SIG DB Cache]**" if "db_cache" in str(decision) else (" ⚡ **[SIG Runtime Cache]**" if "cache" in str(decision) else " 🤖 **(LLM 단독 생성)**")
                                      response_text += f"✅ **추출 성공**{source_tag}\n- **시그니처**: `{sig}`\n- **길이**: {byte_len} bytes (CP949)\n"
                                  elif decision == "unextractable":
                                      response_text += f"🛑 **추출 생략 (대상 아님)**\n- **사유**: {reason}\n"
@@ -1183,9 +1183,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 ibse_cat = final_res.get("ibse_category", "")
                                 if ibse_sig:
                                     if "db_cache" in str(ibse_cat):
-                                        source_tag = "⚡ **(DB 영구 캐시 매칭)**"
+                                        source_tag = "⚡ **[SIG DB Cache] 영구 데이터베이스 매칭 성공**"
                                     elif "runtime_cache" in str(ibse_cat):
-                                        source_tag = "⚡ **(실시간 그룹 캐시 매칭)**"
+                                        source_tag = "⚡ **[SIG Runtime Cache] 실시간 매칭 성공**"
                                     else:
                                         source_tag = "🤖 **(LLM 분석 생성)**"
                                         

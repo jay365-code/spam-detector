@@ -170,7 +170,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 return {"url_result": {
                     "is_spam": False,
                     "is_confirmed_safe": True,
-                    "reason": "⚡ [DB Safe] 검증된 안전 도메인 (초고속 패스)",
+                    "reason": "⚡ [URL DB Cache] 검증된 안전 도메인 (초고속 패스)",
                     "details": {
                         "final_url": lock_url,
                         "extracted_url": lock_url,
@@ -192,7 +192,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                         if cb: await cb("⚡ [Runtime Cache] 선두 리더(첨병)의 셰어 결과를 확보하여 즉시 패스합니다.")
                         cached_res = BATCH_URL_CACHE[clean_lock_url].copy()
                         status_str = "SAFE" if cached_res.get("is_confirmed_safe") else "SPAM"
-                        cached_res["reason"] = f"⚡ [Runtime Share] 리더 분석결과({status_str}) 즉시 복사됨"
+                        cached_res["reason"] = f"⚡ [URL Runtime Cache] 리더 판독 결과({status_str}) 즉시 공유됨"
                         if pre_parsed_url_invalidated: cached_res["pre_parsed_url_invalidated"] = True
                         return {"url_result": cached_res}
                     
@@ -782,9 +782,9 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         
         if ibse_sig:
             if "db_cache" in ibse_cat:
-                source_tag = "⚡ (DB 영구 캐시 매칭)"
+                source_tag = "⚡ [SIG DB Cache] 영구 데이터베이스 매칭 성공"
             elif "runtime_cache" in ibse_cat:
-                source_tag = "⚡ (실시간 그룹 캐시 매칭)"
+                source_tag = "⚡ [SIG Runtime Cache] 실시간 매칭 성공"
             else:
                 source_tag = "🤖 (LLM 분석 생성)"
             ibse_str = f"시그니처: {ibse_sig}\n  (길이: {ibse_len} bytes) {source_tag}"

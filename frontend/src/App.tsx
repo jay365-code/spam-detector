@@ -443,13 +443,15 @@ function App() {
     hasSignature: 'all' as 'all' | 'yes' | 'no',
     probMin: '' as string,
     probMax: '' as string,
+    cacheType: 'all' as 'all' | 'url_db' | 'url_runtime' | 'sig_db' | 'sig_runtime',
   });
   // CP949 근사 바이트 계산 (비ASCII = 2byte, ASCII = 1byte)
   const calcByteLen = (str: string) =>
     [...(str || '')].reduce((acc, ch) => acc + (ch.charCodeAt(0) > 127 ? 2 : 1), 0);
   const isAdvancedFilterActive = advancedFilters.msgLenMin !== '' || advancedFilters.msgLenMax !== '' ||
     advancedFilters.classificationCodes.length > 0 || advancedFilters.hasUrl !== 'all' ||
-    advancedFilters.hasSignature !== 'all' || advancedFilters.probMin !== '' || advancedFilters.probMax !== '';
+    advancedFilters.hasSignature !== 'all' || advancedFilters.probMin !== '' || advancedFilters.probMax !== '' ||
+    advancedFilters.cacheType !== 'all';
 
   const activeFilterTags = useMemo(() => {
     const tags: { label: string, action: () => void }[] = [];
@@ -482,6 +484,18 @@ function App() {
       tags.push({
          label: `시그니처:${af.hasSignature === 'yes' ? 'O' : 'X'}`,
          action: () => setAdvancedFilters(prev => ({ ...prev, hasSignature: 'all' }))
+      });
+    }
+    if (af.cacheType !== 'all') {
+      const cacheMap = {
+        'url_db': 'URL DB',
+        'url_runtime': 'URL 런타임',
+        'sig_db': 'SIG DB',
+        'sig_runtime': 'SIG 런타임'
+      };
+      tags.push({
+         label: `캐시:${cacheMap[af.cacheType as keyof typeof cacheMap]}`,
+         action: () => setAdvancedFilters(prev => ({ ...prev, cacheType: 'all' }))
       });
     }
     return tags;
@@ -1154,6 +1168,14 @@ function App() {
         if (prob > Number(af.probMax)) return false;
       }
 
+      if (af.cacheType !== 'all') {
+        const reason = String(log.result?.reason || '');
+        if (af.cacheType === 'url_db' && !reason.includes('[URL DB Cache]')) return false;
+        if (af.cacheType === 'url_runtime' && !reason.includes('[URL Runtime Cache]')) return false;
+        if (af.cacheType === 'sig_db' && !reason.includes('[SIG DB Cache]')) return false;
+        if (af.cacheType === 'sig_runtime' && !reason.includes('[SIG Runtime Cache]')) return false;
+      }
+
       // Apply Search
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
@@ -1477,7 +1499,7 @@ function App() {
                 <span className="text-xs font-bold text-slate-300 uppercase tracking-widest">고급 필터</span>
                 {isAdvancedFilterActive && (
                   <button
-                    onClick={() => setAdvancedFilters({ msgLenMin: '', msgLenMax: '', classificationCodes: [], hasUrl: 'all', hasSignature: 'all', probMin: '', probMax: '' })}
+                    onClick={() => setAdvancedFilters({ msgLenMin: '', msgLenMax: '', classificationCodes: [], hasUrl: 'all', hasSignature: 'all', probMin: '', probMax: '', cacheType: 'all' })}
                     className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
                   >
                     초기화
@@ -1582,6 +1604,23 @@ function App() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* 캐시 적용 타입 */}
+                <div>
+                  <label className="text-xs text-slate-400 mb-1.5 block">적용 캐시 타입</label>
+                  <select
+                    title="캐시 적용 타입"
+                    value={advancedFilters.cacheType}
+                    onChange={e => setAdvancedFilters(f => ({ ...f, cacheType: e.target.value as any }))}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-bold"
+                  >
+                    <option value="all">전체보기</option>
+                    <option value="url_db">⚡ URL DB Cache 매칭</option>
+                    <option value="url_runtime">⚡ URL Runtime Cache 매칭</option>
+                    <option value="sig_db">⚡ SIG DB Cache 매칭</option>
+                    <option value="sig_runtime">⚡ SIG Runtime Cache 매칭</option>
+                  </select>
                 </div>
 
               </div>
