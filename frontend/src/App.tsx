@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { CheckCircle, AlertCircle, User, Database, Server, Pencil, X, Save, Loader2, Search, FileText, FolderOpen, Settings, MessageSquare, Copy } from 'lucide-react';
+import { CheckCircle, AlertCircle, User, Database, Server, Pencil, X, Save, Loader2, Search, FileText, FolderOpen, Settings, MessageSquare, Copy, Flag } from 'lucide-react';
 import { FileUpload } from './components/FileUpload';
 import { StatusPanel } from './components/StatusPanel';
 import { ChatInterface } from './components/ChatInterface';
@@ -171,6 +171,7 @@ function App() {
     spam_probability: number;
     is_trap?: boolean;
     red_group?: boolean;
+    flagged?: boolean;
     malicious_url_extracted?: boolean;
     drop_url?: boolean;
     drop_url_reason?: string | null;
@@ -209,6 +210,7 @@ function App() {
       is_trap: log.is_trap || false,
       // [Fix] 기존 Red Group 상태 복원: 모달 열 때 항상 false로 초기화하던 버그 수정
       red_group: log.result.red_group || false,
+      flagged: log.result.flagged || false,
       malicious_url_extracted: log.result.malicious_url_extracted,
       drop_url: log.result.drop_url,
       drop_url_reason: log.result.drop_url_reason
@@ -312,6 +314,7 @@ function App() {
               classification_code: editingLog.classification_code,
               reason: editingLog.reason,
               red_group: editingLog.red_group || false,
+              flagged: editingLog.flagged || false,
               // [Fix] 수동 Red Group 지정 시, AI가 설정한 drop_url 플래그를 해제하여 URL이 엑셀에 표시되도록 함.
               // 사용자가 Red Group을 수동으로 지정한다는 것은 "이 URL은 악성이다"는 명시적 의사 표현이므로
               // AI의 URL 제거 결정을 무시하고 drop_url을 false로 오버라이드 합니다.
@@ -386,9 +389,27 @@ function App() {
   const [isAtBottom, setIsAtBottom] = useState(true);
 
   // Filter & Search State
-  const [logFilter, setLogFilter] = useState<'ALL' | 'SPAM' | 'HAM' | 'RED_GROUP' | 'FP_SENSITIVE'>('ALL');
+  const [logFilter, setLogFilter] = useState<'ALL' | 'SPAM' | 'HAM' | 'RED_GROUP' | 'FP_SENSITIVE' | 'FLAGGED'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const preSearchScrollTopRef = useRef<number | null>(null);
+
+  // [New] Filter Scroll Retention
+  const filterScrollTopsRef = useRef<Record<string, number>>({});
+  const handleFilterChange = (newFilter: 'ALL' | 'SPAM' | 'HAM' | 'RED_GROUP' | 'FP_SENSITIVE' | 'FLAGGED') => {
+    if (logContainerRef.current) {
+      filterScrollTopsRef.current[logFilter] = logContainerRef.current.scrollTop;
+    }
+    setLogFilter(newFilter);
+  };
+
+  useEffect(() => {
+    // Wait for React DOM update cycle before applying scroll
+    setTimeout(() => {
+      if (logContainerRef.current && filterScrollTopsRef.current[logFilter] !== undefined) {
+        logContainerRef.current.scrollTop = filterScrollTopsRef.current[logFilter];
+      }
+    }, 0);
+  }, [logFilter]);
 
   const handleSearchChange = (val: string) => {
     if (!searchQuery && val) {
@@ -672,10 +693,15 @@ function App() {
   };
 
   // 새로운 로그 수신 시 하단 이동 (Smart Scroll)
+  const previousLogCountRef = useRef(0);
   useEffect(() => {
-    if (isAtBottom && logContainerRef.current) {
-      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    const currentCount = Object.keys(logs).length;
+    if (currentCount > previousLogCountRef.current) {
+      if (isAtBottom && logContainerRef.current) {
+        logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+      }
     }
+    previousLogCountRef.current = currentCount;
   }, [logs, isAtBottom]);
 
   // WebSocket Connection (Auto-Reconnect)
@@ -1049,6 +1075,23 @@ function App() {
     console.log("Chat cleared");
   };
 
+  // [New] Toggle Flag Handler
+  const toggleFlag = (index: number) => {
+    setLogs(prev => {
+      const newLogs = { ...prev };
+      if (newLogs[index] && newLogs[index].result) {
+        newLogs[index] = {
+          ...newLogs[index],
+          result: {
+            ...newLogs[index].result,
+            flagged: !newLogs[index].result.flagged
+          }
+        };
+      }
+      return newLogs;
+    });
+  };
+
   // [New] Filter & Count Logic
   // Filter out completely undefined/null items from sparse arrays safely
   const validLogs = Object.keys(logs).map(key => {
@@ -1072,6 +1115,7 @@ function App() {
   const spamCount = displayLogs.filter(({ log }) => log?.result?.is_spam).length;
   const hamCount = displayLogs.filter(({ log }) => log?.result && !log.result.is_spam).length;
   const redGroupCount = displayLogs.filter(({ log }) => log?.result?.red_group).length;
+  const flaggedCount = displayLogs.filter(({ log }) => log?.result?.flagged).length;
 
   const filteredLogs = displayLogs
     .filter(({ log }) => {
@@ -1079,6 +1123,7 @@ function App() {
       if (logFilter === 'SPAM' && (!log.result || !log.result.is_spam)) return false;
       if (logFilter === 'HAM' && (!log.result || log.result.is_spam)) return false;
       if (logFilter === 'RED_GROUP' && (!log.result || !log.result.red_group)) return false;
+      if (logFilter === 'FLAGGED' && (!log.result || !log.result.flagged)) return false;
 
       // Apply Advanced Filters
       const af = advancedFilters;
@@ -1261,10 +1306,11 @@ function App() {
                 { label: 'SPAM', count: spamCount, filterKey: 'SPAM', activeClass: 'bg-red-500 text-white shadow-lg', inactiveClass: 'text-red-400 hover:text-red-200' },
                 { label: 'HAM', count: hamCount, filterKey: 'HAM', activeClass: 'bg-green-600 text-white shadow-lg', inactiveClass: 'text-green-400 hover:text-green-200' },
                 { label: 'RED GROUP', count: redGroupCount, filterKey: 'RED_GROUP', activeClass: 'bg-pink-500 text-white shadow-lg', inactiveClass: 'text-pink-400 hover:text-pink-200' },
+                { label: '검토 필요', count: flaggedCount, filterKey: 'FLAGGED', activeClass: 'bg-yellow-500 text-white shadow-[0_0_12px_rgba(234,179,8,0.6)] ring-1 ring-yellow-400', inactiveClass: 'text-yellow-400 hover:text-yellow-100 bg-yellow-400/10 hover:bg-yellow-400/20 border border-yellow-500/30' },
               ].map(({ label, count, filterKey, activeClass, inactiveClass }) => (
                 <button
                   key={filterKey}
-                  onClick={() => setLogFilter(filterKey as any)}
+                  onClick={() => handleFilterChange(logFilter === filterKey ? 'ALL' : filterKey as any)}
                   className={`px-3 py-1 rounded-md transition-all text-xs font-bold flex items-center ${logFilter === filterKey ? activeClass : inactiveClass
                     }`}
                 >
@@ -1551,9 +1597,10 @@ function App() {
               .map((log) => {
                 const { cleanReason, note, isManual } = log.result ? parseReason(log.result.reason) : { cleanReason: "", note: null, isManual: false };
                 const idx = log.originalIdx;
+                const isFlagged = log.result?.flagged;
 
                 return (
-                  <div key={idx} id={`log-item-${idx + 1}`} className="flex gap-4 items-start animate-fade-in group hover:bg-slate-800/50 p-3 rounded-xl font-mono text-sm border border-transparent hover:border-slate-800/80 transition-all duration-500">
+                  <div key={idx} id={`log-item-${idx + 1}`} className={`flex gap-4 items-start animate-fade-in group p-3 rounded-xl font-mono text-sm border transition-all duration-500 ${isFlagged ? 'bg-yellow-900/20 border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.1)]' : 'hover:bg-slate-800/50 border-transparent hover:border-slate-800/80'}`}>
                     <span className="text-slate-600 min-w-[30px] text-xs pt-1.5 font-bold">
                       {String(idx + 1).padStart(3, '0')}
                     </span>
@@ -1576,7 +1623,7 @@ function App() {
                               </span>
                             ) : (
                               <span className="text-green-400 flex items-center gap-1 bg-green-400/10 px-1.5 rounded text-xs font-bold whitespace-nowrap">
-                                <CheckCircle className="w-3 h-3" /> HAM
+                                <CheckCircle className="w-3 h-3" /> HAM ({Math.round(log.result.spam_probability * 100)}%)
                               </span>
                             )}
                             {log.result.red_group && (
@@ -1604,6 +1651,15 @@ function App() {
                               title="RAG DB에 저장"
                             >
                               <Database className="w-3 h-3" />
+                            </button>
+                            {/* Flag 토글 버튼 */}
+                            <button
+                              onClick={() => toggleFlag(idx)}
+                              className={`p-1.5 rounded transition-all flex items-center gap-1 font-bold text-xs border ${log.result.flagged ? 'text-yellow-400 bg-yellow-500/20 border-yellow-500/50 shadow-[0_0_10px_rgba(234,179,8,0.2)]' : 'text-slate-500 border-transparent hover:text-slate-300 hover:bg-slate-700'}`}
+                              title={log.result.flagged ? "검토 대기중 (클릭하여 해제)" : "검토 필요 항목으로 표시"}
+                            >
+                              <Flag className={`w-3.5 h-3.5 ${log.result.flagged ? 'fill-yellow-400' : ''}`} />
+                              {log.result.flagged && <span>검토대기</span>}
                             </button>
                           </>
                         ) : (

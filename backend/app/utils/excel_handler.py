@@ -58,7 +58,7 @@ class ExcelHandler:
             {'A': 81.0, 'B': 25.6, 'C': 10.6, 'D': 11.9})
         
         _apply_hdr(wb['육안분석(시뮬결과35_150)'],
-            ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이",
+            ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "검토필요",
              "Probability", "Semantic Class", "Reason", "Red Group"],
             {'A': 90.0, 'B': 22.6, 'C': 10.6, 'D': 6.6, 'E': 12.6, 'F': 10.6},
             font=hdr_font_10)
@@ -85,7 +85,7 @@ class ExcelHandler:
             {'A': 89.6, 'B': 25.6, 'C': 10.6})
         
         _apply_hdr(wb['TRAP.육안분석(시뮬결과35_150)'],
-            ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이",
+            ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "검토필요",
              "Probability", "Semantic Class", "Reason", "Red Group"],
             {'A': 89.6, 'B': 21.6, 'C': 13.6},
             font=hdr_font_10)
@@ -396,6 +396,14 @@ class ExcelHandler:
             url_len_col = get_col_idx("URL 길이")
             if url_len_col:
                 ws.cell(row=row_idx, column=url_len_col).alignment = center_align
+                
+            # 검토필요 컬럼 중앙 정렬 및 주황색 채우기 일괄 적용
+            flag_col = get_col_idx("검토필요")
+            if flag_col:
+                fc = ws.cell(row=row_idx, column=flag_col)
+                fc.alignment = center_align
+                if str(fc.value).strip() == "O":
+                    fc.fill = PatternFill(start_color="FF9900", end_color="FF9900", fill_type="solid")
             
             # 메시지 컬럼: 세로 중앙 (자동줄바꿈 해제)
             if msg_col:
@@ -820,12 +828,26 @@ class ExcelHandler:
                             url_val = ws.cell(row=row_idx, column=get_col_idx("URL", len(headers) + 1)).value
                             url_val_str = str(url_val).strip() if url_val else ""
                             
+                            # [Fix] 사용자 규칙: IP 스타일 오탐 방지 (스코프 확장: 콤마 구분 기호 완벽 호환, 무조건 제거)
+                            if url_val_str:
+                                v_urls = []
+                                for u_item in url_val_str.split(","):
+                                    u_cl = u_item.strip()
+                                    if not u_cl: continue
+                                    td = u_cl.split('/')[0].split(':')[0]
+                                    if td.startswith("http://"): td = td[7:]
+                                    elif td.startswith("https://"): td = td[8:]
+                                    if bool(re.match(r'^\d{1,3}(\.\d{1,3}){3}$', td)):
+                                        continue
+                                    v_urls.append(u_cl)
+                                url_val_str = ", ".join(v_urls)
+                                ws.cell(row=row_idx, column=get_col_idx("URL", len(headers) + 1), value=self._sanitize_cell_value(url_val_str) if url_val_str else "")
+                                
                             is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in str(result.get("reason", ""))
                             if is_separated and not url_val_str:
                                 # [User Request] 분홍색 메시지(URL 분리감지)는 URL 필드가 없어도 강제로 채움
                                 url_val_str = result.get("message_extracted_url", "")
-                                url_col_idx = get_col_idx("URL", len(headers) + 1)
-                                ws.cell(row=row_idx, column=url_col_idx, value=self._sanitize_cell_value(url_val_str))
+                                ws.cell(row=row_idx, column=get_col_idx("URL", len(headers) + 1), value=self._sanitize_cell_value(url_val_str))
                                 
                             urls = [url_val_str] if url_val_str else []
                         
@@ -1042,7 +1064,7 @@ class ExcelHandler:
             # 헤더는 템플릿 생성 시 이미 적용되었거나, 없으면 나중에 _apply_formatting 시 추가될 수 있지만,
             # 안전하게 기존 1행이 비어 있을 때만 추가합니다.
             if ws.max_row <= 1:
-                headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Reason", "Red Group"]
+                headers = ["메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "검토필요", "Probability", "Semantic Class", "Reason", "Red Group"]
                 if not ws.cell(row=1, column=1).value:
                     for c_idx, h_val in enumerate(headers, start=1):
                         ws.cell(row=1, column=c_idx, value=h_val)
@@ -1198,6 +1220,21 @@ class ExcelHandler:
                         url_val = ""
                         url_len = 0
                     
+                    test_url_val = url_val
+                    # [Fix] 사용자 규칙: url_val 이 IP 형태면 스왑 없이 무조건 빈칸 처리(제거) - 콤마 분할 호환
+                    if test_url_val:
+                        v_urls2 = []
+                        for u_item2 in test_url_val.split(","):
+                            u_cl2 = u_item2.strip()
+                            if not u_cl2: continue
+                            td2 = u_cl2.split('/')[0].split(':')[0]
+                            if td2.startswith("http://"): td2 = td2[7:]
+                            elif td2.startswith("https://"): td2 = td2[8:]
+                            if bool(re.match(r'^\d{1,3}(\.\d{1,3}){3}$', td2)):
+                                continue
+                            v_urls2.append(u_cl2)
+                        url_val = ", ".join(v_urls2)
+                        url_len = self._lenb(url_val)
                     is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in str(reason_val)
                     if is_separated and not url_val:
                         # [User Request] 분홍색 분리감지 케이스만 수동으로 URL 컬럼에 강제 오버라이딩
@@ -1238,11 +1275,15 @@ class ExcelHandler:
                         self._to_code_int(code_val), 
                         msg_len, 
                         url_len, 
+                        self._sanitize_cell_value("O" if result.get("flagged") else ""),
                         self._sanitize_cell_value(prob_val),
                         self._sanitize_cell_value(semantic_val),
                         self._sanitize_cell_value(reason_val),
                         self._sanitize_cell_value("O" if result.get("red_group") else "")
                     ])
+                    
+                    flag_cell = ws.cell(row=ws.max_row, column=7)
+                    flag_cell.alignment = Alignment(horizontal='center', vertical='center')
                     
                     if str(code_val) == "3":
                         finance_ws = wb["금융.SPAM"] if "금융.SPAM" in wb.sheetnames else wb.create_sheet("금융.SPAM")
@@ -1575,7 +1616,7 @@ class ExcelHandler:
                 headers.append(name)
                 return default_idx
                 
-        # 기본 템플릿: "메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "Probability", "Semantic Class", "Reason", "Red Group"
+        # 기본 템플릿: "메시지", "URL", "구분", "분류", "메시지 길이", "URL 길이", "검토필요", "Probability", "Semantic Class", "Reason", "Red Group"
         in_token_col_idx = get_col_idx("In_Token", len(headers) + 1)
         out_token_col_idx = get_col_idx("Out_Token", len(headers) + 1)
         
@@ -1637,6 +1678,23 @@ class ExcelHandler:
             
             if result.get("drop_url"):
                 url_val = ""
+                
+            test_url_val = url_val
+            # [Fix] 사용자 규칙: url_val 이 IP 형태면 스왑 없이 무조건 빈칸 처리(제거) - UI 엑셀 다운로드 호환
+            if test_url_val:
+                v_urls3 = []
+                for u_item3 in test_url_val.split(","):
+                    u_cl3 = u_item3.strip()
+                    if not u_cl3: continue
+                    td3 = u_cl3.split('/')[0].split(':')[0]
+                    if td3.startswith("http://"): td3 = td3[7:]
+                    elif td3.startswith("https://"): td3 = td3[8:]
+                    import re
+                    if bool(re.search(r'^\d{1,3}(\.\d{1,3}){3}$', td3)):
+                        continue
+                    v_urls3.append(u_cl3)
+                url_val = ", ".join(v_urls3)
+                url_len = self._lenb(url_val)
                 
             if is_separated and not url_val:
                 url_val = result.get("message_extracted_url", "")
@@ -1722,10 +1780,14 @@ class ExcelHandler:
             ws.cell(row=ws_start_row, column=4, value=self._to_code_int(code_val))
             ws.cell(row=ws_start_row, column=5, value=msg_len)
             ws.cell(row=ws_start_row, column=6, value=url_len)
-            ws.cell(row=ws_start_row, column=7, value=self._sanitize_cell_value(prob_val))
-            ws.cell(row=ws_start_row, column=8, value=self._sanitize_cell_value(semantic_class))
-            ws.cell(row=ws_start_row, column=9, value=self._sanitize_cell_value(reason_val))
-            ws.cell(row=ws_start_row, column=10, value=self._sanitize_cell_value("O" if result.get("red_group") else ""))
+            
+            flag_cell = ws.cell(row=ws_start_row, column=7, value=self._sanitize_cell_value("O" if result.get("flagged") else ""))
+            flag_cell.alignment = Alignment(horizontal='center', vertical='center')
+                
+            ws.cell(row=ws_start_row, column=8, value=self._sanitize_cell_value(prob_val))
+            ws.cell(row=ws_start_row, column=9, value=self._sanitize_cell_value(semantic_class))
+            ws.cell(row=ws_start_row, column=10, value=self._sanitize_cell_value(reason_val))
+            ws.cell(row=ws_start_row, column=11, value=self._sanitize_cell_value("O" if result.get("red_group") else ""))
             ws.cell(row=ws_start_row, column=in_token_col_idx, value=in_token_val)
             ws.cell(row=ws_start_row, column=out_token_col_idx, value=out_token_val)
             ws_start_row += 1
