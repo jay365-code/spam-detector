@@ -1480,16 +1480,39 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
                     async def sem_task(index, msg, s1):
                         # Set Batch ID for this context task
                         batch_id_context.set(f"Batch {index+1}")
-                        if manager.is_cancelled(client_id):
-                            logger.info(f"Cancelled before start.")
-                            return index, {"is_spam": None, "reason": "Cancelled"}
-                            
                         from app.core.llm_manager import key_manager
                         provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
+                        
+                        async def _send_fallback_ws(reason_msg, is_err=False):
+                            nonlocal completed_count
+                            completed_count += 1
+                            try:
+                                asyncio.run_coroutine_threadsafe(
+                                    manager.send_personal_message({
+                                        "type": "BATCH_PROCESS_UPDATE",
+                                        "index": index + start_index,
+                                        "message": msg,
+                                        "request": {"url": _url_at(index)},
+                                        "status": "done",
+                                        "result": {"is_spam": None, "reason": reason_msg, "classification_code": "ERROR" if is_err else "SKIP", "spam_probability": 0.0},
+                                        "current": start_index + completed_count,
+                                        "total": total_count,
+                                        "is_trap": is_trap,
+                                        "token_usage": getattr(key_manager, 'get_token_usage', lambda: {})()
+                                    }, client_id), loop
+                                )
+                            except Exception as e:
+                                logger.warning(f"Fallback WS send failed: {e}")
+
+                        if manager.is_cancelled(client_id):
+                            logger.info(f"Cancelled before start.")
+                            await _send_fallback_ws("Cancelled")
+                            return index, {"is_spam": None, "reason": "Cancelled"}
+                            
                         if key_manager.is_quota_exhausted(provider):
                             logger.info(f"Batch {index+1} skipped due to global Quota Exhaustion.")
+                            await _send_fallback_ws(f"Skipped (Global {provider} Quota Exhausted)", is_err=True)
                             return index, {"is_spam": None, "reason": f"Skipped (Global {provider} Quota Exhausted)"}
-
                             
                         # Smart Concurrency: Check for URL (본문 추출 또는 KISA TXT 파싱 URL)
                         is_url_msg = has_potential_url(msg) or bool(_url_at(index).strip())
@@ -1515,10 +1538,12 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
                             await asyncio.sleep(jitter)
                             if manager.is_cancelled(client_id):
                                 logger.info(f"Cancelled after semaphore acquisition.")
+                                await _send_fallback_ws("Cancelled")
                                 return index, {"is_spam": None, "reason": "Cancelled"}
                                 
                             if key_manager.is_quota_exhausted(provider):
                                 logger.info(f"Batch {index+1} aborted after queueing due to Quota Exhaustion.")
+                                await _send_fallback_ws(f"Aborted (Global {provider} Quota Exhausted)", is_err=True)
                                 return index, {"is_spam": None, "reason": f"Aborted (Global {provider} Quota Exhausted)"}
                                 
                             logger.debug(f"Acquired {queue_type} semaphore. Starting process...")
@@ -1527,7 +1552,8 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
                                 idx, res = await asyncio.wait_for(process_single_item(index, msg, s1, _url_at(index), is_kisa_txt), timeout=task_timeout)
                             except asyncio.TimeoutError:
                                 logger.warning(f"Task {index+1} timed out after {task_timeout}s")
-                                return index, {"is_spam": None, "reason": f"Timeout ({task_timeout}s)"}
+                                res = {"is_spam": None, "reason": f"Timeout ({task_timeout}s)", "classification_code": "ERROR", "spam_probability": 0.0}
+                                idx = index
                             # [Real-time Streaming] Send result to client immediately
                             try:
                                 nonlocal completed_count
@@ -1751,8 +1777,10 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
                 with open(input_path_kisa, "wb") as buffer:
                     shutil.copyfileobj(kisa_file.file, buffer)
                 
-                with open(input_path_kisa, 'r', encoding='utf-8', errors='replace') as f:
-                    kisa_row_count = len([line for line in f if line.strip()])
+                with open(input_path_kisa, 'rb') as f:
+                    raw_bytes = f.read()
+                    # excel_handler.py와 동일한 분할 체계 유지 (수정)
+                    kisa_row_count = len([line for line in raw_bytes.decode('utf-8', errors='replace').splitlines() if line.strip()])
 
             # c. Pre-calculate TRAP & Save
             if trap_file:
@@ -1762,8 +1790,9 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
                 with open(input_path_trap, "wb") as buffer:
                     shutil.copyfileobj(trap_file.file, buffer)
 
-                with open(input_path_trap, 'r', encoding='utf-8', errors='replace') as f:
-                    trap_row_count = len([line for line in f if line.strip()])
+                with open(input_path_trap, 'rb') as f:
+                    raw_bytes = f.read()
+                    trap_row_count = len([line for line in raw_bytes.decode('utf-8', errors='replace').splitlines() if line.strip()])
 
             global_total_rows = kisa_row_count + trap_row_count
             total_rows = global_total_rows

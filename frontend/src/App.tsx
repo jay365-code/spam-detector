@@ -516,7 +516,8 @@ function App() {
       try {
         const data = JSON.parse(event.target?.result as string);
 
-        const validLogsRaw = (data.logs || []).filter((l: any) => l !== null && l !== undefined);
+        const logsObj = Array.isArray(data.logs) ? data.logs : Object.values(data.logs || {});
+        const validLogsRaw = logsObj.filter((l: any) => l !== null && l !== undefined);
         const logMap: Record<number, any> = {};
         validLogsRaw.forEach((l: any, i: number) => {
           logMap[l.excel_row_number ? l.excel_row_number - 2 : i] = {
