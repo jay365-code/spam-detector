@@ -142,7 +142,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
         # RAG 예시 검색 (유사 스팸 사례) - Intent Summary 필수
         rag_examples = []
         if intent_summary:
-            rag_examples = self._search_spam_rag(intent_summary, k=4)
+            rag_examples = self._search_spam_rag(intent_summary, k=3)
             if rag_examples:
                 logger.info(f"Spam RAG: {len(rag_examples)}건 검색됨")
             else:
@@ -442,7 +442,7 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
 
 
     @retry(
-        stop=stop_after_attempt(3),
+        stop=stop_after_attempt(1),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         retry=retry_if_exception(lambda e: not isinstance(e, (QuotaExhaustedNoRetryError, ContentAnalysisAgent.SafetyBlockRetryError))),
         before_sleep=before_sleep_log(logger, logging.WARNING),

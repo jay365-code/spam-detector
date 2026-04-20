@@ -20,13 +20,35 @@ def _normalize_llm_content(content) -> str:
     return str(content)
 
 class LLMSelector:
+    _recent_signatures_cache = ""
+    _recent_signatures_time = 0
+
+    @classmethod
+    def get_recent_signatures_context(cls) -> str:
+        import time
+        from app.core.signature_db import SignatureDBManager
+        if time.time() - cls._recent_signatures_time > 300: # 5 minutes TTL
+            try:
+                res = SignatureDBManager.get_signatures(limit=30, sort_col="last_hit", sort_order="desc")
+                sigs = [f"- {s['signature']}" for s in res.get("data", []) if s.get("signature")]
+                if sigs:
+                    samples = "\n".join(sigs)
+                    cls._recent_signatures_cache = f"\n\n[실제 차단 시그니처 최근 모범 예시 30선]\n아래는 최근 가장 활발하게 차단 이력(HIT)이 발생한 모범 스팸 시그니처 30개이다.\n원문에서 어떤 부분을 어떻게 뜯어내야 하는지(은어, 기호 조합, 무공백 등) 형태를 학습하고 모방하라.\n단, 이는 학습용 참조(Reference)일 뿐이므로, 현재 주어지는 원문 안에 존재하지 않는 텍스트를 지어내거나(Hallucination) 복사해서는 절대 안 된다.\n{samples}"
+                else:
+                    cls._recent_signatures_cache = ""
+                cls._recent_signatures_time = time.time()
+            except Exception as e:
+                logger.error(f"Failed to load recent signatures for prompt: {e}")
+        return cls._recent_signatures_cache
+
     @property
     def SYSTEM_PROMPT(self) -> str:
         guide_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../data/signature_spam_guide.md"))
         try:
             with open(guide_path, "r", encoding="utf-8") as f:
                 guide_content = f.read()
-            return f"너는 IBSE(Intelligence Blocking Signature Extractor)의 핵심 추출 엔진이다.\n목표는 **이미 스팸으로 판명된 메시지**에서, 향후 동일/유사 공격을 효율적으로 차단할 수 있는 '차단 시그니처(문자열/문장)'를 추출하는 것이다.\n\n{guide_content}\n\n반드시 지시된 JSON 규격 단일 객체만 리턴하라."
+            samples_context = self.get_recent_signatures_context()
+            return f"너는 IBSE(Intelligence Blocking Signature Extractor)의 핵심 추출 엔진이다.\n목표는 **이미 스팸으로 판명된 메시지**에서, 향후 동일/유사 공격을 효율적으로 차단할 수 있는 '차단 시그니처(문자열/문장)'를 추출하는 것이다.\n\n{guide_content}{samples_context}\n\n반드시 지시된 JSON 규격 단일 객체만 리턴하라."
         except Exception as e:
             logger.error(f"Failed to load signature_spam_guide.md: {e}")
             return "너는 IBSE(Intelligence Blocking Signature Extractor)의 핵심 추출 엔진이다. 반드시 지시된 JSON 규격 단일 객체만 리턴하라."
@@ -39,7 +61,7 @@ class LLMSelector:
 
 ---
 [INPUT DATA]
-- 분석 대상 메시지 (공백 제거 상태): {match_text}
+- 분석 대상 메시지 (원본 메시지): {match_text}
 - 복원된 난독화 도메인 (obfuscated_urls): {obfuscated_urls}
 
 출력(JSON):
@@ -47,7 +69,7 @@ class LLMSelector:
   "message_id": "{message_id}",
   "decision": "use_string" | "use_sentence" | "unextractable",
   "identified_url_or_domain": "원문에서 찾은 URL/도메인 본체 (없으면 null)",
-  "signature": "추출한 유니크한 원본 부분 문자열. (주의: 일반 도메인만 단독 추출은 불가하지만, 고유 Path가 포함된 단축 URL은 파편화 방지를 위해 한글을 섞지 말고 단독 추출할 것)",
+  "signature": "추출한 유니크한 원본 부분 문자열 (가이드라인의 우선순위 및 길이 제약을 엄격히 준수할 것)",
   "risk": "low" | "medium" | "high",
   "reason": "왜 이 문자열이 가장 고유하고 강력한 시그니처인지 1~2줄 요약"
 }}"""
@@ -149,6 +171,8 @@ obfuscated_urls: {obfuscated_urls}
                 obfuscated_urls=obfuscated_urls
             )
             
+        logger.debug(f"\n{'='*20} [IBSE LLM Prompt for {message_id}] {'='*20}\n[SYSTEM PROMPT]\n{system_prompt}\n\n[USER PROMPT]\n{user_prompt}\n{'='*60}\n")
+            
         return await self._call_llm(system_prompt, user_prompt)
 
     async def _call_llm(self, system_prompt: str, user_prompt: str) -> dict:
@@ -203,7 +227,7 @@ obfuscated_urls: {obfuscated_urls}
                 raise e
 
         @retry(
-            stop=stop_after_attempt(2),
+            stop=stop_after_attempt(1),
             wait=wait_exponential(multiplier=1, min=1, max=5),
             retry=retry_if_exception(lambda e: "No retry." not in str(e)),
             before_sleep=before_sleep_log(logger, logging.WARNING),
@@ -258,140 +282,122 @@ async def select_signature_node(state: IBSEState) -> dict:
     is_repair = bool(state.get("error"))
     result = await selector.select(state, is_repair=is_repair)
     
-# Update byte_len natively and Truncate safely for CP949
-    # [Python 2차 방어] LLM이 URL을 찾아놓고도 프롬프트를 어기고 시그니처에 빼먹은 경우,
-    # 혹은 'unextractable'을 판정했거나 URL 자체를 못 찾은 경우 강제 치환
-    identified_url = result.get("identified_url_or_domain")
     match_text = state.get("match_text", "")
     sig_text = result.get("signature") or ""
+    decision = result.get("decision", "unextractable")
+
+    # [Python 하이브리드 엔진] 공백 전처리 (Method 1)
+    import re
+    spaceless_msg = re.sub(r'\s+', '', match_text)
     
-    # [Python 2차 방어] LLM이 URL을 찾아놓고도 프롬프트를 어기고 시그니처에 빼먹은 경우 강제 치환하는 로직 삭제 (사용자 방침에 따라 URL 강제 포함 금지)
-    pass
-
-    if "signature" in result and result["signature"] and result.get("decision") in ["use_string", "use_sentence"]:
-        # [자동 승격 방어망] 단축 URL 등이 20바이트를 넘어 use_string 제약을 어기는 경우, 40바이트(use_sentence) 등급으로 자동 승격시켜 물리적 패딩 기회를 부여.
-        sig_text = result["signature"]
-        encoded = sig_text.encode("cp949", errors="replace")
-        if result["decision"] == "use_string" and len(encoded) > 20:
-            result["decision"] = "use_sentence"
-            
-        max_bytes = 20 if result["decision"] == "use_string" else 40
-        sig_text = result["signature"]
-        
-        # Safely truncate CP949
-        encoded = sig_text.encode("cp949", errors="replace")
-        
-        # [Dead Zone 방어] 문장열(use_sentence) 규정 위반 방지: 길이가 39바이트 미만인 경우 패딩(Padding) 혹은 강등 처리
-        if result["decision"] == "use_sentence" and len(encoded) < 39:
-            idx = match_text.find(sig_text)
-            if idx != -1:
-                left_idx = idx
-                right_idx = idx + len(sig_text)
-                
-                # Expand string window to reach 39~40 bytes without breaking CP949 or inserting '?'
-                while True:
-                    current_len = len(match_text[left_idx:right_idx].encode("cp949", errors="replace"))
-                    if current_len >= 39:
+    # LLM이 포기했거나 시그니처를 못 찾은 경우 Python 40-byte Fallback 동원
+    if not sig_text or decision == "unextractable":
+        clean_blocks = re.split(r'\(광고\)|\[광고\]|무료거부|무료수신거부', spaceless_msg)
+        for block in clean_blocks:
+            if len(block.encode('cp949', errors='ignore')) >= 39:
+                valid_len = 0
+                for i in range(1, len(block) + 1):
+                    if len(block[:i].encode("cp949", errors="replace")) <= 40:
+                        valid_len = i
+                    else:
                         break
-                        
-                    expanded = False
-                    
-                    # Try expanding left
-                    if left_idx > 0:
-                        test_left = left_idx - 1
-                        test_len = len(match_text[test_left:right_idx].encode("cp949", errors="replace"))
-                        if test_len <= 40:
-                            left_idx = test_left
-                            expanded = True
-                            if test_len >= 39:
-                                break
-                                
-                    # Try expanding right
-                    if right_idx < len(match_text):
-                        test_right = right_idx + 1
-                        test_len = len(match_text[left_idx:test_right].encode("cp949", errors="replace"))
-                        if test_len <= 40:
-                            right_idx = test_right
-                            expanded = True
-                            if test_len >= 39:
-                                break
-                    
-                    if not expanded:
-                        # Cannot expand further without exceeding 40 or reaching ends
-                        break
-                
-                sig_text = match_text[left_idx:right_idx]
-                
-                if len(sig_text.encode("cp949", errors="replace")) < 39:
-                    # 원문 전체를 모아도 39바이트 미만이거나 패딩 실패 -> 무조건 문자열(use_string)로 강제 변환
-                    result["decision"] = "use_string"
-                    max_bytes = 20
-            else:
-                # 할루시네이션(원문에 없는 텍스트) 등 -> 문자열(use_string)로 강제 변환
-                result["decision"] = "use_string"
-                max_bytes = 20
-                
-        # 확정된 max_bytes (20 or 40)와 최신 sig_text를 기준으로 다시 인코딩 진행
-        encoded = sig_text.encode("cp949", errors="replace")
-        if len(encoded) > max_bytes:
-            url_to_preserve = result.get("identified_url_or_domain")
-            obfuscated_urls = state.get("obfuscated_urls", [])
-            if obfuscated_urls and isinstance(obfuscated_urls[0], str) and obfuscated_urls[0] in sig_text:
-                url_to_preserve = obfuscated_urls[0]
+                sig_text = block[:valid_len]
+                decision = "use_sentence"
+                result["decision"] = decision
+                result["signature"] = sig_text
+                result["reason"] = "[Python Fallback] LLC Failed. Extracted 40-byte block."
+                break
 
-            preserved = False
-            if url_to_preserve and url_to_preserve != "null" and isinstance(url_to_preserve, str) and url_to_preserve in sig_text:
-                url_encoded = url_to_preserve.encode("cp949", errors="replace")
-                if len(url_encoded) <= max_bytes:
-                    url_start_idx = sig_text.find(url_to_preserve)
-                    url_end_idx = url_start_idx + len(url_to_preserve)
-                    
-                    left_idx = url_start_idx
-                    right_idx = url_end_idx
-                    
-                    # 한 글자씩 양옆으로 윈도우를 확장하며 바이트 제한을 넘지 않는 선에서 최대한 넓힘
-                    # CP949 바이트 중간이 잘려 한글이 깨지는(Mojibake) 치명적 문제 방지
-                    while True:
-                        expanded_left = False
+    if "signature" in result and result["signature"] and decision in ["use_string", "use_sentence"]:
+        # 시그니처에서 무조건 공백 제거
+        sig_text = re.sub(r'\s+', '', result.get("signature", ""))
+        
+        idx = spaceless_msg.find(sig_text)
+        b_len = len(sig_text.encode("cp949", errors="replace"))
+        
+        if decision == "use_string":
+            if b_len < 9:
+                if idx != -1:
+                    left_idx = idx
+                    right_idx = idx + len(sig_text)
+                    while b_len < 9:
+                        expanded = False
                         if left_idx > 0:
-                            test_str = sig_text[left_idx - 1 : right_idx]
-                            if len(test_str.encode("cp949", errors="replace")) <= max_bytes:
-                                left_idx -= 1
-                                expanded_left = True
-                                
-                        expanded_right = False
-                        if right_idx < len(sig_text):
-                            test_str = sig_text[left_idx : right_idx + 1]
-                            if len(test_str.encode("cp949", errors="replace")) <= max_bytes:
-                                right_idx += 1
-                                expanded_right = True
-                                
-                        if not (expanded_left or expanded_right):
+                            left_idx -= 1
+                            expanded = True
+                        if right_idx < len(spaceless_msg) and len(spaceless_msg[left_idx:right_idx].encode("cp949", errors="replace")) < 9:
+                            right_idx += 1
+                            expanded = True
+                            
+                        sig_text = spaceless_msg[left_idx:right_idx]
+                        b_len = len(sig_text.encode("cp949", errors="replace"))
+                        if not expanded:
                             break
                             
-                    sig_text = sig_text[left_idx:right_idx]
-                    preserved = True
-
-            if not preserved:
-                # [저주받은 길이 방어망] 보존해야 할 URL이 max_bytes(예: 20바이트)보다 너무 길어서 룰 안으로 욱여넣는 것이 물리적으로 불가능할 경우, 억지로 반토막 내지 않고 미련 없이 포기 처리함.
-                if url_to_preserve and url_to_preserve != "null" and isinstance(url_to_preserve, str):
-                    if len(url_to_preserve.encode("cp949", errors="replace")) > max_bytes:
-                        result["decision"] = "unextractable"
-                        result["signature"] = ""
-                        return {"final_result": result, "extracted_signature": "", "extraction_type": "unextractable", "error": None}
-
-                # 앞에서부터 1글자 단위로 바이트를 채움 (안전한 무손실 절단)
+            if b_len > 20:
                 valid_len = 0
                 for i in range(1, len(sig_text) + 1):
-                    if len(sig_text[:i].encode("cp949", errors="replace")) <= max_bytes:
+                    if len(sig_text[:i].encode("cp949", errors="replace")) <= 20:
                         valid_len = i
                     else:
                         break
                 sig_text = sig_text[:valid_len]
-                
-            result["signature"] = sig_text
-            
-        result["byte_len_cp949"] = len(result["signature"].encode("cp949", errors="replace"))
+
+        elif decision == "use_sentence":
+            if b_len < 39:
+                if idx != -1:
+                    left_idx = idx
+                    right_idx = idx + len(sig_text)
+                    while True:
+                        current_len = len(spaceless_msg[left_idx:right_idx].encode("cp949", errors="replace"))
+                        if current_len >= 39:
+                            break
+                        expanded = False
+                        if left_idx > 0:
+                            test_left = left_idx - 1
+                            if len(spaceless_msg[test_left:right_idx].encode("cp949", errors="replace")) <= 40:
+                                left_idx = test_left
+                                expanded = True
+                        if right_idx < len(spaceless_msg):
+                            test_right = right_idx + 1
+                            if len(spaceless_msg[left_idx:test_right].encode("cp949", errors="replace")) <= 40:
+                                right_idx = test_right
+                                expanded = True
+                        
+                        if not expanded:
+                            break
+                        sig_text = spaceless_msg[left_idx:right_idx]
+                        
+                b_len = len(sig_text.encode("cp949", errors="replace"))
+                if b_len < 39:
+                    decision = "use_string"
+                    result["decision"] = decision
+                    valid_len = 0
+                    for i in range(1, len(sig_text) + 1):
+                        if len(sig_text[:i].encode("cp949", errors="replace")) <= 20:
+                            valid_len = i
+                        else:
+                            break
+                    sig_text = sig_text[:valid_len]
+
+            if b_len > 40:
+                valid_len = 0
+                for i in range(1, len(sig_text) + 1):
+                    if len(sig_text[:i].encode("cp949", errors="replace")) <= 40:
+                        valid_len = i
+                    else:
+                        break
+                sig_text = sig_text[:valid_len]
+
+        result["signature"] = sig_text
+        result["byte_len_cp949"] = len(sig_text.encode("cp949", errors="replace"))
+        
+    # 마지막 안전장치: 원문 일치 검증 (결과가 없을시 Unextractable 방어)
+    if result.get("signature") and result["signature"] not in spaceless_msg:
+         if result.get("decision") != "unextractable":
+             result["decision"] = "unextractable"
+             result["reason"] = f"Hallucination prevented: {result['signature']} not inside spaceless msg"
+             result["signature"] = ""
 
     return {
         "final_result": result,
