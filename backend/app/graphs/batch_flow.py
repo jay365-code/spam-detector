@@ -192,6 +192,8 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                         if cb: await cb("⚡ [Runtime Cache] 선두 리더(첨병)의 셰어 결과를 확보하여 즉시 패스합니다.")
                         cached_res = BATCH_URL_CACHE[clean_lock_url].copy()
                         status_str = "SAFE" if cached_res.get("is_confirmed_safe") else "SPAM"
+                        # [Fix-C] 방패막이/is_injection 재판단을 위해 원본 reason 보존 (aggregator에서 참조)
+                        cached_res["_original_reason"] = cached_res.get("reason", "")
                         cached_res["reason"] = f"⚡ [URL Runtime Cache] 리더 판독 결과({status_str}) 즉시 공유됨"
                         if pre_parsed_url_invalidated: cached_res["pre_parsed_url_invalidated"] = True
                         return {"url_result": cached_res}
@@ -638,7 +640,10 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # This is flagged by fp_sentinel_node setting final["drop_url"] = True later,
              # but we can also set it proactively here if we have a url_reason indicating it.
              url_reason = final.get("reason", "")
-             url_reason_lower = url_reason.lower()
+             # [Fix-C] Runtime Cache 수신 시 원본 reason이 덮여씌워지므로, 보존된 _original_reason도 함께 검사하여
+             # 리더가 방패막이로 판정한 URL이 팔로워에서도 동일하게 drop_url=True 처리되도록 함
+             _original_url_reason = u_res.get("_original_reason", "") if u_res else ""
+             url_reason_lower = (url_reason + " " + _original_url_reason).lower()
              is_injection = "위장 url" in url_reason_lower or "정상 도메인 위장" in url_reason_lower or "방패막이" in url_reason_lower or "decoy" in url_reason_lower or "safe url injection" in url_reason_lower
              
              # [Fix] Drop URL ONLY if it is a Fake IP, Safe Injection, Filtered Short URL, or Dead Domain(Typo).
