@@ -651,18 +651,48 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              url_reason_lower = (url_reason + " " + _original_url_reason).lower()
              is_injection = "위장 url" in url_reason_lower or "정상 도메인 위장" in url_reason_lower or "방패막이" in url_reason_lower or "decoy" in url_reason_lower or "safe url injection" in url_reason_lower
              
-             # [Fix] Drop URL ONLY if it is a Fake IP, Safe Injection, Filtered Short URL, or Dead Domain(Typo).
              is_filtered_short = u_res.get("drop_url", False)
              is_dead_domain = any(keyword in u_reason for keyword in ["err_name_not_resolved", "dns_probe_finished_nxdomain", "err_connection_refused", "존재하지 않는 url", "네트워크 에러"])
              
+             # [KISA 파손 추출물 강제 비우기]
+             # KISA가 추출한 URL(pre_parsed)이 URL Agent가 확정한 진짜 URL과 확연히 다른 파손된 형태(단독 도메인)일 경우 엑셀에서 비운다.
+             is_mismatched_extraction = False
+             pre_parsed = state.get("pre_parsed_url")
+             if pre_parsed and not is_fake_ip and not is_injection and not is_filtered_short and not is_dead_domain:
+                 surviving_urls = u_details.get("extracted_url", "")
+                 if surviving_urls:
+                     import urllib.parse
+                     pre_parsed_domain = pre_parsed.replace("http://", "").replace("https://", "").split("/")[0].strip().lower()
+                     has_exact_match = False
+                     for ru in surviving_urls.split(","):
+                         ru = ru.strip()
+                         parsed_ru = urllib.parse.urlparse(ru if "://" in ru else "http://" + ru)
+                         ru_domain = parsed_ru.netloc.lower()
+                         try:
+                             ru_domain_decoded = ru_domain.encode("ascii").decode("idna").lower()
+                         except Exception:
+                             ru_domain_decoded = ru_domain
+                             
+                         if pre_parsed_domain == ru_domain or pre_parsed_domain == ru_domain_decoded:
+                             has_exact_match = True
+                             break
+                     # KISA URL이 진짜 URL 도메인과 다르고 파라미터도 없는 단순 파손 찌꺼기인 경우
+                     if not has_exact_match:
+                         p_parsed = urllib.parse.urlparse(pre_parsed if "://" in pre_parsed else "http://" + pre_parsed)
+                         if (not p_parsed.path or p_parsed.path == "/") and not p_parsed.query:
+                             is_mismatched_extraction = True
+
              # [단독 도메인 오탐 방어 로직 제거]
              # 앞선 루프에서 모든 단독 도메인을 일괄 삭제하므로 이중 검증 불필요
-             if is_injection or is_fake_ip or is_filtered_short or is_dead_domain:
+             if is_injection or is_fake_ip or is_filtered_short or is_dead_domain or is_mismatched_extraction:
                 final["drop_url"] = True
                 if is_fake_ip:
                     final["drop_url_reason"] = "empty_or_fake_ip"
                 elif is_filtered_short:
                     final["drop_url_reason"] = "filtered_short_url"
+                elif is_mismatched_extraction:
+                    final["drop_url_reason"] = "broken_kisa_extraction"
+                    final["reason"] = f"[URL Drop] 원본 KISA 추출 URL 짤림/파손 인식 | {final.get('reason', '')}"
                 elif is_dead_domain:
                     final["drop_url_reason"] = "dead_domain"
                     final["reason"] = f"[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | {final.get('reason', '')}"
