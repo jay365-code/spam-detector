@@ -600,6 +600,9 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              is_broken = u_details.get("is_broken_short_url") is True
              is_fake_ip = False
              
+             # [URL Agent SPAM 확정 여부]
+             is_url_spam_confirmed = u_res.get("is_spam") is True and not u_res.get("is_confirmed_safe", False)
+             
              # [숫자 난독화 / 가짜 IP 방어]
              extracted_for_check = str(u_details.get("extracted_url") or "")
              if extracted_for_check and not is_broken:
@@ -623,9 +626,11 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                         continue
                         
                     # [단독 도메인 (Bare Domain) 배제]
-                    # 단축URL, .com, .net 등 어떠한 도메인이든 패스(path)나 파라미터가 없는 단독 도메인 형태면 엑셀 추출에서 100% 배제
+                    # 단독 도메인만 있는 URL은 오탐 방지를 위해 배제하되,
+                    # URL Agent가 직접 접속하여 SPAM으로 확정한 경우에는 예외적으로 보존함
                     if (not parsed.path or parsed.path == "/") and not parsed.query:
-                        continue
+                        if not is_url_spam_confirmed:
+                            continue
                     
                     valid_url_parts.append(url_part)
                 
@@ -633,7 +638,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 if len(valid_url_parts) > 0:
                     u_details["extracted_url"] = ", ".join(valid_url_parts)
                 else:
-                    # 모든 파편이 다 가짜 IP였다면 fake ip 처리
+                    # 모든 파편이 다 가짜 IP였거나 배제된 경우
                     is_fake_ip = True
              
              # User requested fix: Drop URL if Safe URL Injection is detected.
