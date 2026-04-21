@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, Fragment } from 'react';
 import { CheckCircle, AlertCircle, User, Database, Server, Pencil, X, Save, Loader2, Search, FileText, FolderOpen, Settings, MessageSquare, Copy, Flag } from 'lucide-react';
 import { FileUpload } from './components/FileUpload';
 import { StatusPanel } from './components/StatusPanel';
@@ -6,6 +6,7 @@ import { ChatInterface } from './components/ChatInterface';
 import { RagManager } from './components/RagManager';
 import { SettingsModal } from './components/SettingsModal';
 import { DatabaseManagerModal } from './components/DatabaseManagerModal';
+import SignatureRefinerModal from './components/SignatureRefinerModal';
 
 // 백엔드 constants.py 및 spam_guide_20260326.md 기준 (0-3 코드 체계)
 const CLASSIFICATION_MAP: Record<string, string> = {
@@ -116,6 +117,7 @@ function App() {
 
   // RAG Manager State
   const [isRagManagerOpen, setIsRagManagerOpen] = useState(false);
+  const [isRefinerModalOpen, setIsRefinerModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isDbManagerOpen, setIsDbManagerOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false); // [New] Chat Panel State
@@ -444,14 +446,42 @@ function App() {
     probMin: '' as string,
     probMax: '' as string,
     cacheType: 'all' as 'all' | 'url_db' | 'url_runtime' | 'sig_db' | 'sig_runtime',
+    showClusterOnly: false
   });
+  const [clusterGroupsData, setClusterGroupsData] = useState<Array<{cluster_id: number, items: any[]}>>([]);
+  const [isClusterViewMode, setIsClusterViewMode] = useState(false);
+  const [isFetchingClusters, setIsFetchingClusters] = useState(false);
+
+  const toggleClusterViewMode = async () => {
+    const nextVal = !isClusterViewMode;
+    setIsClusterViewMode(nextVal);
+    
+    if (nextVal && activeReportFileName) {
+      setIsFetchingClusters(true);
+      try {
+        const res = await fetch(`http://localhost:8000/api/reports/${encodeURIComponent(activeReportFileName)}/cluster-all`, { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          setClusterGroupsData(data?.clusters || []);
+        } else {
+          setIsClusterViewMode(false);
+        }
+      } catch(err) {
+        console.error("Cluster all fetch Error:", err);
+        setIsClusterViewMode(false);
+      } finally {
+        setIsFetchingClusters(false);
+      }
+    }
+  };
+
   // CP949 근사 바이트 계산 (비ASCII = 2byte, ASCII = 1byte)
   const calcByteLen = (str: string) =>
     [...(str || '')].reduce((acc, ch) => acc + (ch.charCodeAt(0) > 127 ? 2 : 1), 0);
   const isAdvancedFilterActive = advancedFilters.msgLenMin !== '' || advancedFilters.msgLenMax !== '' ||
     advancedFilters.classificationCodes.length > 0 || advancedFilters.hasUrl !== 'all' ||
     advancedFilters.hasSignature !== 'all' || advancedFilters.probMin !== '' || advancedFilters.probMax !== '' ||
-    advancedFilters.cacheType !== 'all';
+    advancedFilters.cacheType !== 'all' || advancedFilters.showClusterOnly;
 
   const activeFilterTags = useMemo(() => {
     const tags: { label: string, action: () => void }[] = [];
@@ -496,6 +526,12 @@ function App() {
       tags.push({
          label: `캐시:${cacheMap[af.cacheType as keyof typeof cacheMap]}`,
          action: () => setAdvancedFilters(prev => ({ ...prev, cacheType: 'all' }))
+      });
+    }
+    if (af.showClusterOnly) {
+      tags.push({
+         label: `유사 클러스터 대상만`,
+         action: () => setAdvancedFilters(prev => ({ ...prev, showClusterOnly: false }))
       });
     }
     return tags;
@@ -545,6 +581,35 @@ function App() {
       }
     };
     reader.readAsText(file);
+  };
+
+  // 서버에서 리포트 파일을 직접 Fetch하여 갱신 (정제기 등 백엔드 작업 후 화면 리로드용)
+  const reloadReportFromServer = async (filename: string) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/reports/${encodeURIComponent(filename)}`);
+      if (!res.ok) throw new Error("Failed to load report from server");
+      const data = await res.json();
+      
+      const logsObj = Array.isArray(data.logs) ? data.logs : Object.values(data.logs || {});
+      const validLogsRaw = logsObj.filter((l: any) => l !== null && l !== undefined);
+      const logMap: Record<number, any> = {};
+      validLogsRaw.forEach((l: any, i: number) => {
+        logMap[l.excel_row_number ? l.excel_row_number - 2 : i] = {
+          ...l,
+          timestamp: l.timestamp ? new Date(l.timestamp) : new Date()
+        };
+      });
+      setLogs(logMap);
+      setDownloadFilename(data.source_filename);
+      if (data.kisa_filename) setKisaFilename(data.kisa_filename);
+      if (data.trap_filename) setTrapFilename(data.trap_filename);
+      if (data.source_filename) {
+        setDownloadUrl(`http://localhost:8000/download/${encodeURIComponent(data.source_filename)}`);
+      }
+      setActiveReportName(data.report_name);
+    } catch (e) {
+      console.error("reloadReportFromServer error:", e);
+    }
   };
 
   const handleExcelSaveAs = async () => {
@@ -1132,7 +1197,7 @@ function App() {
   const redGroupCount = displayLogs.filter(({ log }) => log?.result?.red_group).length;
   const flaggedCount = displayLogs.filter(({ log }) => log?.result?.flagged).length;
 
-  const filteredLogs = displayLogs
+  let filteredLogs = displayLogs
     .filter(({ log }) => {
       // Apply Filter
       if (logFilter === 'SPAM' && (!log.result || !log.result.is_spam)) return false;
@@ -1181,7 +1246,6 @@ function App() {
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         
-        // 검색 범위를 헤더 표시 텍스트까지 확장
         let headerText = '';
         if (log.result) {
           if (log.result.is_spam) {
@@ -1199,7 +1263,58 @@ function App() {
       }
       return true;
     })
-    .map(({ log, originalIdx }) => ({ ...log, originalIdx }));
+    .map(({ log, originalIdx }) => ({ ...log, originalIdx, cluster_id: undefined as number | undefined }));
+
+  // 클러스터별 데이터 갯수 확인을 위해 스코프 상단에 선언
+  let clusterSizeMap = new Map<number, number>();
+  let clusterSpamMap = new Map<number, number>();
+
+  // [New] 클러스터 뷰 모드 활성화 시 정렬 덮어쓰기 & 필터링 (가리기)
+  if (isClusterViewMode && clusterGroupsData.length > 0) {
+     const clusterMap = new Map<string, number>();
+     clusterGroupsData.forEach(c => {
+         c.items.forEach((it: any) => {
+             if (it?.log_id !== undefined && it?.log_id !== null) {
+                 clusterMap.set(String(it.log_id), c.cluster_id);
+             }
+         })
+     });
+
+     // 1개짜리 나홀로 스팸은 가리기
+     filteredLogs = filteredLogs.filter(entry => clusterMap.has(String(entry.originalIdx)));
+     
+     // 렌더링을 위해 객체에 cluster_id 먼저 꽂아넣기
+     filteredLogs.forEach(entry => {
+        entry.cluster_id = clusterMap.get(String(entry.originalIdx));
+     });
+
+     // 클러스터별 메시지 및 스팸 개수 계산
+     filteredLogs.forEach(entry => {
+        const cId = entry.cluster_id!;
+        clusterSizeMap.set(cId, (clusterSizeMap.get(cId) || 0) + 1);
+        if (entry.result?.is_spam) {
+            clusterSpamMap.set(cId, (clusterSpamMap.get(cId) || 0) + 1);
+        }
+     });
+
+     // 정렬 (1: 스팸 개수 내림차순, 2: 전체 크기 내림차순, 3: cluster_id 오름차순, 4: key 번호 순)
+     filteredLogs.sort((a, b) => {
+        const ca = a.cluster_id!;
+        const cb = b.cluster_id!;
+        if (ca !== cb) {
+           const spamA = clusterSpamMap.get(ca) || 0;
+           const spamB = clusterSpamMap.get(cb) || 0;
+           if (spamA !== spamB) return spamB - spamA; // 스팸 개수 최다 순 (내림차순)
+           
+           const sizeA = clusterSizeMap.get(ca) || 0;
+           const sizeB = clusterSizeMap.get(cb) || 0;
+           if (sizeA !== sizeB) return sizeB - sizeA; // 그다음 전체 크기 (내림차순)
+           
+           return ca - cb;
+        }
+        return a.originalIdx - b.originalIdx;
+     });
+  }
 
   return (
     <div className="flex flex-row h-screen w-full bg-slate-900 text-white overflow-hidden">
@@ -1345,6 +1460,17 @@ function App() {
               ))}
             </div>
 
+            {/* Cluster View Toggle */}
+            <div className="flex items-center ml-auto bg-indigo-900/20 rounded-lg p-1 border border-indigo-700/50 mr-2">
+               <button 
+                  onClick={toggleClusterViewMode}
+                  className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-bold transition-all ${isClusterViewMode ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-indigo-400 hover:text-indigo-300 hover:bg-slate-800'}`}
+               >
+                  🗂️ 유사 메시지 묶어보기
+                  {isFetchingClusters && <Loader2 className="w-3 h-3 animate-spin"/>}
+               </button>
+            </div>
+
             {/* Search Input */}
             <div className="relative flex-1 max-w-md ml-4">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
@@ -1466,6 +1592,15 @@ function App() {
                   title="엑셀 결과 저장 (Save As)"
                 >
                   <ExcelIcon className="w-4 h-4" />
+                </button>
+              )}
+              {activeReportFileName && (
+                <button
+                  onClick={() => setIsRefinerModalOpen(true)}
+                  className="p-2 hover:bg-slate-700 rounded-lg text-indigo-400 hover:text-indigo-300 transition-colors"
+                  title="시그니처 자동 정제 (LLM)"
+                >
+                  ✨
                 </button>
               )}
               <button
@@ -1634,16 +1769,42 @@ function App() {
             className="flex-1 overflow-auto p-4 space-y-2"
           >
             {filteredLogs
-              .map((log) => {
+              .map((logEntry, index, arr) => {
+                const log = logEntry;
                 const { cleanReason, note, isManual } = log.result ? parseReason(log.result.reason) : { cleanReason: "", note: null, isManual: false };
                 const idx = log.originalIdx;
                 const isFlagged = log.result?.flagged;
 
+                const clusterId = logEntry.cluster_id;
+                const prevClusterId = index > 0 ? arr[index - 1].cluster_id : null;
+                const showHeader = isClusterViewMode && clusterId && clusterId !== prevClusterId;
+
                 return (
-                  <div key={idx} id={`log-item-${idx + 1}`} className={`flex gap-4 items-start animate-fade-in group p-3 rounded-xl font-mono text-sm border transition-all duration-500 ${isFlagged ? 'bg-yellow-900/20 border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.1)]' : 'hover:bg-slate-800/50 border-transparent hover:border-slate-800/80'}`}>
-                    <span className="text-slate-600 min-w-[30px] text-xs pt-1.5 font-bold">
-                      {String(idx + 1).padStart(3, '0')}
-                    </span>
+                  <div key={idx} className="flex flex-col gap-2">
+                    {showHeader && (
+                      <div className="flex items-center gap-2 mt-6 mb-3 pl-2">
+                         <div className="bg-indigo-500 w-1.5 h-6 rounded-full shadow-[0_0_8px_rgba(99,102,241,0.5)]"></div>
+                         <h3 className="flex items-center gap-1.5 text-indigo-300 font-bold text-sm bg-indigo-900/30 px-3 py-1 rounded-md border border-indigo-700/50">
+                           <span>유사 메시지 그룹 #{clusterId}</span>
+                           <div className="flex items-center gap-1.5 ml-2 mt-[1px] text-[11px] font-medium font-sans">
+                             <span className="bg-slate-800/80 text-slate-300 px-2 py-0.5 rounded border border-slate-700">
+                               총 {clusterSizeMap.get(clusterId!) || 0}건
+                             </span>
+                             <span className="bg-red-500/15 text-red-400 px-2 py-0.5 rounded border border-red-500/30">
+                               스팸 {clusterSpamMap.get(clusterId!) || 0}건
+                             </span>
+                             <span className="bg-green-600/15 text-green-400 px-2 py-0.5 rounded border border-green-600/30">
+                               햄 {(clusterSizeMap.get(clusterId!) || 0) - (clusterSpamMap.get(clusterId!) || 0)}건
+                             </span>
+                           </div>
+                         </h3>
+                         <div className="h-px bg-slate-700/50 flex-1 ml-2"></div>
+                      </div>
+                    )}
+                    <div id={`log-item-${idx + 1}`} className={`flex gap-4 items-start animate-fade-in group p-3 rounded-xl font-mono text-sm border transition-all duration-500 ${isFlagged ? 'bg-yellow-900/20 border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.1)]' : (isClusterViewMode ? 'bg-slate-800/40 border-indigo-900/40 hover:bg-slate-800/60' : 'hover:bg-slate-800/50 border-transparent hover:border-slate-800/80')}`}>
+                      <span className="text-slate-600 min-w-[30px] text-xs pt-1.5 font-bold">
+                        {String(idx + 1).padStart(3, '0')}
+                      </span>
 
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -1875,8 +2036,9 @@ function App() {
                       )}
                     </div>
                   </div>
-                );
-              })}
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -2258,6 +2420,17 @@ function App() {
       <DatabaseManagerModal
         isOpen={isDbManagerOpen}
         onClose={() => setIsDbManagerOpen(false)}
+      />
+
+      <SignatureRefinerModal
+        isOpen={isRefinerModalOpen}
+        onClose={() => setIsRefinerModalOpen(false)}
+        reportFilename={activeReportFileName}
+        onApplySuccess={() => {
+           if (activeReportFileName) {
+               reloadReportFromServer(activeReportFileName);
+           }
+        }}
       />
 
       {/* 엑셀 재생성 오버레이 */}

@@ -724,6 +724,192 @@ async def get_report(filename: str):
         logger.error(f"Get Report Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+class RefineApplyRequest(BaseModel):
+    clusters: List[dict]
+
+class RefineAnalyzeSingleRequest(BaseModel):
+    cluster_items: List[dict]
+
+@app.post("/api/reports/{filename}/cluster-all")
+async def cluster_all_api(filename: str):
+    """
+    엑셀 리포트 내의 모든 스팸 메시지를 대상으로 내용 유사도(85% 이상) 기반 
+    그룹(클러스터)을 생성하여 반환 (UI 클러스터 뷰어용)
+    """
+    from app.tools.signature_refiner.cluster_svc import ClusterService
+    report_path = os.path.join(REPORTS_DIR, filename)
+    if not os.path.exists(report_path):
+        raise HTTPException(status_code=404, detail="Report not found")
+        
+    try:
+        logger.info(f"'{filename}' 에 대한 전체 유사 메시지 클러스터 스캔을 시작합니다.")
+        data, clusters = ClusterService.find_all_similar_clusters(report_path)
+        logger.info(f"스캔 완료: 총 {len(clusters)}개의 유사 메시지 묶음이 발견되었습니다.")
+        
+        return {"success": True, "clusters": clusters}
+    except Exception as e:
+        logger.error(f"Cluster All Scan Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/reports/{filename}/refine-scan")
+async def refine_scan_api(filename: str):
+    """
+    현재 Report 내 파편화된 시그니처 그룹들을 발굴하여 즉시 반환 (Progressive Rendering을 위한 스캔)
+    """
+    from app.tools.signature_refiner.cluster_svc import ClusterService
+    report_path = os.path.join(REPORTS_DIR, filename)
+    if not os.path.exists(report_path):
+        raise HTTPException(status_code=404, detail="Report not found")
+        
+    try:
+        logger.info(f"[SignatureRefiner] '{filename}' 에 대한 파편화 클러스터스캔을 시작합니다.")
+        data, clusters = ClusterService.find_target_clusters(report_path)
+        logger.info(f"[SignatureRefiner] 스캔 완료: 총 {len(clusters)}개의 파편화 클러스터가 발견되었습니다.")
+        
+        proposed_clusters = []
+        for cluster in clusters:
+             proposed_clusters.append({
+                 "original_items": cluster,
+                 "proposed": None,
+                 "selected": False
+             })
+
+        return {"success": True, "clusters": proposed_clusters}
+    except Exception as e:
+        logger.error(f"Refine Scan Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/reports/{filename}/refine-analyze-single")
+async def refine_analyze_single_api(filename: str, request: RefineAnalyzeSingleRequest):
+    """
+    단일 클러스터에 대한 LLM 시그니처 정제 제안 반환 (비동기 순차 호출용)
+    """
+    from app.tools.signature_refiner.llm_analyzer import LLMAnalyzer
+    report_path = os.path.join(REPORTS_DIR, filename)
+    if not os.path.exists(report_path):
+        raise HTTPException(status_code=404, detail="Report not found")
+        
+    try:
+        analyzer = LLMAnalyzer()
+        proposed = await analyzer.analyze_cluster(request.cluster_items)
+        selected = proposed.get("decision") != "unextractable"
+        return {
+            "success": True, 
+            "proposed": proposed,
+            "selected": selected
+        }
+    except Exception as e:
+        logger.error(f"Refine Analyze Single Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def refine_preview_api(filename: str):
+    """
+    LLM을 호출하여 현재 Report 내 파편화된 시그니처 그룹들을 분석, 단일화/정제 제안을 생성 (UI 리뷰용)
+    """
+    from app.tools.signature_refiner.cluster_svc import ClusterService
+    from app.tools.signature_refiner.llm_analyzer import LLMAnalyzer
+    report_path = os.path.join(REPORTS_DIR, filename)
+    if not os.path.exists(report_path):
+        raise HTTPException(status_code=404, detail="Report not found")
+        
+    try:
+        logger.info(f"[SignatureRefiner] '{filename}' 에 대한 파편화 클러스터스캔을 시작합니다.")
+        data, clusters = ClusterService.find_target_clusters(report_path)
+        logger.info(f"[SignatureRefiner] 스캔 완료: 총 {len(clusters)}개의 파편화 클러스터가 발견되었습니다.")
+        
+        if not clusters:
+            return {"success": True, "clusters": []}
+            
+        analyzer = LLMAnalyzer()
+        proposed_clusters = []
+        
+        # 순차적으로 LLM 제안 도출 (비동기 병렬화도 가능하나 비용/RateLimit 방지 위해 순차)
+        logger.info(f"[SignatureRefiner] 총 {len(clusters)}개 클러스터에 대해 LLM 단일화 분석을 시작합니다...")
+        for i, cluster in enumerate(clusters):
+             logger.info(f"[SignatureRefiner] - [{i+1}/{len(clusters)}] 클러스터 분석 요청 중... (메시지 {len(cluster)}건)")
+             proposed = await analyzer.analyze_cluster(cluster)
+             logger.info(f"[SignatureRefiner] - [{i+1}/{len(clusters)}] 결과 수신 완료 (결정: {proposed.get('decision')})")
+             proposed_clusters.append({
+                 "original_items": cluster,
+                 "proposed": proposed,
+                 "selected": proposed.get("decision") != "unextractable" # 추출 포기 시 기본 타겟 제외
+             })
+
+        return {"success": True, "clusters": proposed_clusters}
+    except Exception as e:
+        logger.error(f"Refine Preview Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/reports/{filename}/refine-apply")
+async def refine_apply_api(filename: str, request: RefineApplyRequest):
+    """
+    UI에서 Confirm 완료된 시그니처 제안들을 실제 JSON 원본 파일에 덮어씀
+    """
+    import shutil
+    report_path = os.path.join(REPORTS_DIR, filename)
+    if not os.path.exists(report_path):
+         raise HTTPException(status_code=404, detail="Report not found")
+         
+    try:
+         logger.info(f"[SignatureRefiner] 사용자 Confirm 수신. '{filename}' 원본 덮어쓰기 로직을 시작합니다. (요청 클러스터 갯수: {len(request.clusters)})")
+         with open(report_path, "r", encoding="utf-8") as f:
+             data = json.load(f)
+             
+         logs = data.get("logs", {})
+         applied_count = 0
+         
+         # 백업 생성
+         back_path = report_path + ".refiner.back"
+         shutil.copyfile(report_path, back_path)
+         logger.info(f"[SignatureRefiner] 안전을 위해 현재 Report 파일 백업을 생성했습니다: {back_path}")
+         
+         for cluster_obj in request.clusters:
+             orig_items = cluster_obj.get("original_items", [])
+             
+             if cluster_obj.get("selected", False):
+                 # [1] 전체 단일 시그니처 통일 덮어쓰기
+                 new_sig = cluster_obj.get("proposed_signature", "")
+                 if not new_sig:
+                      continue
+                      
+                 b_len = len(new_sig.encode('cp949', errors='replace'))
+                 for item in orig_items:
+                      log_id = item.get("log_id")
+                      if log_id in logs:
+                           logs[log_id]["result"]["ibse_signature"] = new_sig
+                           logs[log_id]["result"]["ibse_len"] = b_len
+                           
+                           cat = logs[log_id]["result"].get("ibse_category", "")
+                           if "refined_by_llm" not in cat:
+                                logs[log_id]["result"]["ibse_category"] = (cat + " (refined_by_llm)").strip()
+             else:
+                 # [2] 정제 제외 (개별 항목별 수동 수정치 반영 모드)
+                 for item in orig_items:
+                     log_id = item.get("log_id")
+                     if log_id in logs:
+                         indiv_sig = item.get("current_signature", "")
+                         if indiv_sig is None: indiv_sig = ""
+                         
+                         b_len = len(indiv_sig.encode('cp949', errors='replace'))
+                         logs[log_id]["result"]["ibse_signature"] = indiv_sig
+                         logs[log_id]["result"]["ibse_len"] = b_len
+                         
+                         cat = logs[log_id]["result"].get("ibse_category", "")
+                         if "manual_individual_edit" not in cat and indiv_sig:
+                             logs[log_id]["result"]["ibse_category"] = (cat + " (manual_individual_edit)").strip()
+
+             applied_count += 1
+             
+         logger.info(f"[SignatureRefiner] 선택된 {applied_count}개의 클러스터를 JSON 객체 내 반영 완료. 파일 저장을 시작합니다.")
+         with open(report_path, "w", encoding="utf-8") as f:
+             json.dump(data, f, ensure_ascii=False, indent=2)
+         logger.info(f"[SignatureRefiner] 원본 덮어쓰기 저장 완료!")
+             
+         return {"success": True, "applied_clusters_count": applied_count}
+    except Exception as e:
+         logger.error(f"Refine Apply Error: {e}")
+         raise HTTPException(status_code=500, detail=str(e))
+
 # Initialize Services & Agents
 from app.agents.ibse_agent.service import IBSEAgentService
 
