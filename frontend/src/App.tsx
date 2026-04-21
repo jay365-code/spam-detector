@@ -101,15 +101,18 @@ const formatMessageWithLinks = (text: string) => {
   });
 };
 
+// 로그 항목 타입 정의
+type LogEntry = Record<string, unknown>;
+
 function App() {
   const [clientId] = useState(() => 'client-' + Math.random().toString(36).substr(2, 9));
-  const [logs, setLogs] = useState<Record<number, any>>({});
+  const [logs, setLogs] = useState<Record<number, LogEntry>>({});
   const [reportTab, setReportTab] = useState<'MAIN' | 'TRAP' | 'ALL'>('MAIN');
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadFilename, setDownloadFilename] = useState<string | null>(null);
   const [kisaFilename, setKisaFilename] = useState<string>('MAIN');
   const [trapFilename, setTrapFilename] = useState<string>('TRAP');
-  const [tokenUsage, setTokenUsage] = useState<any>(null); // [New] Token Usage Tracking
+  const [tokenUsage, setTokenUsage] = useState<Record<string, unknown> | null>(null); // [New] Token Usage Tracking
 
   // Cancellation State
   const [isCancelling, setIsCancelling] = useState(false);
@@ -190,7 +193,7 @@ function App() {
   const [editSaving, setEditSaving] = useState(false);
 
   // 수정 모달 열기
-  const openEditModal = (logIndex: number, log: any) => {
+  const openEditModal = (logIndex: number, log: LogEntry) => {
     // [Fix] Fallback for older reports without excel_row_number
     // Assuming 1 header row, so index 0 is row 2
     let rowNumber = log.excel_row_number;
@@ -256,7 +259,7 @@ function App() {
           });
           const data = await res.json();
           setExtractedUrls(data.urls || []);
-      } catch (e) {
+      } catch {
           alert('URL 추출 중 오류 발생');
       } finally {
           setIsUrlExtracting(false);
@@ -277,7 +280,7 @@ function App() {
           } else {
              alert('시그니처 추출 실패, 대상이 없거나 생성할 수 없습니다.');
           }
-      } catch (e) {
+      } catch {
           alert('시그니처 추출 중 오류 발생');
       } finally {
           setIsExtracting(false);
@@ -375,7 +378,7 @@ function App() {
   const [endTime, setEndTime] = useState<number | null>(null); // [New] End Time
 
   // HITL State
-  const [hitlRequest, setHitlRequest] = useState<any | null>(null);
+  const [hitlRequest, setHitlRequest] = useState<Record<string, unknown> | null>(null);
 
   const [isConnected, setIsConnected] = useState(false);
 
@@ -441,7 +444,7 @@ function App() {
     cacheType: 'all' as 'all' | 'url_db' | 'url_runtime' | 'sig_db' | 'sig_runtime',
     showClusterOnly: false
   });
-  const [clusterGroupsData, setClusterGroupsData] = useState<Array<{cluster_id: number, items: any[]}>>([]);
+  const [clusterGroupsData, setClusterGroupsData] = useState<Array<{cluster_id: number, items: LogEntry[]}>>([]);
   const [isClusterViewMode, setIsClusterViewMode] = useState(false);
   const [isFetchingClusters, setIsFetchingClusters] = useState(false);
 
@@ -546,9 +549,9 @@ function App() {
         const data = JSON.parse(event.target?.result as string);
 
         const logsObj = Array.isArray(data.logs) ? data.logs : Object.values(data.logs || {});
-        const validLogsRaw = logsObj.filter((l: any) => l !== null && l !== undefined);
-        const logMap: Record<number, any> = {};
-        validLogsRaw.forEach((l: any, i: number) => {
+        const validLogsRaw = logsObj.filter((l: LogEntry) => l !== null && l !== undefined);
+        const logMap: Record<number, LogEntry> = {};
+        validLogsRaw.forEach((l: LogEntry, i: number) => {
           logMap[l.excel_row_number ? l.excel_row_number - 2 : i] = {
             ...l,
             timestamp: l.timestamp ? new Date(l.timestamp) : new Date()
@@ -586,9 +589,9 @@ function App() {
       const data = json.data;
       
       const logsObj = Array.isArray(data.logs) ? data.logs : Object.values(data.logs || {});
-      const validLogsRaw = logsObj.filter((l: any) => l !== null && l !== undefined);
-      const logMap: Record<number, any> = {};
-      validLogsRaw.forEach((l: any, i: number) => {
+      const validLogsRaw = logsObj.filter((l: LogEntry) => l !== null && l !== undefined);
+      const logMap: Record<number, LogEntry> = {};
+      validLogsRaw.forEach((l: LogEntry, i: number) => {
         logMap[l.excel_row_number ? l.excel_row_number - 2 : i] = {
           ...l,
           timestamp: l.timestamp ? new Date(l.timestamp) : new Date()
@@ -618,7 +621,7 @@ function App() {
       // 1. Open Save File Picker FIRST 
       // (This must happen immediately after click to satisfy browser security before network await)
       if ('showSaveFilePicker' in window) {
-        // @ts-ignore
+        // @ts-expect-error - showSaveFilePicker는 표준 미지원 브라우저 API
         fileHandle = await window.showSaveFilePicker({
           suggestedName: suggestedExcelName,
           types: [{
@@ -698,7 +701,7 @@ function App() {
 
       // Attempt to use File System Access API for "Save As" dialog
       if ('showSaveFilePicker' in window) {
-        // @ts-ignore
+        // @ts-expect-error - showSaveFilePicker는 표준 미지원 브라우저 API
         const handle = await window.showSaveFilePicker({
           suggestedName: suggestedFileName,
           types: [{
@@ -782,7 +785,7 @@ function App() {
   // WebSocket Connection (Auto-Reconnect)
   useEffect(() => {
     let ws: WebSocket | null = null;
-    let reconnectTimeout: any;
+    let reconnectTimeout: ReturnType<typeof setTimeout>;
 
     const connect = () => {
       console.log('Attempting WebSocket connection...');
@@ -797,7 +800,7 @@ function App() {
         let data;
         try {
           data = JSON.parse(event.data);
-        } catch (e) {
+        } catch {
           console.error('Failed to parse WS message:', event.data);
           return;
         }
@@ -855,7 +858,7 @@ function App() {
           
           // If this is a result message (has result), look for matching pending message
           if (data.result && data.message) {
-            const matchIndex = prevValues.findIndex(([_, l]) => l && l.message === data.message && !l.result);
+            const matchIndex = prevValues.findIndex(([, l]) => l && l.message === data.message && !l.result);
             if (matchIndex !== -1) {
               const [keyStr, oldLog] = prevValues[matchIndex];
               const logKey = Number(keyStr);
@@ -867,7 +870,7 @@ function App() {
           }
 
           // Safety check: Avoid adding exact duplicate results if already present
-          const exists = prevValues.some(([_, l]) =>
+          const exists = prevValues.some(([, l]) =>
             l && l.message === data.message &&
             l.result && data.result &&
             l.result.reason === data.result.reason
@@ -956,9 +959,9 @@ function App() {
       if (backup) {
         const parsed = JSON.parse(backup);
         if (parsed.logs && parsed.logs.length > 0 && Object.keys(logs).length === 0) {
-           const validLogsRaw = parsed.logs.filter((l: any) => l !== null && l !== undefined);
-           const logMap: Record<number, any> = {};
-           validLogsRaw.forEach((l: any, i: number) => {
+           const validLogsRaw = parsed.logs.filter((l: LogEntry) => l !== null && l !== undefined);
+           const logMap: Record<number, LogEntry> = {};
+           validLogsRaw.forEach((l: LogEntry, i: number) => {
              logMap[l.excel_row_number ? l.excel_row_number - 2 : i] = {
                ...l,
                timestamp: l.timestamp ? new Date(l.timestamp) : new Date()
@@ -993,7 +996,7 @@ function App() {
       window.clearTimeout(saveTimerRef.current);
     }
 
-    // @ts-ignore
+    // @ts-expect-error - saveTimerRef에 setTimeout 반환값 할당
     saveTimerRef.current = window.setTimeout(() => {
       try {
         const logsArray = Object.values(logs); // Save as array for compatibility
@@ -1176,7 +1179,6 @@ function App() {
     return { log: logs[originalIdx], originalIdx };
   }).filter(item => item.log != null);
 
-  const hasTrapData = validLogs.some(item => item.log.is_trap);
 
   // [UI Fix] If the user wants to filter by TRAP/MAIN, we do it inline here:
   const displayLogs = validLogs.filter(item => {
@@ -1263,14 +1265,14 @@ function App() {
     .map(({ log, originalIdx }) => ({ ...log, originalIdx, cluster_id: undefined as number | undefined }));
 
   // 클러스터별 데이터 갯수 확인을 위해 스코프 상단에 선언
-  let clusterSizeMap = new Map<number, number>();
-  let clusterSpamMap = new Map<number, number>();
+  const clusterSizeMap = new Map<number, number>();
+  const clusterSpamMap = new Map<number, number>();
 
   // [New] 클러스터 뷰 모드 활성화 시 정렬 덮어쓰기 & 필터링 (가리기)
   if (isClusterViewMode && clusterGroupsData.length > 0) {
      const clusterMap = new Map<string, number>();
      clusterGroupsData.forEach(c => {
-         c.items.forEach((it: any) => {
+         c.items.forEach((it: LogEntry) => {
              if (it?.log_id !== undefined && it?.log_id !== null) {
                  clusterMap.set(String(it.log_id), c.cluster_id);
              }
@@ -1456,7 +1458,7 @@ function App() {
               ].map(({ label, count, filterKey, activeClass, inactiveClass }) => (
                 <button
                   key={filterKey}
-                  onClick={() => handleFilterChange(logFilter === filterKey ? 'ALL' : filterKey as any)}
+                  onClick={() => handleFilterChange(logFilter === filterKey ? 'ALL' : filterKey as typeof logFilter)}
                   className={`px-3 py-1 rounded-md transition-all text-xs font-bold flex items-center ${logFilter === filterKey ? activeClass : inactiveClass
                     }`}
                 >
@@ -1762,7 +1764,7 @@ function App() {
                   <select
                     title="캐시 적용 타입"
                     value={advancedFilters.cacheType}
-                    onChange={e => setAdvancedFilters(f => ({ ...f, cacheType: e.target.value as any }))}
+                    onChange={e => setAdvancedFilters(f => ({ ...f, cacheType: e.target.value as typeof f.cacheType }))}
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-bold"
                   >
                     <option value="all">전체보기</option>
