@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, Fragment } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { CheckCircle, AlertCircle, User, Database, Server, Pencil, X, Save, Loader2, Search, FileText, FolderOpen, Settings, MessageSquare, Copy, Flag } from 'lucide-react';
 import { FileUpload } from './components/FileUpload';
 import { StatusPanel } from './components/StatusPanel';
@@ -1637,7 +1637,7 @@ function App() {
                 <span className="text-xs font-bold text-slate-300 uppercase tracking-widest">고급 필터</span>
                 {isAdvancedFilterActive && (
                   <button
-                    onClick={() => setAdvancedFilters({ msgLenMin: '', msgLenMax: '', classificationCodes: [], hasUrl: 'all', hasSignature: 'all', probMin: '', probMax: '', cacheType: 'all' })}
+                    onClick={() => setAdvancedFilters({ msgLenMin: '', msgLenMax: '', classificationCodes: [], hasUrl: 'all', hasSignature: 'all', probMin: '', probMax: '', cacheType: 'all', showClusterOnly: false })}
                     className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
                   >
                     초기화
