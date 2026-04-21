@@ -122,7 +122,7 @@ class LLMAnalyzer:
                  except Exception as inner_e:
                      inner_err = str(inner_e).lower()
                      # 429 에러는 기존처럼 바깥 루프에서 키를 로테이션하게 위로 패스합니다.
-                     if any(kw in inner_err for kw in ["quota", "429", "resource exhausted", "too many requests"]):
+                     if any(kw in inner_err for kw in ["quota", "429", "resource exhausted", "too many requests", "invalid_argument", "api key not found", "api_key_invalid"]):
                          raise inner_e
                      
                      # 404 (NOT_FOUND)나 다른 접근 에러일 경우 운영자님 지시대로 안전히 2.5-flash로 폴백
@@ -167,7 +167,10 @@ class LLMAnalyzer:
             except Exception as e:
                  error_msg = str(e).lower()
                  last_err = e
-                 is_quota_error = any(kw in error_msg for kw in ["quota", "429", "resource exhausted", "too many requests"])
+                 is_quota_error = any(kw in error_msg for kw in [
+                     "quota", "429", "resource exhausted", "too many requests",
+                     "invalid_argument", "api key not found", "api_key_invalid"
+                 ])
                  
                  if is_quota_error and attempt < keys_pool_size - 1:
                      logger.warning(f"!! LLM API 한도 초과 오류(429) 감지. 키 로테이션 시도 중...")

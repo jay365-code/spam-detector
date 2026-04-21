@@ -220,7 +220,10 @@ obfuscated_urls: {obfuscated_urls}
                 if is_fallback: content = f"__FALLBACK_{current_model}__\n" + content
                 return content
             except Exception as e:
-                is_quota = "quota" in str(e).lower() or "429" in str(e).lower()
+                # [추가] 불량 키(invalid_argument, api_key_invalid)도 rotate 대상으로 처리
+                is_quota = any(kw in str(e).lower() for kw in [
+                    "quota", "429", "invalid_argument", "api key not found", "api_key_invalid"
+                ])
                 if is_quota:
                     if not self._key_manager.rotate_key(provider, failed_key=api_key):
                         raise Exception("Quota exhausted globally") from e

@@ -362,8 +362,12 @@ class ContentAnalysisAgent: # Renamed from RagBasedFilter
                     except ImportError:
                         pass
                     # [버그 수정] 확실한 429 오인식 방지를 위해 HTTP status code 또는 명백한 문구를 추가
+                    # [추가] 불량 키(invalid_argument, api_key_invalid)도 rotate 대상으로 처리
                     if not is_quota_error:
-                        is_quota_error = any(kw in error_msg for kw in ["quota", "rate", "429", "limit", "resource exhausted", "too many requests"])
+                        is_quota_error = any(kw in error_msg for kw in [
+                            "quota", "rate", "429", "limit", "resource exhausted", "too many requests",
+                            "invalid_argument", "api key not found", "api_key_invalid"
+                        ])
                 
                 elif provider == "OPENAI":
                     try:

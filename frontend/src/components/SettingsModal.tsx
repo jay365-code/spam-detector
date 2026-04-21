@@ -31,6 +31,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const [error, setError] = useState<string | null>(null);
     const [quotaStatus, setQuotaStatus] = useState<Record<string, any>>({});
     const [quotaResetting, setQuotaResetting] = useState(false);
+    const [quotaResetSuccess, setQuotaResetSuccess] = useState(false);
     const [pendingIndices, setPendingIndices] = useState<Record<string, number>>({});
 
     useEffect(() => {
@@ -79,6 +80,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
     const handleResetQuota = async (provider?: string) => {
         setQuotaResetting(true);
+        setQuotaResetSuccess(false);
         try {
             const res = await fetch(`${API_BASE}/api/config/reset-quota`, {
                 method: 'POST',
@@ -88,6 +90,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             const data = await res.json();
             if (!res.ok || !data.success) throw new Error(data.message || '리셋 실패');
             await fetchQuotaStatus();
+            // 리셋 성공 시 3초간 시각적 피드백 표시
+            setQuotaResetSuccess(true);
+            setTimeout(() => setQuotaResetSuccess(false), 3000);
         } catch (err) {
             console.error('Failed to reset quota:', err);
             alert('Quota 리셋에 실패했습니다.');
@@ -277,56 +282,95 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         </div>
                     )}
 
-                    {/* Quota Exhausted 리셋 */}
-                    <div className="flex flex-col gap-3 rounded-2xl p-4 border border-amber-500/20 bg-amber-500/5">
-                        <div className="flex items-center gap-2">
-                            <Zap className="text-amber-500 shrink-0" size={18} />
-                            <span className="text-xs font-bold text-amber-400">LLM Quota Exhausted</span>
-                        </div>
-                        <p className="text-[11px] text-slate-400 leading-relaxed">
-                            API quota 초과 시 모든 LLM 호출이 차단됩니다. 새 키를 추가했거나 시간이 지나면 아래 버튼으로 리셋하세요.
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2">
-                            {Object.entries(quotaStatus).map(([p, info]) => {
-                                const isExhausted = typeof info === 'boolean' ? info : info?.exhausted;
-                                const tot = info?.total || 1;
-                                // Use pending change if exists, else current index
-                                const curIdx = pendingIndices[p] !== undefined ? pendingIndices[p] : (info?.current_index || 0);
-                                const dropdownOptions = Array.from({ length: tot }, (_, i) => i);
-                                return (
-                                    <span
-                                        key={p}
-                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10.5px] font-bold ${isExhausted ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-slate-600/30 text-slate-400 border border-slate-600/50'}`}
-                                    >
-                                        <span>{p}: {isExhausted ? 'Exhausted' : 'OK'}</span>
-                                        {tot > 1 ? (
-                                            <select
-                                                value={curIdx}
-                                                onChange={(e) => setPendingIndices({ ...pendingIndices, [p]: parseInt(e.target.value, 10) })}
-                                                className="opacity-90 font-mono tracking-tighter bg-black/40 px-1 py-0.5 rounded-sm text-[9px] outline-none cursor-pointer border hover:border-slate-500 border-transparent transition-colors"
+                    {/* Quota 상태 패널: exhausted 여부에 따라 amber(경고) / emerald(정상) 동적 전환 */}
+                    {(() => {
+                        const hasExhausted = Object.values(quotaStatus).some(
+                            (info: any) => typeof info === 'boolean' ? info : info?.exhausted
+                        );
+                        const isOk = !hasExhausted && Object.keys(quotaStatus).length > 0;
+                        return (
+                            <div className={`flex flex-col gap-3 rounded-2xl p-4 border transition-all duration-500 ${
+                                quotaResetSuccess
+                                    ? 'border-emerald-500/30 bg-emerald-500/5'
+                                    : hasExhausted
+                                        ? 'border-amber-500/20 bg-amber-500/5'
+                                        : 'border-slate-700/50 bg-slate-800/30'
+                            }`}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Zap className={`shrink-0 transition-colors duration-500 ${
+                                            quotaResetSuccess ? 'text-emerald-400' : hasExhausted ? 'text-amber-500' : 'text-slate-500'
+                                        }`} size={18} />
+                                        <span className={`text-xs font-bold transition-colors duration-500 ${
+                                            quotaResetSuccess ? 'text-emerald-400' : hasExhausted ? 'text-amber-400' : 'text-slate-400'
+                                        }`}>
+                                            {quotaResetSuccess ? '✅ Quota 리셋 완료' : hasExhausted ? 'LLM Quota Exhausted' : 'LLM Quota 상태'}
+                                        </span>
+                                    </div>
+                                    {isOk && !quotaResetSuccess && (
+                                        <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">정상</span>
+                                    )}
+                                </div>
+                                <p className="text-[11px] text-slate-400 leading-relaxed">
+                                    {quotaResetSuccess
+                                        ? '모든 공급자의 Quota 플래그가 초기화되었습니다. LLM 호출이 재개됩니다.'
+                                        : hasExhausted
+                                            ? 'API quota 초과 시 모든 LLM 호출이 차단됩니다. 새 키를 추가했거나 시간이 지나면 아래 버튼으로 리셋하세요.'
+                                            : 'API 키 인덱스를 수동으로 변경하거나 Quota 플래그를 강제 초기화할 수 있습니다.'
+                                    }
+                                </p>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {Object.entries(quotaStatus).map(([p, info]: [string, any]) => {
+                                        const isExhausted = typeof info === 'boolean' ? info : info?.exhausted;
+                                        const tot = info?.total || 1;
+                                        const curIdx = pendingIndices[p] !== undefined ? pendingIndices[p] : (info?.current_index || 0);
+                                        const dropdownOptions = Array.from({ length: tot }, (_, i) => i);
+                                        return (
+                                            <span
+                                                key={p}
+                                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10.5px] font-bold ${
+                                                    isExhausted
+                                                        ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                                        : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                                }`}
                                             >
-                                                {dropdownOptions.map(idx => (
-                                                    <option key={idx} value={idx} className="bg-slate-800 text-white">
-                                                        Key {idx + 1}/{tot}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        ) : (
-                                            tot >= 1 && <span className="opacity-75 font-mono tracking-tighter bg-black/20 px-1 py-0.5 rounded-sm text-[9px]">(Key {curIdx + 1}/{tot})</span>
-                                        )}
-                                    </span>
-                                )
-                            })}
-                        </div>
-                        <button
-                            onClick={() => handleResetQuota()}
-                            disabled={quotaResetting}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${quotaResetting ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-amber-600 hover:bg-amber-500 text-white'}`}
-                        >
-                            {quotaResetting ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
-                            Quota 리셋
-                        </button>
-                    </div>
+                                                <span>{p}: {isExhausted ? '⚠ Exhausted' : '✓ OK'}</span>
+                                                {tot > 1 ? (
+                                                    <select
+                                                        value={curIdx}
+                                                        onChange={(e) => setPendingIndices({ ...pendingIndices, [p]: parseInt(e.target.value, 10) })}
+                                                        className="opacity-90 font-mono tracking-tighter bg-black/40 px-1 py-0.5 rounded-sm text-[9px] outline-none cursor-pointer border hover:border-slate-500 border-transparent transition-colors"
+                                                    >
+                                                        {dropdownOptions.map(idx => (
+                                                            <option key={idx} value={idx} className="bg-slate-800 text-white">
+                                                                Key {idx + 1}/{tot}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                ) : (
+                                                    tot >= 1 && <span className="opacity-75 font-mono tracking-tighter bg-black/20 px-1 py-0.5 rounded-sm text-[9px]">(Key {curIdx + 1}/{tot})</span>
+                                                )}
+                                            </span>
+                                        );
+                                    })}
+                                </div>
+                                <button
+                                    onClick={() => handleResetQuota()}
+                                    disabled={quotaResetting}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                                        quotaResetting
+                                            ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                                            : hasExhausted
+                                                ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                                                : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                                    }`}
+                                >
+                                    {quotaResetting ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
+                                    {quotaResetting ? '리셋 중...' : 'Quota 리셋'}
+                                </button>
+                            </div>
+                        );
+                    })()}
 
                     <div className="bg-blue-500/5 rounded-2xl p-4 border border-blue-500/10 flex gap-3">
                         <ShieldAlert className="text-blue-500 shrink-0" size={18} />

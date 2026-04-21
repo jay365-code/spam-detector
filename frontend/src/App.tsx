@@ -1085,6 +1085,9 @@ function App() {
     if (kisaName) setKisaFilename(kisaName);
     if (trapName) setTrapFilename(trapName);
     setDownloadUrl(`http://localhost:8000/download/${encodeURIComponent(filename)}`);
+    // 새 분석 완료 시 보고서 모드 해제 (실시간 결과에는 "Loaded:" 배지 미표시)
+    setActiveReportName(null);
+    setActiveReportFileName(null);
   };
 
   const handleHitlResponse = (decision: string, comment?: string) => {

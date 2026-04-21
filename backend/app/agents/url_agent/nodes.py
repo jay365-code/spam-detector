@@ -341,7 +341,11 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
                     if is_timeout:
                         pass
 
-                    if is_google_quota_error or "quota" in error_msg or "rate" in error_msg or "429" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
+                    # [추가] 불량 키(invalid_argument, api_key_invalid)도 rotate 대상으로 처리
+                    if is_google_quota_error or any(kw in error_msg for kw in [
+                        "quota", "rate", "429", "limit", "resource exhausted",
+                        "invalid_argument", "api key not found", "api_key_invalid"
+                    ]):
                         logger.warning(f"[URL Agent] Vision API Quota Detected. Error: {error_msg}")
                         logger.warning(f"[URL Agent] Vision API {provider} issue. Rotating key...")
                         # [동시성 개선] 실패한 키 전달 및 글로벌 소진 확인
@@ -1184,7 +1188,11 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                     except ImportError:
                         pass
 
-                if is_google_quota_error or "quota" in error_msg or "429" in error_msg or "rate" in error_msg or "limit" in error_msg or "resource exhausted" in error_msg:
+                # [추가] 불량 키(invalid_argument, api_key_invalid)도 rotate 대상으로 처리
+                if is_google_quota_error or any(kw in error_msg for kw in [
+                    "quota", "429", "rate", "limit", "resource exhausted",
+                    "invalid_argument", "api key not found", "api_key_invalid"
+                ]):
                     logger.warning(f"[URL Agent] {provider} Quota Detected. Error: {error_msg}")
                     logger.warning(f"[URL Agent] {provider} Quota Exceeded. Rotating key...")
                     # [동시성 개선] 실패한 키 전달 및 글로벌 소진 감지
