@@ -1087,7 +1087,6 @@ function App() {
     setDownloadUrl(`http://localhost:8000/download/${encodeURIComponent(filename)}`);
     // 새 분석 완료 시 보고서 모드 해제 (실시간 결과에는 "Loaded:" 배지 미표시)
     setActiveReportName(null);
-    setActiveReportFileName(null);
   };
 
   const handleHitlResponse = (decision: string, comment?: string) => {
@@ -1608,7 +1607,8 @@ function App() {
                   <ExcelIcon className="w-4 h-4" />
                 </button>
               )}
-              {activeReportFileName && (
+              {/* ✨ 시그니처 정제: 새 분석 완료(downloadFilename) 또는 보고서 불러오기(activeReportFileName) 시 노출 */}
+              {(downloadFilename || activeReportFileName) && (
                 <button
                   onClick={() => setIsRefinerModalOpen(true)}
                   className="p-2 hover:bg-slate-700 rounded-lg text-indigo-400 hover:text-indigo-300 transition-colors"
