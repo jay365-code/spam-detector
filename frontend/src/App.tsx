@@ -588,7 +588,9 @@ function App() {
     try {
       const res = await fetch(`http://localhost:8000/api/reports/${encodeURIComponent(filename)}`);
       if (!res.ok) throw new Error("Failed to load report from server");
-      const data = await res.json();
+      const json = await res.json();
+      // 백엔드 응답: { success: true, data: { logs: {...}, report_name: ..., ... } }
+      const data = json.data;
       
       const logsObj = Array.isArray(data.logs) ? data.logs : Object.values(data.logs || {});
       const validLogsRaw = logsObj.filter((l: any) => l !== null && l !== undefined);

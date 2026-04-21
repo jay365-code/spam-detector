@@ -72,7 +72,7 @@ class SignatureDBManager:
                     SELECT signature 
                     FROM signatures 
                     WHERE instr(?, signature) > 0 
-                    ORDER BY length(signature) DESC
+                    ORDER BY created_at DESC, length(signature) DESC
                     LIMIT 1
                 ''', (clean_msg,))
                 

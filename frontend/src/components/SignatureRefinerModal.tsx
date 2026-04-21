@@ -97,43 +97,47 @@ export default function SignatureRefinerModal({ isOpen, onClose, reportFilename,
   };
 
   const analyzeAll = async (initialClusters: any[]) => {
-    // 14개 ALL 동시 출격 모드 (Full Parallel)
-    const promises = initialClusters.map(async (clusterObj, i) => {
-        try {
-            const res = await fetch(`http://localhost:8000/api/reports/${encodeURIComponent(reportFilename!)}/refine-analyze-single`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cluster_items: clusterObj.original_items })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.detail || 'Failed to analyze');
-            
-            setClusters(prev => {
-                const newC = [...prev];
-                newC[i] = {
-                    ...newC[i],
-                    proposed: data.proposed,
-                    selected: data.selected,
-                    isLoading: false,
-                    editSignature: data.proposed?.signature || ""
-                };
-                return newC;
-            });
-        } catch (err: any) {
-            setClusters(prev => {
-                const newC = [...prev];
-                newC[i] = {
-                    ...newC[i],
-                    proposed: { decision: "error", reason: err.message, signature: "" },
-                    selected: false,
-                    isLoading: false
-                };
-                return newC;
-            });
-        }
-    });
-
-    await Promise.allSettled(promises);
+    // LLM Rate Limit 방지를 위해 20개씩 청크(Batch) 단위 처리
+    const CHUNK_SIZE = 20;
+    for (let i = 0; i < initialClusters.length; i += CHUNK_SIZE) {
+        const chunk = initialClusters.slice(i, i + CHUNK_SIZE);
+        const promises = chunk.map(async (clusterObj, chunkIdx) => {
+            const actualIndex = i + chunkIdx;
+            try {
+                const res = await fetch(`http://localhost:8000/api/reports/${encodeURIComponent(reportFilename!)}/refine-analyze-single`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cluster_items: clusterObj.original_items })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Failed to analyze');
+                
+                setClusters(prev => {
+                    const newC = [...prev];
+                    newC[actualIndex] = {
+                        ...newC[actualIndex],
+                        proposed: data.proposed,
+                        selected: data.selected,
+                        isLoading: false,
+                        editSignature: data.proposed?.signature || ""
+                    };
+                    return newC;
+                });
+            } catch (err: any) {
+                setClusters(prev => {
+                    const newC = [...prev];
+                    newC[actualIndex] = {
+                        ...newC[actualIndex],
+                        proposed: { decision: "error", reason: err.message, signature: "" },
+                        selected: false,
+                        isLoading: false
+                    };
+                    return newC;
+                });
+            }
+        });
+        await Promise.allSettled(promises);
+    }
   };
 
   const handleApply = async () => {
@@ -265,13 +269,14 @@ export default function SignatureRefinerModal({ isOpen, onClose, reportFilename,
                                type="checkbox" 
                                checked={cluster.selected}
                                onChange={() => toggleSelect(idx)}
-                               className="w-5 h-5 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                               disabled={cluster.isLoading}
+                               className="w-5 h-5 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer disabled:opacity-50"
                            />
                            <div>
                              <div className="flex items-center gap-2">
                                <h3 className="text-slate-200 font-bold">Group #{idx + 1}</h3>
-                               <p className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${cluster.selected ? 'bg-indigo-950/40 text-indigo-400 border-indigo-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
-                                 {cluster.selected ? '우측 시그니처 1개로 그룹 일괄 반영' : '통일 제외 / 좌측 개별 시그니처 유지'}
+                               <p className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${cluster.isLoading ? 'bg-slate-800 text-slate-400 border-slate-700 animate-pulse' : cluster.selected ? 'bg-indigo-950/40 text-indigo-400 border-indigo-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+                                 {cluster.isLoading ? 'LLM 분석 진행 중...' : (cluster.selected ? '우측 시그니처 1개로 그룹 일괄 반영' : '통일 제외 / 좌측 개별 시그니처 유지')}
                                </p>
                              </div>
                              <p className="text-xs text-slate-500 mt-1">{orig.length}개 유사 메시지 포함</p>
@@ -326,7 +331,7 @@ export default function SignatureRefinerModal({ isOpen, onClose, reportFilename,
                         {/* 신규 제안 영역 */}
                         <div className="col-span-12 lg:col-span-6 flex flex-col justify-end relative">
                            {/* 제외(통일 취소) 모드일 때 보여줄 오버레이 */}
-                           {!cluster.selected && (
+                           {!cluster.isLoading && !cluster.selected && (
                              <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/70 backdrop-blur-[1px] rounded-xl border border-slate-800">
                                 <div className="text-center">
                                   <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-slate-900 shadow-lg border border-slate-700 mb-3">
@@ -338,7 +343,7 @@ export default function SignatureRefinerModal({ isOpen, onClose, reportFilename,
                              </div>
                            )}
 
-                           <div className={`bg-indigo-950/20 border border-indigo-900/30 p-4 rounded-xl relative h-full flex flex-col transition-all duration-300 ${!cluster.selected ? 'opacity-30 grayscale pointer-events-none blur-[1px]' : ''}`}>
+                           <div className={`bg-indigo-950/20 border border-indigo-900/30 p-4 rounded-xl relative h-full flex flex-col transition-all duration-300 ${!cluster.isLoading && !cluster.selected ? 'opacity-30 grayscale pointer-events-none blur-[1px]' : ''}`}>
                               {cluster.isLoading ? (
                                   <div className="flex-1 flex flex-col items-center justify-center space-y-3 py-6 opacity-60">
                                       <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />

@@ -35,6 +35,7 @@ logging.getLogger("google.generativeai").setLevel(logging.WARNING)
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
+
 import uuid
 from typing import List, Dict, Any
 
@@ -879,7 +880,7 @@ async def refine_apply_api(filename: str, request: RefineApplyRequest):
                            logs[log_id]["result"]["ibse_signature"] = new_sig
                            logs[log_id]["result"]["ibse_len"] = b_len
                            
-                           cat = logs[log_id]["result"].get("ibse_category", "")
+                           cat = logs[log_id]["result"].get("ibse_category") or ""
                            if "refined_by_llm" not in cat:
                                 logs[log_id]["result"]["ibse_category"] = (cat + " (refined_by_llm)").strip()
              else:
@@ -894,7 +895,7 @@ async def refine_apply_api(filename: str, request: RefineApplyRequest):
                          logs[log_id]["result"]["ibse_signature"] = indiv_sig
                          logs[log_id]["result"]["ibse_len"] = b_len
                          
-                         cat = logs[log_id]["result"].get("ibse_category", "")
+                         cat = logs[log_id]["result"].get("ibse_category") or ""
                          if "manual_individual_edit" not in cat and indiv_sig:
                              logs[log_id]["result"]["ibse_category"] = (cat + " (manual_individual_edit)").strip()
 

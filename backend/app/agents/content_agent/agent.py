@@ -1,16 +1,17 @@
 import os
-from dotenv import load_dotenv
-
-load_dotenv(override=True) # Load .env file (override system variables)
-
 import json
 import logging
 import time
 import asyncio
+
+from dotenv import load_dotenv
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception, before_sleep_log
+from langchain_core.messages import HumanMessage
+
 from app.core.logging_config import get_logger
 from app.core.llm_manager import key_manager
-from langchain_core.messages import HumanMessage
+
+load_dotenv(override=True) # Load .env file (override system variables)
 
 # New imports added as per instruction (Moved to local scope to fix 23s startup delay)
 # from langchain_google_genai import ChatGoogleGenerativeAI
@@ -750,8 +751,6 @@ Step 4. 최종 판정 (label 확정):
                     current_loop = None
 
                 if current_loop and current_loop.is_running():
-                    import nest_asyncio
-                    nest_asyncio.apply()
                     content = current_loop.run_until_complete(self._aquery_llm_with_retry(prompt))
                 else:
                     content = asyncio.run(self._aquery_llm_with_retry(prompt))
