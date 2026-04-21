@@ -1158,6 +1158,8 @@ class ExcelHandler:
                     original_data = batch_buffer[i]
                     msg_val = original_data["message"]
                     url_val = original_data["url"]
+                    if result.get("extracted_url_override"):
+                        url_val = result.get("extracted_url_override")
                     
                     # Logic
                     is_spam = result.get("is_spam")
@@ -1659,6 +1661,8 @@ class ExcelHandler:
             
             # [사용자 요청] 기본적으로 무조건 입력 파일의 원본 URL을 사용한다.
             url_val = input_url_val
+            if result.get("extracted_url_override"):
+                url_val = result.get("extracted_url_override")
             
             is_red_group = bool(result.get("red_group"))
             is_spam = result.get("is_spam")

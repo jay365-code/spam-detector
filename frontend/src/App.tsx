@@ -1922,31 +1922,12 @@ function App() {
                               <span className="bg-slate-800/80 px-1.5 py-1 rounded text-slate-300 font-mono text-[11px] break-all border border-slate-700/50">
                                 {log.result.drop_url ? (
                                   <>
-                                     <span className="text-slate-500 mr-2">
-                                       {log.result.url_result.details.attempted_urls && log.result.url_result.details.attempted_urls.length > 0
-                                         ? (
-                                             <>
-                                                 {log.result.url_result.details.attempted_urls.map((url: string, i: number) => (
-                                                   <span key={i}>
-                                                     {i > 0 && ", "}
-                                                     <a href={url.startsWith('http') ? url : `http://${url}`} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{url}</a>
-                                                   </span>
-                                                 ))}
-                                                 {log.result.url_result.details.final_url && log.result.url_result.details.final_url !== "Unknown" && !log.result.url_result.details.attempted_urls.includes(log.result.url_result.details.final_url) && (
-                                                     <span className="text-slate-500/70 ml-1.5">→ <a href={log.result.url_result.details.final_url.startsWith('http') ? log.result.url_result.details.final_url : `http://${log.result.url_result.details.final_url}`} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{log.result.url_result.details.final_url}</a></span>
-                                                 )}
-                                             </>
-                                         )
-                                         : log.result.url_result.details.extracted_url && log.result.url_result.details.extracted_url !== "Unknown" 
-                                           ? (
-                                               <>
-                                                   <a href={log.result.url_result.details.extracted_url.startsWith('http') ? log.result.url_result.details.extracted_url : `http://${log.result.url_result.details.extracted_url}`} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{log.result.url_result.details.extracted_url}</a>
-                                                   {log.result.url_result.details.final_url && log.result.url_result.details.final_url !== "Unknown" && log.result.url_result.details.final_url !== log.result.url_result.details.extracted_url && (
-                                                       <span className="text-slate-500/70 ml-1.5">→ <a href={log.result.url_result.details.final_url.startsWith('http') ? log.result.url_result.details.final_url : `http://${log.result.url_result.details.final_url}`} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{log.result.url_result.details.final_url}</a></span>
-                                                   )}
-                                               </>
-                                           )
-                                           : ""}
+                                     <span className="text-slate-500 mr-2 line-through opacity-70">
+                                       {log.result.pre_parsed_url ? (
+                                          log.result.pre_parsed_url
+                                       ) : log.result.url_result.details.extracted_url && log.result.url_result.details.extracted_url !== "Unknown" ? (
+                                          log.result.url_result.details.extracted_url
+                                       ) : log.result.url_result.details.attempted_urls?.join(', ')}
                                      </span>
                                     {log.result.drop_url_reason === "obfuscation" ? (
                                         <span className="text-orange-400 font-semibold" title="난독화된 기형 URL(특수문자/한글 등)이 감지되어 추출 목록 대신 시그니처로 단독 추출되었습니다.">[난독화 URL 감지: 시그니처 추출]</span>
@@ -1957,41 +1938,55 @@ function App() {
                                     ) : (log.result.drop_url_reason === "anti_hallucination" || log.result.drop_url_reason === "hidden_url") ? (
                                         <span className="text-emerald-500 font-semibold" title="스패머가 의도적으로 숨긴 URL을 추적하여 검사했으며, 데이터 정합성을 위해 엑셀에는 저장하지 않습니다.">[숨김 URL 추적 완료: 엑셀 제외]</span>
                                     ) : (
-                                        <span className="text-slate-400 font-semibold" title="접속 불가하거나 불완전한 URL로 판별되어 추출 목록에서 제외되었습니다.">[불완전 URL: 추출 제외]</span>
+                                        <span className="text-slate-400 font-semibold" title="접속 불가하거나 불완전한 URL로 판별되어 추출 목록에서 제외/대체되었습니다.">[불완전 URL: 추출 제외]</span>
                                     )}
                                   </>
                                 ) : (
-                                  log.result.url_result.details.attempted_urls && log.result.url_result.details.attempted_urls.length > 0 
-                                    ? (
-                                      <>
-                                        {log.result.url_result.details.attempted_urls.map((url: string, i: number) => (
-                                          <span key={i}>
-                                            {i > 0 && ", "}
-                                            <a href={url.startsWith('http') ? url : `http://${url}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{url}</a>
-                                          </span>
-                                        ))}
-                                        {log.result.url_result.details.final_url && log.result.url_result.details.final_url !== "Unknown" && !log.result.url_result.details.attempted_urls.includes(log.result.url_result.details.final_url) && (
-                                            <span className="text-slate-400 ml-1.5">→ <a href={log.result.url_result.details.final_url.startsWith('http') ? log.result.url_result.details.final_url : `http://${log.result.url_result.details.final_url}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{log.result.url_result.details.final_url}</a></span>
-                                        )}
-                                      </>
-                                    )
-                                    : (
-                                      <>
-                                        {log.result.url_result.details.extracted_url.split(',').map((u: string, i: number) => {
-                                          const t = u.trim();
-                                          if (!t) return null;
+                                  <>
+                                    {/* 1. 우선적으로 KISA 입력 URL 노출 */}
+                                    {log.result.pre_parsed_url && (
+                                      <span className="mr-1">
+                                        {log.result.pre_parsed_url.split(',').map((u: string, i: number) => {
+                                          const tu = u.trim();
+                                          if (!tu) return null;
                                           return (
-                                            <span key={i}>
+                                            <span key={`pre-${i}`}>
                                               {i > 0 && ", "}
-                                              <a href={t.startsWith('http') ? t : `http://${t}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{t}</a>
+                                              <a href={tu.startsWith('http') ? tu : `http://${tu}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{tu}</a>
                                             </span>
                                           );
                                         })}
-                                        {log.result.url_result.details.final_url && log.result.url_result.details.final_url !== "Unknown" && log.result.url_result.details.extracted_url !== log.result.url_result.details.final_url && (
-                                            <span className="text-slate-400 ml-1.5">→ <a href={log.result.url_result.details.final_url.startsWith('http') ? log.result.url_result.details.final_url : `http://${log.result.url_result.details.final_url}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{log.result.url_result.details.final_url}</a></span>
-                                        )}
-                                      </>
-                                    )
+                                      </span>
+                                    )}
+                                    
+                                    {/* 2. 입력 URL이 없을 경우 본문 강제 추출 URL 노출 */}
+                                    {!log.result.pre_parsed_url && log.result.url_result.details.extracted_url && log.result.url_result.details.extracted_url !== "Unknown" && (
+                                      <span className="mr-1">
+                                        {log.result.url_result.details.extracted_url.split(',').map((u: string, i: number) => {
+                                          const tu = u.trim();
+                                          if (!tu) return null;
+                                          return (
+                                            <span key={`ext-${i}`}>
+                                              {i > 0 && ", "}
+                                              <a href={tu.startsWith('http') ? tu : `http://${tu}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{tu}</a>
+                                            </span>
+                                          );
+                                        })}
+                                      </span>
+                                    )}
+
+                                    {/* 3. 리다이렉트 등으로 인한 최종 도착지가 다를 경우 명시 */}
+                                    {log.result.url_result.details.final_url && log.result.url_result.details.final_url !== "Unknown" && !log.result.pre_parsed_url?.includes(log.result.url_result.details.final_url) && !log.result.url_result.details.extracted_url?.includes(log.result.url_result.details.final_url) && (
+                                        <span className="text-slate-400 ml-1">→ <a href={log.result.url_result.details.final_url.startsWith('http') ? log.result.url_result.details.final_url : `http://${log.result.url_result.details.final_url}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline transition-colors cursor-pointer">{log.result.url_result.details.final_url}</a></span>
+                                    )}
+
+                                    {/* 4. 백엔드 시도/탐색 이력(attempted_urls)을 부가 정보로 노출 */}
+                                    {log.result.url_result.details.attempted_urls && log.result.url_result.details.attempted_urls.length > 0 && (
+                                      <span className="text-slate-500/70 text-[10px] ml-2 font-sans tracking-tight" title="백엔드 요원이 접속을 시도하거나 리다이렉트를 추적한 전체 탐색 이력입니다.">
+                                        (탐색: {log.result.url_result.details.attempted_urls.join(' → ')})
+                                      </span>
+                                    )}
+                                  </>
                                 )}
                               </span>
                             </div>

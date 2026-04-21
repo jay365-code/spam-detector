@@ -691,19 +691,22 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # [단독 도메인 오탐 방어 로직 제거]
              # 앞선 루프에서 모든 단독 도메인을 일괄 삭제하므로 이중 검증 불필요
              if is_injection or is_fake_ip or is_mismatched_extraction:
-                 final['drop_url'] = True
-                 if is_fake_ip:
-                     final['drop_url_reason'] = 'empty_or_fake_ip'
-                 elif is_mismatched_extraction:
-                     final['drop_url_reason'] = 'broken_kisa_extraction'
-                     final['reason'] = f"[URL Drop] 원본 KISA 추출 URL 짤림/파손 인식 | {final.get('reason', '')}"
-                 elif is_injection:
-                     final['drop_url_reason'] = 'safe_injection'
-                 
-                 # Drop the URL explicitly
-                 if 'details' in u_res:
-                     u_res['details']['extracted_url'] = None
-                 valid_extracted_urls.clear()
+                 if is_mismatched_extraction:
+                     # 찌꺼기 URL 대신 AI 복원 URL 우선 할당 (Drop하지 않음)
+                     final['drop_url'] = False
+                     final['extracted_url_override'] = surviving_urls
+                     final['reason'] = f"[URL 찌꺼기 덮어쓰기] KISA 파손 URL 대비 진짜 URL({surviving_urls}) 도출 성공. 블랙리스트 보존을 우선함. | {final.get('reason', '')}"
+                 else:
+                     final['drop_url'] = True
+                     if is_fake_ip:
+                         final['drop_url_reason'] = 'empty_or_fake_ip'
+                     elif is_injection:
+                         final['drop_url_reason'] = 'safe_injection'
+                     
+                     # Drop the URL explicitly
+                     if 'details' in u_res:
+                         u_res['details']['extracted_url'] = None
+                     valid_extracted_urls.clear()
 
              # 3. User Requested: If unextractable AND no URL was found, drop completely from Excel
              # If is_broken is True, treat it as no URL.
