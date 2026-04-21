@@ -644,12 +644,18 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # User requested fix: Drop URL if Safe URL Injection is detected.
              # This is flagged by fp_sentinel_node setting final["drop_url"] = True later,
              # but we can also set it proactively here if we have a url_reason indicating it.
-             url_reason = final.get("reason", "")
+             url_reason = u_reason
              # [Fix-C] Runtime Cache 수신 시 원본 reason이 덮여씌워지므로, 보존된 _original_reason도 함께 검사하여
              # 리더가 방패막이로 판정한 URL이 팔로워에서도 동일하게 drop_url=True 처리되도록 함
              _original_url_reason = u_res.get("_original_reason", "") if u_res else ""
              url_reason_lower = (url_reason + " " + _original_url_reason).lower()
-             is_injection = "위장 url" in url_reason_lower or "정상 도메인 위장" in url_reason_lower or "방패막이" in url_reason_lower or "decoy" in url_reason_lower or "safe url injection" in url_reason_lower
+             
+             has_injection_keyword = "위장 url" in url_reason_lower or "정상 도메인 위장" in url_reason_lower or "방패막이" in url_reason_lower or "decoy" in url_reason_lower or "safe url injection" in url_reason_lower or "미끼 링크" in url_reason_lower or "필터 회피" in url_reason_lower
+             is_confirmed_safe = u_res.get("is_confirmed_safe", False) if isinstance(u_res, dict) else False
+             
+             # AI가 방패막이(Decoy)/미스매치로 인지했더라도, 실제로 안전하다고 확인된(is_confirmed_safe) 도메인인 경우에만 URL Drop을 허용.
+             # (의도적으로 단축 URL 차단 안내창 등을 띄우거나, 가짜 기업 사이트를 만든 스패머의 URL은 Drop하지 않고 블랙리스트에 보존함)
+             is_injection = has_injection_keyword and is_confirmed_safe
              
              is_filtered_short = u_res.get("drop_url", False)
              is_dead_domain = any(keyword in u_reason for keyword in ["err_name_not_resolved", "dns_probe_finished_nxdomain", "err_connection_refused", "존재하지 않는 url", "네트워크 에러"])
@@ -684,25 +690,20 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
 
              # [단독 도메인 오탐 방어 로직 제거]
              # 앞선 루프에서 모든 단독 도메인을 일괄 삭제하므로 이중 검증 불필요
-             if is_injection or is_fake_ip or is_filtered_short or is_dead_domain or is_mismatched_extraction:
-                final["drop_url"] = True
-                if is_fake_ip:
-                    final["drop_url_reason"] = "empty_or_fake_ip"
-                elif is_filtered_short:
-                    final["drop_url_reason"] = "filtered_short_url"
-                elif is_mismatched_extraction:
-                    final["drop_url_reason"] = "broken_kisa_extraction"
-                    final["reason"] = f"[URL Drop] 원본 KISA 추출 URL 짤림/파손 인식 | {final.get('reason', '')}"
-                elif is_dead_domain:
-                    final["drop_url_reason"] = "dead_domain"
-                    final["reason"] = f"[URL Drop] 접속 불가 데드링크(오타 도메인 등) 간주 | {final.get('reason', '')}"
-                else:
-                    final["drop_url_reason"] = "safe_injection"
-                
-                # Drop the URL explicitly
-                if "details" in u_res:
-                    u_res["details"]["extracted_url"] = None
-                valid_extracted_urls.clear()
+             if is_injection or is_fake_ip or is_mismatched_extraction:
+                 final['drop_url'] = True
+                 if is_fake_ip:
+                     final['drop_url_reason'] = 'empty_or_fake_ip'
+                 elif is_mismatched_extraction:
+                     final['drop_url_reason'] = 'broken_kisa_extraction'
+                     final['reason'] = f"[URL Drop] 원본 KISA 추출 URL 짤림/파손 인식 | {final.get('reason', '')}"
+                 elif is_injection:
+                     final['drop_url_reason'] = 'safe_injection'
+                 
+                 # Drop the URL explicitly
+                 if 'details' in u_res:
+                     u_res['details']['extracted_url'] = None
+                 valid_extracted_urls.clear()
 
              # 3. User Requested: If unextractable AND no URL was found, drop completely from Excel
              # If is_broken is True, treat it as no URL.

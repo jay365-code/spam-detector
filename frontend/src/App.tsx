@@ -1412,8 +1412,8 @@ function App() {
               )}
             </div>
 
-            {/* Main/TRAP Tabs */}
-            {hasTrapData && (
+            {/* Main/TRAP Tabs or Single File Name */}
+            {trapFilename !== 'TRAP' ? (
               <div className="flex items-center bg-slate-900 p-1 rounded-lg ml-4 border border-slate-700 max-w-[400px]">
                 <button
                   onClick={() => setReportTab('MAIN')}
@@ -1430,6 +1430,17 @@ function App() {
                   {trapFilename}
                 </button>
               </div>
+            ) : (
+              (kisaFilename !== 'MAIN' || validLogs.length > 0) && (
+                <div className="flex items-center bg-slate-900 p-1 rounded-lg ml-4 border border-slate-700 max-w-[400px]">
+                  <button
+                    className="px-3 py-1 rounded text-xs font-bold transition-colors truncate max-w-[180px] bg-slate-700 text-white shadow cursor-default"
+                    title={kisaFilename !== 'MAIN' ? kisaFilename : '분석 데이터'}
+                  >
+                    {kisaFilename !== 'MAIN' ? kisaFilename : '분석 데이터'}
+                  </button>
+                </div>
+              )
             )}
 
             {/* Filter Buttons */}

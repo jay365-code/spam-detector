@@ -844,10 +844,6 @@ class ExcelHandler:
                                 ws.cell(row=row_idx, column=get_col_idx("URL", len(headers) + 1), value=self._sanitize_cell_value(url_val_str) if url_val_str else "")
                                 
                             is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in str(result.get("reason", ""))
-                            if is_separated and not url_val_str:
-                                # [User Request] 분홍색 메시지(URL 분리감지)는 URL 필드가 없어도 강제로 채움
-                                url_val_str = result.get("message_extracted_url", "")
-                                ws.cell(row=row_idx, column=get_col_idx("URL", len(headers) + 1), value=self._sanitize_cell_value(url_val_str))
                                 
                             urls = [url_val_str] if url_val_str else []
                         
@@ -1236,10 +1232,6 @@ class ExcelHandler:
                         url_val = ", ".join(v_urls2)
                         url_len = self._lenb(url_val)
                     is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in str(reason_val)
-                    if is_separated and not url_val:
-                        # [User Request] 분홍색 분리감지 케이스만 수동으로 URL 컬럼에 강제 오버라이딩
-                        url_val = result.get("message_extracted_url", "")
-                        url_len = self._lenb(url_val)
                         
                     # [최종 확인] 엑셀에 기록될 최종 url_val이 Path나 Query 없는 단독 도메인이라면 무조건 비우기 (User Request)
                     if url_val:
@@ -1696,8 +1688,7 @@ class ExcelHandler:
                 url_val = ", ".join(v_urls3)
                 url_len = self._lenb(url_val)
                 
-            if is_separated and not url_val:
-                url_val = result.get("message_extracted_url", "")
+            # Red group 덮어쓰기 로직 삭제됨
                 
             # [최종 확인] 엑셀에 기록될 최종 url_val이 Path나 Query 없는 단독 도메인이라면 무조건 비우기 (User Request)
             if url_val:
@@ -1764,9 +1755,7 @@ class ExcelHandler:
                 url_val = ""
                 url_len = 0
                 
-            if is_separated and not url_val:
-                url_val = result.get("message_extracted_url", "")
-                url_len = self._lenb(url_val)
+            # Red group URL 덮어쓰기 로직 삭제됨
                 
             # [사용자 요청 복구] 육안분석 시트의 URL 컬럼은 정상 요소(HAM)이건 스팸이건 모두 원본 입력 그대로 유지합니다.
 
