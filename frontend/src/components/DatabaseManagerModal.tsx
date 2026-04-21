@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, Trash2, Search, Link2, FileText, AlertTriangle, ShieldCheck, Database, CheckSquare, Square, Maximize2, Minimize2, ChevronUp, ChevronDown, Key, Copy } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Trash2, Search, Link2, FileText, AlertTriangle, ShieldCheck, Database, CheckSquare, Square, Maximize2, Minimize2, ChevronUp, ChevronDown, Key, Copy } from 'lucide-react';
 
 interface DatabaseManagerModalProps {
   isOpen: boolean;
@@ -28,6 +28,11 @@ interface SignatureRecord {
   created_at: string;
   last_hit: string | null;
 }
+
+const SortIcon = ({ col, currentSort }: { col: string, currentSort: {key: string, dir: string} }) => {
+  if (currentSort.key !== col) return <ChevronDown className="w-3.5 h-3.5 opacity-20 inline-block ml-1" />;
+  return currentSort.dir === 'asc' ? <ChevronUp className="w-3.5 h-3.5 text-blue-400 inline-block ml-1" /> : <ChevronDown className="w-3.5 h-3.5 text-blue-400 inline-block ml-1" />;
+};
 
 export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState<'url' | 'history' | 'signatures'>('url');
@@ -119,18 +124,22 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
 
   // Clear selection and fetch on tab switch
   useEffect(() => {
-    setSelectedItems(new Set());
-    if (activeTab === 'url') fetchUrls();
-    else if (activeTab === 'history') fetchHistory();
-    else if (activeTab === 'signatures') fetchSignatures();
+    setTimeout(() => {
+      setSelectedItems(new Set());
+      if (activeTab === 'url') fetchUrls();
+      else if (activeTab === 'history') fetchHistory();
+      else if (activeTab === 'signatures') fetchSignatures();
+    }, 0);
   }, [activeTab]);
 
   // Initial load
   useEffect(() => {
     if (isOpen) {
-      if (activeTab === 'url' && urlRecords.length === 0) fetchUrls();
-      else if (activeTab === 'history' && historyRecords.length === 0) fetchHistory();
-      else if (activeTab === 'signatures' && signatureRecords.length === 0) fetchSignatures();
+      setTimeout(() => {
+        if (activeTab === 'url' && urlRecords.length === 0) fetchUrls();
+        else if (activeTab === 'history' && historyRecords.length === 0) fetchHistory();
+        else if (activeTab === 'signatures' && signatureRecords.length === 0) fetchSignatures();
+      }, 0);
     }
   }, [isOpen]);
 
@@ -158,15 +167,15 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
 
   // Page Change Fetchers
   useEffect(() => {
-    if (activeTab === 'signatures' && isOpen) fetchSignatures(sigPage, sigSearch);
+    if (activeTab === 'signatures' && isOpen) setTimeout(() => fetchSignatures(sigPage, sigSearch), 0);
   }, [sigPage]);
 
   useEffect(() => {
-    if (activeTab === 'url' && isOpen) fetchUrls(urlPage, urlSearch);
+    if (activeTab === 'url' && isOpen) setTimeout(() => fetchUrls(urlPage, urlSearch), 0);
   }, [urlPage]);
 
   useEffect(() => {
-    if (activeTab === 'history' && isOpen) fetchHistory(historyPage, historySearch);
+    if (activeTab === 'history' && isOpen) setTimeout(() => fetchHistory(historyPage, historySearch), 0);
   }, [historyPage]);
 
   const currentFilteredRecords = activeTab === 'url' ? urlRecords : (activeTab === 'history' ? historyRecords : signatureRecords);
@@ -216,8 +225,13 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
     try {
       await Promise.all(promises);
       setSelectedItems(new Set());
-      if (activeTab === 'signatures') fetchSignatures();
-      else activeTab === 'url' ? fetchUrls() : fetchHistory();
+      if (activeTab === 'signatures') {
+        fetchSignatures();
+      } else if (activeTab === 'url') {
+        fetchUrls();
+      } else {
+        fetchHistory();
+      }
     } catch (err) {
       console.error("Bulk delete error", err);
     }
@@ -235,7 +249,8 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
       if (res.ok) {
         setNewUrl('');
         setPromptData(null);
-        activeTab === 'url' ? fetchUrls() : fetchHistory();
+        if (activeTab === 'url') fetchUrls();
+        else fetchHistory();
       } else {
         alert("URL 추가 실패");
       }
@@ -259,7 +274,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
       } else {
         handleAddUrl(newUrl, false);
       }
-    } catch (e) {
+    } catch {
       handleAddUrl(newUrl, false);
     }
   };
@@ -270,8 +285,11 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
       const res = await fetch(`http://localhost:8000/api/db/url-whitelist/${encodeURIComponent(domainPath)}`, {
         method: 'DELETE'
       });
-      if (res.ok) activeTab === 'url' ? fetchUrls() : fetchHistory();
-    } catch (err) {}
+      if (res.ok) {
+        if (activeTab === 'url') fetchUrls();
+        else fetchHistory();
+      }
+    } catch (e) { console.debug("삭제 요청 무시:", e); }
   };
 
   // --- History Handlers ---
@@ -286,7 +304,8 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
       if (res.ok) {
         setNewHistoryText('');
         setNewHistoryCount(1);
-        activeTab === 'url' ? fetchUrls() : fetchHistory();
+        if (activeTab === 'url') fetchUrls();
+        else fetchHistory();
       } else {
         alert("텍스트 추가 실패");
       }
@@ -302,8 +321,11 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
       const res = await fetch(`http://localhost:8000/api/db/spam-history/${encodeURIComponent(text)}`, {
         method: 'DELETE'
       });
-      if (res.ok) activeTab === 'url' ? fetchUrls() : fetchHistory();
-    } catch (err) {}
+      if (res.ok) {
+        if (activeTab === 'url') fetchUrls();
+        else fetchHistory();
+      }
+    } catch (e) { console.debug("삭제 요청 무시:", e); }
   };
 
   const handleDeleteSig = async (text: string) => {
@@ -314,14 +336,8 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
         method: 'DELETE'
       });
       if (res.ok) fetchSignatures();
-    } catch (err) {}
+    } catch (e) { console.debug("삭제 요청 무시:", e); }
   };
-
-  const SortIcon = ({ col, currentSort }: { col: string, currentSort: {key: string, dir: string} }) => {
-    if (currentSort.key !== col) return <ChevronDown className="w-3.5 h-3.5 opacity-20 inline-block ml-1" />;
-    return currentSort.dir === 'asc' ? <ChevronUp className="w-3.5 h-3.5 text-blue-400 inline-block ml-1" /> : <ChevronDown className="w-3.5 h-3.5 text-blue-400 inline-block ml-1" />;
-  };
-
   if (!isOpen) return null;
 
 
@@ -529,7 +545,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                     <tr className="text-xs uppercase tracking-wider text-slate-400 group transition-colors hover:bg-slate-800/20">
                       <th className="py-2.5 px-3 w-12 text-center rounded-tl-lg">
                         <button 
-                          onClick={() => handleSelectAll({ target: { checked: !(currentFilteredRecords.length > 0 && selectedItems.size === currentFilteredRecords.length) } } as any)}
+                          onClick={() => handleSelectAll({ target: { checked: !(currentFilteredRecords.length > 0 && selectedItems.size === currentFilteredRecords.length) } } as unknown as React.ChangeEvent<HTMLInputElement>)}
                           className={`focus:outline-none transition-all duration-200 active:scale-90 ${(currentFilteredRecords.length > 0 && selectedItems.size === currentFilteredRecords.length) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                         >
                           {currentFilteredRecords.length > 0 && selectedItems.size === currentFilteredRecords.length ? (

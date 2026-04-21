@@ -102,7 +102,8 @@ const formatMessageWithLinks = (text: string) => {
 };
 
 // 로그 항목 타입 정의
-type LogEntry = Record<string, unknown>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type LogEntry = any;
 
 function App() {
   const [clientId] = useState(() => 'client-' + Math.random().toString(36).substr(2, 9));
@@ -996,7 +997,6 @@ function App() {
       window.clearTimeout(saveTimerRef.current);
     }
 
-    // @ts-expect-error - saveTimerRef에 setTimeout 반환값 할당
     saveTimerRef.current = window.setTimeout(() => {
       try {
         const logsArray = Object.values(logs); // Save as array for compatibility
@@ -1388,7 +1388,7 @@ function App() {
                   isProcessing={isProcessing}
                   startTime={startedAt} // [New] Pass Start Time
                   endTime={endTime} // [New] Pass End Time
-                  tokenUsage={tokenUsage} // [New] Pass Token Usage
+                  tokenUsage={tokenUsage ? (tokenUsage as any) : undefined} // [New] Pass Token Usage
                   downloadUrl={downloadUrl}
                   onDownload={handleExcelSaveAs}
                   isCancelling={isCancelling}

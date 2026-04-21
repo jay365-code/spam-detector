@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Loader2, CheckCircle2, Edit3, ShieldAlert } from 'lucide-react';
 
 interface SignatureRefinerModalProps {
@@ -13,35 +13,39 @@ const HighlightMessage = ({ message, target }: { message: string, target: string
   const pureTarget = target.replace(/\s/g, "");
   if (pureTarget.length === 0) return <>{message}</>;
 
+  let resultParts: string[] = [];
   try {
     const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regexStr = pureTarget.split('').map(char => escapeRegExp(char)).join('\\s*');
     const regex = new RegExp(`(${regexStr})`, 'i');
-    const parts = message.split(regex);
-    if (parts.length > 1) {
-      return (
-        <>
-          {parts.map((p, i) => (
-            i % 2 === 1 
-              ? <span key={i} className="text-emerald-300 font-bold bg-emerald-950/80 px-0.5 rounded mx-px underline decoration-emerald-800/50">{p}</span>
-              : <span key={i}>{p}</span>
-          ))}
-        </>
-      );
-    }
-  } catch (e) {
+    resultParts = message.split(regex);
+  } catch {
     // fallback
   }
+
+  if (resultParts.length > 1) {
+    return (
+      <>
+        {resultParts.map((p, i) => (
+          i % 2 === 1 
+            ? <span key={i} className="text-emerald-300 font-bold bg-emerald-950/80 px-0.5 rounded mx-px underline decoration-emerald-800/50">{p}</span>
+            : <span key={i}>{p}</span>
+        ))}
+      </>
+    );
+  }
+
   return <>{message}</>;
 };
 
 export default function SignatureRefinerModal({ isOpen, onClose, reportFilename, onApplySuccess }: SignatureRefinerModalProps) {
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [clusters, setClusters] = useState<any[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const getByteLength = (str: any) => {
+  const getByteLength = (str: string | null | undefined) => {
     if (!str || typeof str !== 'string') return 0;
     // 운영자님 지시: 바이트 계산 시 공백은 무조건 제외하고 알맹이 길이만 잼
     const pureStr = str.replace(/\s/g, "");
@@ -76,7 +80,7 @@ export default function SignatureRefinerModal({ isOpen, onClose, reportFilename,
       if (!res.ok) throw new Error(data.detail || 'Failed to fetch scan');
       
       // 초기 렌더링용 매핑
-      const mapped = (data.clusters || []).map((c: any) => ({
+      const mapped = (data.clusters || []).map((c: Record<string, unknown>) => ({
         ...c,
         proposed: null,
         selected: false,
@@ -90,13 +94,14 @@ export default function SignatureRefinerModal({ isOpen, onClose, reportFilename,
       if (mapped.length > 0) {
         analyzeAll(mapped);
       }
-    } catch (err: any) {
-      setErrorMsg(err.message);
+    } catch (err: unknown) {
+      const e = err as Error;
+      setErrorMsg(e.message);
       setLoading(false);
     }
   };
 
-  const analyzeAll = async (initialClusters: any[]) => {
+  const analyzeAll = async (initialClusters: Record<string, unknown>[]) => {
     // LLM Rate Limit 방지를 위해 20개씩 청크(Batch) 단위 처리
     const CHUNK_SIZE = 20;
     for (let i = 0; i < initialClusters.length; i += CHUNK_SIZE) {
@@ -123,12 +128,13 @@ export default function SignatureRefinerModal({ isOpen, onClose, reportFilename,
                     };
                     return newC;
                 });
-            } catch (err: any) {
+            } catch (err: unknown) {
+                const e = err as Error;
                 setClusters(prev => {
                     const newC = [...prev];
                     newC[actualIndex] = {
                         ...newC[actualIndex],
-                        proposed: { decision: "error", reason: err.message, signature: "" },
+                        proposed: { decision: "error", reason: e.message, signature: "" },
                         selected: false,
                         isLoading: false
                     };
@@ -145,14 +151,15 @@ export default function SignatureRefinerModal({ isOpen, onClose, reportFilename,
 
     // === 바이트 규격 유효성 검사 ===
     let hasInvalid = false;
-    for (let c of clusters) {
+    for (const c of clusters) {
       if (c.selected) {
-        if (!isValidByte(getByteLength(c.editSignature))) {
+        if (!isValidByte(getByteLength(c.editSignature as string))) {
           hasInvalid = true; 
           break;
         }
       } else {
-        for (let item of c.original_items) {
+        const items = c.original_items as Array<{current_signature?: string}>;
+        for (const item of items) {
           // 빈 시그니처는 아예 지우겠다는 뜻이므로 제외, 들어있는 텍스트만 검사
           if (item.current_signature && !isValidByte(getByteLength(item.current_signature))) {
              hasInvalid = true; 
@@ -188,8 +195,9 @@ export default function SignatureRefinerModal({ isOpen, onClose, reportFilename,
       alert(`총 ${data.applied_clusters_count}개의 클러스터 시그니처 덮어쓰기 완료!`);
       onApplySuccess(); // App.tsx에 리로드 위임
       onClose();
-    } catch (err: any) {
-      setErrorMsg(err.message);
+    } catch (err: unknown) {
+      const e = err as Error;
+      setErrorMsg(e.message);
     } finally {
       setApplying(false);
     }
@@ -293,7 +301,7 @@ export default function SignatureRefinerModal({ isOpen, onClose, reportFilename,
                         {/* 기존 메시지 목록 영역 */}
                         <div className="col-span-12 lg:col-span-6 space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                            <p className="text-xs font-semibold text-slate-500 sticky top-0 bg-inherit pb-1">파편화된 원본 시그니처 이력</p>
-                           {orig.slice(0, 5).map((o:any, i:number) => (
+                           {orig.slice(0, 5).map((o: any, i: number) => (
                              <div 
                                key={i} 
                                className={`text-[11px] bg-slate-950/50 p-3 rounded-xl border transition-all relative ${!cluster.selected ? 'border-indigo-500/50 shadow-sm bg-slate-900/40' : 'border-slate-800/50'}`}

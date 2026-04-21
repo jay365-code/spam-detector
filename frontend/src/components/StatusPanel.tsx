@@ -7,7 +7,7 @@ interface StatusPanelProps {
     isProcessing: boolean;
     startTime?: number | null; // Start Time
     endTime?: number | null;   // [New] End Time
-    tokenUsage?: any;          // [New] Token Usage Data
+    tokenUsage?: Record<string, { in: number; out: number }>; // [New] Token Usage Data
     downloadUrl: string | null;
     onDownload?: () => void;
     isCancelling?: boolean;
@@ -28,27 +28,23 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
     cancellationMessage = '',
     onCancel
 }) => {
-    // 처리 중이거나 다운로드 URL이 있으면 표시 (total이 0이어도 처리 중이면 표시)
-    if (!isProcessing && !downloadUrl) return null;
-
-    const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
-
-    // Timer Logic
     const [elapsed, setElapsed] = React.useState(0);
 
     React.useEffect(() => {
-        let interval: ReturnType<typeof setInterval>;
+        let interval: ReturnType<typeof setInterval> | undefined;
         if (isProcessing && startTime) {
-            setElapsed(Math.floor((Date.now() - startTime) / 1000)); // Reset initially
+            setElapsed(Math.floor((Date.now() - startTime) / 1000));
             interval = setInterval(() => {
                 setElapsed(Math.floor((Date.now() - startTime) / 1000));
             }, 1000);
         } else if (!isProcessing && startTime && endTime) {
-            // Fix invalid final time by using stored endTime
             setElapsed(Math.floor((endTime - startTime) / 1000));
         }
-        return () => clearInterval(interval);
+        return () => { if (interval) clearInterval(interval); };
     }, [isProcessing, startTime, endTime]);
+
+    // 처리 중이거나 다운로드 URL이 있으면 표시 (total이 0이어도 처리 중이면 표시)
+    if (!isProcessing && !downloadUrl) return null;
 
     // Format Seconds to HH:MM:SS
     const formatTime = (seconds: number) => {
@@ -58,6 +54,8 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
         if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     };
+
+    const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
 
     return (
         <div className="flex items-center gap-3 w-full">
@@ -83,7 +81,7 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
                                 {/* Final Time Display */}
                                 {startTime && (
                                     <span className="text-slate-400 font-mono ml-2 border-l border-slate-600 pl-2">
-                                        Total: {formatTime(Math.floor(((endTime || Date.now()) - startTime) / 1000))}
+                                        Total: {formatTime(elapsed || (endTime && startTime ? Math.floor((endTime - startTime) / 1000) : 0))}
                                     </span>
                                 )}
                             </>
@@ -140,7 +138,7 @@ export const StatusPanel: React.FC<StatusPanelProps> = ({
             {/* Token Usage UI (Completely Outside Main Box) */}
             {tokenUsage && Object.keys(tokenUsage).length > 0 && (
                 <div className="flex items-center flex-col gap-1 min-w-[140px] max-h-[78px] overflow-y-auto custom-scrollbar bg-slate-800/60 border border-slate-700/60 p-2 rounded-xl shadow-md">
-                    {Object.entries(tokenUsage).map(([model, usage]: [string, any]) => {
+                    {Object.entries(tokenUsage).map(([model, usage]) => {
                         if (!usage.in && !usage.out) return null;
                         const tIn = (usage.in / 1000).toFixed(1) + 'k';
                         const tOut = (usage.out / 1000).toFixed(1) + 'k';

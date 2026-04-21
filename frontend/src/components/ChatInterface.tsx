@@ -5,7 +5,7 @@ import { MessageSquare, AlertTriangle, Check, X, User, Send, Square } from 'luci
 interface ChatInterfaceProps {
     clientId: string;
     ws: WebSocket | null;
-    hitlRequest: any | null;
+    hitlRequest: Record<string, unknown> | null;
     onHitlResponse: (decision: string, comment?: string) => void;
     onSendMessage: (message: string, mode: "TEXT" | "URL" | "Unified" | "IBSE") => void; // Updated prop
     onStopGeneration?: () => void; // New prop for stopping generation
@@ -15,6 +15,7 @@ interface ChatInterfaceProps {
 
 // ... imports
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ ws, hitlRequest, onHitlResponse, onSendMessage, onStopGeneration, onClearChat, isConnected }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [messages, setMessages] = useState<any[]>([]);
     const [inputText, setInputText] = useState('');
     const [hitlComment, setHitlComment] = useState('');
@@ -23,6 +24,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ ws, hitlRequest, o
 
     useEffect(() => {
         if (!isGenerating) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setIsStopping(false);
         }
     }, [isGenerating]);
@@ -32,6 +34,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ ws, hitlRequest, o
 
     // Initial Greeting
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setMessages([{
             role: 'assistant',
             content: '분석할 메시지를 입력하세요.'
@@ -104,6 +107,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ ws, hitlRequest, o
     // Handle HITL Request
     useEffect(() => {
         if (hitlRequest) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setMessages(prev => [...prev, {
                 role: 'assistant',
                 type: 'HITL',
@@ -273,7 +277,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ ws, hitlRequest, o
                                                         <span className="ml-1 tracking-wider uppercase text-[9px] font-bold">Analysis Console</span>
                                                     </div>
                                                     <div className="px-3 py-2 space-y-1 max-h-[150px] overflow-y-auto scrollbar-hide flex flex-col">
-                                                        {msg.processLogs.map((log: any, i: number) => (
+                                                        {msg.processLogs.map((log: Record<string, string>, i: number) => (
                                                             <div key={i} className="flex gap-2 items-start opacity-90 hover:opacity-100 block whitespace-pre-wrap break-all break-words leading-relaxed font-sans text-xs">
                                                                 <span className="text-slate-500 font-mono flex-shrink-0">[{log.time}]</span>
                                                                 <span className={log.text.includes('⚠️') || log.text.includes('실패') || log.text.includes('재시도') ? 'text-amber-400 font-medium' : log.text.includes('✅') ? 'text-emerald-400' : 'text-blue-300'}>
@@ -296,11 +300,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ ws, hitlRequest, o
                                             {msg.tokenUsage && (
                                                 <div className="mt-3 flex gap-2 text-[10px] text-slate-400 border-t border-slate-700/50 pt-2 flex-wrap">
                                                     <span className="font-bold flex items-center pr-1 border-r border-slate-700">토큰 사용량</span>
-                                                    {Object.entries(msg.tokenUsage).map(([provider, usage]: [string, any]) => {
+                                                    {Object.entries(msg.tokenUsage || {}).map(([provider, usage]: [string, any]) => {
                                                         if (!usage.in && !usage.out) return null;
                                                         const tIn = (usage.in / 1000).toFixed(1) + 'k';
                                                         const tOut = (usage.out / 1000).toFixed(1) + 'k';
-                                                        const colors: any = {
+                                                        const colors: Record<string, string> = {
                                                             'GEMINI': 'text-blue-400',
                                                             'OPENAI': 'text-green-400',
                                                             'CLAUDE': 'text-purple-400'

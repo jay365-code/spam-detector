@@ -7,7 +7,7 @@ interface FnExample {
     label: string;
     code: string;
     category: string;
-    reason: string;
+    reason?: string;
     created_at?: string;
 }
 
@@ -88,6 +88,7 @@ export const RagManager: React.FC<RagManagerProps> = ({ isOpen, onClose, initial
 
     // Search state
     const [searchQuery, setSearchQuery] = useState('');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [hasSearched, setHasSearched] = useState(false);
@@ -192,9 +193,10 @@ export const RagManager: React.FC<RagManagerProps> = ({ isOpen, onClose, initial
                 const detail = data.detail || data.message || '알 수 없는 오류';
                 setError(`저장에 실패했습니다: ${detail}`);
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             // 네트워크 오류 또는 예외 발생 시
-            const message = err?.message || '네트워크 오류';
+            const e = err as Error;
+            const message = e?.message || '네트워크 오류';
             setError(`저장에 실패했습니다: ${message}`);
             console.error(err);
         } finally {
@@ -236,7 +238,7 @@ export const RagManager: React.FC<RagManagerProps> = ({ isOpen, onClose, initial
             label: example.label as 'SPAM' | 'HAM',
             code: example.code,
             category: example.category,
-            reason: example.reason
+            reason: example.reason || ''
         });
     };
 
@@ -628,7 +630,7 @@ export const RagManager: React.FC<RagManagerProps> = ({ isOpen, onClose, initial
                         <div className="flex gap-2">
                             <select
                                 value={filterLabel}
-                                onChange={(e) => setFilterLabel(e.target.value as any)}
+                                onChange={(e) => setFilterLabel(e.target.value as typeof filterLabel)}
                                 className="bg-slate-800 border-none text-xs text-slate-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium cursor-pointer"
                             >
                                 <option value="ALL">전체 보기</option>
@@ -637,7 +639,7 @@ export const RagManager: React.FC<RagManagerProps> = ({ isOpen, onClose, initial
                             </select>
                             <select
                                 value={sortOption}
-                                onChange={(e) => setSortOption(e.target.value as any)}
+                                onChange={(e) => setSortOption(e.target.value as typeof sortOption)}
                                 className="bg-slate-800 border-none text-xs text-slate-300 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 ml-auto font-medium cursor-pointer"
                             >
                                 <option value="LATEST">최신등록 순</option>

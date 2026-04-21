@@ -23,13 +23,13 @@ const API_BASE = `http://${window.location.hostname}:8000`;
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const [metadata, setMetadata] = useState<ConfigItem[]>([]);
-    const [values, setValues] = useState<Record<string, any>>({});
-    const [models, setModels] = useState<Record<string, any[]>>({});
+    const [values, setValues] = useState<Record<string, unknown>>({});
+    const [models, setModels] = useState<Record<string, { id: string, name: string }[]>>({});
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [quotaStatus, setQuotaStatus] = useState<Record<string, any>>({});
+    const [quotaStatus, setQuotaStatus] = useState<Record<string, unknown>>({});
     const [quotaResetting, setQuotaResetting] = useState(false);
     const [quotaResetSuccess, setQuotaResetSuccess] = useState(false);
     const [pendingIndices, setPendingIndices] = useState<Record<string, number>>({});
@@ -138,7 +138,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     if (!isOpen) return null;
 
     const renderInput = (item: ConfigItem) => {
-        const val = values[item.key] ?? '';
+        const val = (values[item.key] as string | number) ?? '';
 
         switch (item.type) {
             case 'select':
@@ -178,8 +178,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         <span className="text-xs font-semibold text-slate-400">{val === '1' ? 'ON' : 'OFF'}</span>
                     </div>
                 );
-            case 'model_select':
-                const provider = values['LLM_PROVIDER'];
+            case 'model_select': {
+                const provider = String(values['LLM_PROVIDER'] || '');
                 const providerModels = models[provider] || [];
                 return (
                     <select
@@ -188,11 +188,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                         className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none"
                     >
                         <option value="">모델 선택...</option>
-                        {providerModels.map((m: any) => (
+                        {providerModels.map((m: { id: string, name: string }) => (
                             <option key={m.id} value={m.id}>{m.name}</option>
                         ))}
                     </select>
                 );
+            }
             default:
                 return (
                     <input
@@ -285,7 +286,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     {/* Quota 상태 패널: exhausted 여부에 따라 amber(경고) / emerald(정상) 동적 전환 */}
                     {(() => {
                         const hasExhausted = Object.values(quotaStatus).some(
-                            (info: any) => typeof info === 'boolean' ? info : info?.exhausted
+                            (info: unknown) => {
+                                if (typeof info === 'boolean') return info;
+                                const typedInfo = info as { exhausted?: boolean };
+                                return !!typedInfo?.exhausted;
+                            }
                         );
                         const isOk = !hasExhausted && Object.keys(quotaStatus).length > 0;
                         return (
@@ -320,10 +325,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                                     }
                                 </p>
                                 <div className="flex flex-wrap items-center gap-2">
-                                    {Object.entries(quotaStatus).map(([p, info]: [string, any]) => {
-                                        const isExhausted = typeof info === 'boolean' ? info : info?.exhausted;
-                                        const tot = info?.total || 1;
-                                        const curIdx = pendingIndices[p] !== undefined ? pendingIndices[p] : (info?.current_index || 0);
+                                    {Object.entries(quotaStatus).map(([p, info]) => {
+                                        let isExhausted = false;
+                                        let tot = 1;
+                                        let curIdxObj = 0;
+                                        if (typeof info === 'boolean') {
+                                            isExhausted = info;
+                                        } else {
+                                            const typedInfo = info as { exhausted?: boolean, total?: number, current_index?: number };
+                                            isExhausted = !!typedInfo?.exhausted;
+                                            tot = typedInfo?.total || 1;
+                                            curIdxObj = typedInfo?.current_index || 0;
+                                        }
+                                        const curIdx = pendingIndices[p] !== undefined ? pendingIndices[p] : curIdxObj;
                                         const dropdownOptions = Array.from({ length: tot }, (_, i) => i);
                                         return (
                                             <span
