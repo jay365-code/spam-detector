@@ -114,6 +114,7 @@ function App() {
   // Cancellation State
   const [isCancelling, setIsCancelling] = useState(false);
   const [cancellationMessage, setCancellationMessage] = useState('');
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
 
   // RAG Manager State
   const [isRagManagerOpen, setIsRagManagerOpen] = useState(false);
@@ -343,21 +344,14 @@ function App() {
     }
   };
 
-  // Cancel Processing Handler
-  const handleCancelProcessing = async () => {
-    if (isCancelling) {
-      alert('이미 중지 요청이 진행 중입니다.');
-      return;
-    }
+  // Cancel Processing Handler - 커스텀 모달로 교체 (window.confirm은 WebSocket 리렌더 중 강제 닫힘 버그 존재)
+  const handleCancelProcessing = () => {
+    if (isCancelling) return;
+    setCancelConfirmOpen(true); // 커스텀 모달 열기
+  };
 
-    const confirmed = confirm(
-      '⚠️ 주의: 즉시 중지되지 않습니다\n\n' +
-      '현재 처리 중인 배치(최대 20개 메시지)가 완료된 후 중지됩니다.\n' +
-      '계속하시겠습니까?'
-    );
-
-    if (!confirmed) return;
-
+  const confirmCancel = async () => {
+    setCancelConfirmOpen(false);
     setIsCancelling(true);
     setCancellationMessage('중지 요청 중...');
 
@@ -368,9 +362,8 @@ function App() {
       setCancellationMessage('현재 배치 완료 대기 중...');
     } catch (error) {
       console.error('Cancel failed:', error);
-      alert('중지 요청 실패: ' + error);
       setIsCancelling(false);
-      setCancellationMessage('');
+      setCancellationMessage('중지 실패 (네트워크 오류)');
     }
   };
 
@@ -1474,21 +1467,26 @@ function App() {
             </div>
 
             {/* Search Input */}
-            <div className="relative flex-1 max-w-md ml-4">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+            <div className={`relative flex-1 max-w-md ml-4 transition-all duration-300 rounded-lg ${searchQuery ? 'ring-1 ring-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.2)] bg-amber-900/10' : ''}`}>
+              <Search className={`absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 transition-colors ${searchQuery ? 'text-amber-400' : 'text-slate-500'}`} />
               <input
                 type="text"
                 placeholder="결과 내 검색..."
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-8 py-1.5 text-slate-200 focus:outline-none focus:border-blue-500 transition-colors"
+                className={`w-full bg-slate-900 border rounded-lg pl-8 pr-8 py-1.5 focus:outline-none transition-colors ${
+                  searchQuery 
+                    ? 'border-amber-500 text-amber-300 placeholder:text-amber-700/50 focus:border-amber-400' 
+                    : 'border-slate-700 text-slate-200 focus:border-blue-500'
+                }`}
               />
               {searchQuery && (
                 <button
                   onClick={() => handleSearchChange('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-slate-700 rounded"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 bg-amber-500/10 hover:bg-amber-500/30 rounded group transition-colors border border-amber-500/30"
+                  title="검색어 초기화"
                 >
-                  <X className="w-3.5 h-3.5 text-slate-400" />
+                  <X className="w-3.5 h-3.5 text-amber-400 group-hover:text-amber-300" />
                 </button>
               )}
             </div>
@@ -2449,6 +2447,37 @@ function App() {
                  화면의 최신 결과를 바탕으로 엑셀 파일을 백지부터 완벽하게 새로 짜맞추고 있습니다.<br/>
                  <span className="text-indigo-300 font-medium mt-1 inline-block">수 초 가량 소요될 수 있습니다.</span>
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 중지 확인 커스텀 모달 */}
+      {cancelConfirmOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-slate-800 rounded-2xl shadow-2xl p-6 w-full max-w-sm border border-slate-700 animate-in slide-in-from-bottom-4 duration-300">
+            <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2 mb-3">
+              <span className="text-yellow-500">⚠️</span> 중지 확인
+            </h3>
+            <p className="text-sm text-slate-300 mb-6 leading-relaxed">
+              즉시 중지되지 않으며,<br/>
+              현재 처리 중인 배치(최대 20개 메시지)가 <br/>
+              완료된 후 최종 중지됩니다.<br/><br/>
+              계속하시겠습니까?
+            </p>
+            <div className="flex gap-3 justify-end mt-2">
+              <button
+                onClick={() => setCancelConfirmOpen(false)}
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm transition-colors border border-slate-600"
+              >
+                닫기
+              </button>
+              <button
+                onClick={confirmCancel}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-bold shadow-lg shadow-red-500/20 transition-colors border border-red-600"
+              >
+                중지하기
+              </button>
             </div>
           </div>
         </div>
