@@ -1237,11 +1237,11 @@ class ExcelHandler:
                             test_u = u if "://" in u else "http://" + u
                             try:
                                 parsed_u = urllib.parse.urlparse(test_u)
-                                # path가 없거나 "/"뿐이고, query도 없으면 단독 도메인 -> 제외
-                                if (not parsed_u.path or parsed_u.path == "/") and not parsed_u.query:
-                                    # [FIX] 명백히 스팸 혐의(Red Group, Spam 증거)로 선정된 도메인이면 보존
-                                    if not (result.get("is_spam") or result.get("red_group") or result.get("malicious_url_extracted")):
-                                        continue
+                                # [수정] 베어 도메인은 HAM(KISA 원본)이든 SPAM이든 모두 보존
+                                # 베어 도메인 드롭은 batch_flow.py의 drop_url 플래그로만 제어됨
+                                # if (not parsed_u.path or parsed_u.path == "/") and not parsed_u.query:
+                                #     if not (result.get("is_spam") or result.get("red_group") or result.get("malicious_url_extracted")):
+                                #         continue  # ← 삭제: HAM 베어도메인도 잘못 드롭하던 로직
                                 # 본문 추출 유도를 위해 파손된 단축 URL로 판단된 형태(괄호, 별표 등 포함) 배제 
                                 # (한글은 합법적인 커스텀 URL 슬러그일 수 있으므로 허용)
                                 if bool(re.search(r'[\[\]\*\(\)\{\}\<\>]', parsed_u.path)):
@@ -1696,8 +1696,9 @@ class ExcelHandler:
                     try:
                         parsed_u = urllib.parse.urlparse(test_u)
                         if (not parsed_u.path or parsed_u.path == "/") and not parsed_u.query:
-                            if not (result.get("is_spam") or result.get("red_group") or result.get("malicious_url_extracted")):
-                                continue
+                            # [수정] 베어 도메인은 HAM(KISA 원본)이든 SPAM이든 모두 보존
+                            # 베어 도메인 드롭은 batch_flow.py의 drop_url 플래그로만 제어됨
+                            pass  # continue 제거 → 모든 베어 도메인 보존
                         import re
                         if bool(re.search(r'[\[\]\*\(\)\{\}\<\>]', parsed_u.path)):
                             continue
