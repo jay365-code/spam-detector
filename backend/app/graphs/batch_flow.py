@@ -600,6 +600,17 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              is_broken = u_details.get("is_broken_short_url") is True
              is_fake_ip = False
              
+             # [KISA 파라미터 선제적 가짜 IP 검사]
+             pre_parsed = state.get("pre_parsed_url")
+             if pre_parsed:
+                 import re, urllib.parse
+                 parsed_pre = urllib.parse.urlparse(pre_parsed if "://" in pre_parsed else "http://" + pre_parsed)
+                 pre_domain = parsed_pre.netloc or parsed_pre.path
+                 if pre_domain.startswith('//'): pre_domain = pre_domain[2:]
+                 pre_domain = pre_domain.split('/')[0].split(':')[0]
+                 if bool(re.match(r'^\d{1,3}(\.\d{1,3}){3}$', pre_domain)):
+                     is_fake_ip = True
+             
              # [URL Agent SPAM 확정 여부]
              is_url_spam_confirmed = u_res.get("is_spam") is True and not u_res.get("is_confirmed_safe", False)
              
@@ -682,31 +693,29 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                          if pre_parsed_domain == ru_domain or pre_parsed_domain == ru_domain_decoded:
                              has_exact_match = True
                              break
-                     # KISA URL이 진짜 URL 도메인과 다르고 파라미터도 없는 단순 파손 찌꺼기인 경우
+                     # KISA URL이 진짜 URL 도메인과 다르고 파손된 찌꺼기인 경우
                      if not has_exact_match:
                          p_parsed = urllib.parse.urlparse(pre_parsed if "://" in pre_parsed else "http://" + pre_parsed)
-                         if (not p_parsed.path or p_parsed.path == "/") and not p_parsed.query:
+                         is_corrupt = bool(re.search(r'[\[\]\*\(\)\{\}\<\>]', p_parsed.path))
+                         is_bare = (not p_parsed.path or p_parsed.path == "/") and not p_parsed.query
+                         if is_bare or is_corrupt:
                              is_mismatched_extraction = True
 
              # [단독 도메인 오탐 방어 로직 제거]
              # 앞선 루프에서 모든 단독 도메인을 일괄 삭제하므로 이중 검증 불필요
              if is_injection or is_fake_ip or is_mismatched_extraction:
-                 if is_mismatched_extraction:
-                     # 찌꺼기 URL 대신 AI 복원 URL 우선 할당 (Drop하지 않음)
-                     final['drop_url'] = False
-                     final['extracted_url_override'] = surviving_urls
-                     final['reason'] = f"[URL 찌꺼기 덮어쓰기] KISA 파손 URL 대비 진짜 URL({surviving_urls}) 도출 성공. 블랙리스트 보존을 우선함. | {final.get('reason', '')}"
-                 else:
-                     final['drop_url'] = True
-                     if is_fake_ip:
-                         final['drop_url_reason'] = 'empty_or_fake_ip'
-                     elif is_injection:
-                         final['drop_url_reason'] = 'safe_injection'
-                     
-                     # Drop the URL explicitly
-                     if 'details' in u_res:
-                         u_res['details']['extracted_url'] = None
-                     valid_extracted_urls.clear()
+                 final['drop_url'] = True
+                 if is_fake_ip:
+                     final['drop_url_reason'] = 'empty_or_fake_ip'
+                 elif is_injection:
+                     final['drop_url_reason'] = 'safe_injection'
+                 elif is_mismatched_extraction:
+                     final['drop_url_reason'] = 'mismatched_extraction'
+                 
+                 # Drop the URL explicitly
+                 if 'details' in u_res:
+                     u_res['details']['extracted_url'] = None
+                 valid_extracted_urls.clear()
 
              # 3. User Requested: If unextractable AND no URL was found, drop completely from Excel
              # If is_broken is True, treat it as no URL.
@@ -747,8 +756,8 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                             break
                             
                     if all_are_bare_or_corrupt:
-                        # 명백히 스팸으로 판정된 증거라면 예외적으로 보존
-                        if final.get("red_group") or final.get("is_spam") or final.get("malicious_url_extracted"):
+                        # 명백히 스팸으로 판정된 증거이거나 데드링크라면 예외적으로 보존
+                        if final.get("red_group") or final.get("is_spam") or final.get("malicious_url_extracted") or is_dead_domain:
                             pass 
                         else:
                             final["drop_url"] = True
