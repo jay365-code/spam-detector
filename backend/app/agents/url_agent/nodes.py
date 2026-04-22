@@ -1199,8 +1199,8 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                     is_rotated = key_manager.rotate_key(provider, failed_key=api_key)
                     
                     if not is_rotated:
-                            logger.error(f"[URL Agent] URL Text Analysis Global exhaustion reached for {provider}.")
-                            raise Exception(f"{provider} text quota globally exhausted. No retry.") from e
+                        logger.error(f"[URL Agent] URL Text Analysis Global exhaustion reached for {provider}.")
+                        raise Exception(f"{provider} text quota globally exhausted. No retry.") from e
                     
                     # 쿨다운 대기 없이 즉시 재시도/포기 진행
                     pass

@@ -7,6 +7,7 @@ import { RagManager } from './components/RagManager';
 import { SettingsModal } from './components/SettingsModal';
 import { DatabaseManagerModal } from './components/DatabaseManagerModal';
 import SignatureRefinerModal from './components/SignatureRefinerModal';
+import { ValidationModal } from './components/ValidationModal';
 
 // 백엔드 constants.py 및 spam_guide_20260326.md 기준 (0-3 코드 체계)
 const CLASSIFICATION_MAP: Record<string, string> = {
@@ -125,6 +126,7 @@ function App() {
   const [isRefinerModalOpen, setIsRefinerModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isDbManagerOpen, setIsDbManagerOpen] = useState(false);
+  const [isValidationModalOpen, setIsValidationModalOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false); // [New] Chat Panel State
   const [chatWidth, setChatWidth] = useState(450); // [New] Resizable Chat Width
   const [isChatDragging, setIsChatDragging] = useState(false); // [New] Chat Resize State
@@ -1362,6 +1364,13 @@ function App() {
               >
                 <Settings className="w-4 h-4 text-purple-400" />
               </button>
+              <button
+                onClick={() => setIsValidationModalOpen(true)}
+                className="flex items-center justify-center p-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors text-amber-400 ml-1"
+                title="작업 퀄리티 검증"
+              >
+                <CheckCircle className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
@@ -2492,6 +2501,13 @@ function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {isValidationModalOpen && (
+        <ValidationModal
+          logs={logs}
+          onClose={() => setIsValidationModalOpen(false)}
+        />
       )}
     </div>
   );

@@ -2044,8 +2044,13 @@ async def upload_file(client_id: str = Form(...), files: List[UploadFile] = File
         if total_rows >= 500:
             provider = os.getenv("LLM_PROVIDER", "OPENAI").upper()
             from app.core.llm_manager import key_manager
-            logger.info(f"[Batch Complete] Processed {total_rows} items. Proactively rotating {provider} key to prevent RPD exhaustion.")
-            key_manager.rotate_key(provider)
+            
+            keys_count = len(key_manager._keys_pool.get(provider, []))
+            if keys_count > 1:
+                logger.info(f"[Batch Complete] Processed {total_rows} items. Proactively rotating {provider} key to prevent RPD exhaustion.")
+                key_manager.rotate_key(provider)
+            else:
+                logger.info(f"[Batch Complete] Processed {total_rows} items. Single key config, skipping proactive rotation.")
             
         # File ID reference can be anything, picking final_filename base for UI
         return {
@@ -2126,6 +2131,35 @@ def api_extract_url(req: TextRequest):
         if not is_short and url:
             result.append(url)
     return {"urls": result}
+
+from typing import Optional
+
+@app.post("/api/utils/validate-report")
+async def api_validate_report(
+    logs_file: UploadFile = File(...),
+    excel_file: Optional[UploadFile] = File(None)
+):
+    import json
+    try:
+        from app.utils.result_validator import ResultValidator
+        logs_data = json.loads(await logs_file.read())
+        excel_bytes = await excel_file.read() if excel_file else None
+        excel_filename = excel_file.filename if excel_file else None
+        
+        validator = ResultValidator(logs_data, excel_bytes, excel_filename)
+        report_md, output_filename = validator.validate()
+        
+        download_url = f"/download/{output_filename}" if output_filename else None
+        
+        return {
+            "success": True, 
+            "report_md": report_md, 
+            "download_url": download_url
+        }
+    except Exception as e:
+        logger.error(f"Validate Report Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/ibse/extract")
 async def api_extract_ibse(req: TextRequest):
