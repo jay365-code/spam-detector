@@ -254,7 +254,6 @@ class ExcelHandler:
             # 기존: "[수동 Red Group 지정]" in reason_val  → AI 자동 Red Group 항목 누락 버그
             # 수정: Red Group 컬럼이 'O'이면 수동/자동 구분 없이 모두 Red Group으로 인식
             is_red_group = safe_get(row, red_col_idx).upper() == "O" if red_col_idx else False
-            is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in reason_val
             is_type_b    = semantic_val.startswith("Type_B") or "[FP Sentinel Override]" in reason_val
             is_type_a    = semantic_val.startswith("Type_A")
             is_spam      = (gubun_val.lower() == "o")
@@ -264,7 +263,7 @@ class ExcelHandler:
             # 1: Red Group 및 텍스트 HAM + 악성 URL 분리 (핑크색 - 스팸 하단)
             # 2: HAM (투명)
             # 3: 기타
-            if is_separated or is_red_group:
+            if is_red_group:
                 return 1
             elif is_type_a or is_type_b or is_spam:
                 return 0
@@ -422,16 +421,12 @@ class ExcelHandler:
                 is_type_b = bool(semantic_val and str(semantic_val).startswith("Type_B")) or bool(
                     reason_val and "[FP Sentinel Override]" in str(reason_val)
                 )
-                is_separated = False
-                if reason_val and "[텍스트 HAM + 악성 URL 분리 감지" in str(reason_val):
-                    is_separated = True
-                    
                 red_col = get_col_idx("Red Group")
                 is_red_group = (ws.cell(row=row_idx, column=red_col).value == "O") if red_col else False
 
                 cell = ws.cell(row=row_idx, column=msg_col)
                 vcenter_align = Alignment(vertical='center', wrap_text=False)
-                if is_separated or is_red_group: # TEXT-HAM + URL-SPAM or Red Group
+                if is_red_group: # TEXT-HAM + URL-SPAM or Red Group
                     # 사용자 요청: 텍스트 HAM + 악성 URL 분리 감지 오버라이딩은 기존 Type B 처리 방식(FFCCCC) 유지
                     type_b_fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
                     cell.fill = type_b_fill
@@ -753,7 +748,7 @@ class ExcelHandler:
                     is_type_b = str(semantic_val).startswith("Type_B")
                     
                     is_red_group = bool(result.get("red_group"))
-                    if is_separated or is_red_group:
+                    if is_red_group:
                         # 오버라이딩 된 경우 기존 Type B 처리 방식 (구분 공란)
                         gubun_val = ""
                         raw_val = str(result.get("classification_code", ""))
@@ -843,7 +838,6 @@ class ExcelHandler:
                                 url_val_str = ", ".join(v_urls)
                                 ws.cell(row=row_idx, column=get_col_idx("URL", len(headers) + 1), value=self._sanitize_cell_value(url_val_str) if url_val_str else "")
                                 
-                            is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in str(result.get("reason", ""))
                                 
                             urls = [url_val_str] if url_val_str else []
                         
@@ -1167,10 +1161,9 @@ class ExcelHandler:
                     is_type_b = str(semantic_class).startswith("Type_B")
                     
                     reason_val = result.get("reason", "")
-                    is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in str(reason_val)
                     
                     is_red_group = bool(result.get("red_group"))
-                    if is_separated or is_red_group:
+                    if is_red_group:
                         # 텍스트 HAM + 악성 URL 분리 감지 이거나 Red Group 인 경우
                         # 사용자 요청: 구분 열은 "빈칸"으로 유지하되 통계 개수에는 합산
                         gubun_val = ""
@@ -1233,7 +1226,6 @@ class ExcelHandler:
                             v_urls2.append(u_cl2)
                         url_val = ", ".join(v_urls2)
                         url_len = self._lenb(url_val)
-                    is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in str(reason_val)
                         
                     # [최종 확인] 엑셀에 기록될 최종 url_val이 Path나 Query 없는 단독 도메인이라면 무조건 비우기 (User Request)
                     if url_val:
@@ -1670,7 +1662,6 @@ class ExcelHandler:
             reason_val = result.get("reason", "")
             
             is_type_b = str(semantic_class).startswith("Type_B")
-            is_separated = "[텍스트 HAM + 악성 URL 분리 감지" in str(reason_val)
             
             if result.get("drop_url"):
                 url_val = ""
@@ -1716,7 +1707,7 @@ class ExcelHandler:
                 
                 url_val = ", ".join(filtered_urls)
                 
-            if is_separated or is_red_group:
+            if is_red_group:
                 # 사용자 요청: 열은 비우고 카운트는 올림
                 gubun_val = ""
                 stats["spam_count"] += 1
