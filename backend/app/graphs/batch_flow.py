@@ -233,11 +233,17 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 is_safe = res.get("is_confirmed_safe", False)
                 final_url = res.get("details", {}).get("final_url", lock_url)
                 
-                if is_safe:
+                is_mismatched_site = res.get("is_mismatched", False)
+                
+                if is_safe and not is_mismatched_site:
                     # 대성공: 영구 DB 등록 및 런타임 결과 셰어
                     UrlWhitelistManager.add_safe_url(final_url)
                     BATCH_URL_CACHE[clean_lock_url] = res
                     if cb: await cb("🎉 [HAM Override] 첨병 통과 성공! 정답을 DB와 런타임 캐시에 영구 브로드캐스트합니다.")
+                elif is_safe and is_mismatched_site:
+                    # 위장 사이트: 런타임 캐시에만 등록하고 영구 DB 등록은 차단 (Fix 2)
+                    BATCH_URL_CACHE[clean_lock_url] = res
+                    if cb: await cb("⚠️ [Whitelist Guard] 위장 사이트 감지! 현재 배치에서만 캐시를 공유하고 DB 등록은 차단합니다.")
                 else:
                     # 실패(SPAM) 혹은 봇 튕김(Error): Strike 증가 후 다음 타자(2번, 3번)에게 기회 양보
                     URL_STRIKES[clean_lock_url] = URL_STRIKES.get(clean_lock_url, 0) + 1
@@ -620,6 +626,20 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 import re, urllib.parse
                 # 콤마로 여러 개가 연결되어 올 수 있으므로 분리해서 검사
                 valid_url_parts = []
+                
+                # KISA 원본 URL의 도메인을 미리 추출하여 면제 판단에 사용
+                # KISA 원본과 동일한 도메인은 AI 할루시네이션이 아닌 정당한 URL이므로 베어 도메인 필터 면제
+                _pre_url_raw = state.get("pre_parsed_url") or ""
+                _pre_parsed_domain = ""
+                if _pre_url_raw:
+                    try:
+                        _pp = urllib.parse.urlparse(_pre_url_raw if "://" in _pre_url_raw else "http://" + _pre_url_raw)
+                        _pre_parsed_domain = (_pp.netloc or _pp.path).split('/')[0].split(':')[0].lower()
+                        if _pre_parsed_domain.startswith('www.'):
+                            _pre_parsed_domain = _pre_parsed_domain[4:]
+                    except Exception:
+                        _pre_parsed_domain = ""
+                
                 for url_part in extracted_for_check.split(","):
                     url_part = url_part.strip()
                     if not url_part: continue
@@ -630,6 +650,9 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                     if domain.startswith('//'):
                         domain = domain[2:]
                     domain = domain.split('/')[0].split(':')[0]
+                    domain_clean = domain.lower()
+                    if domain_clean.startswith('www.'):
+                        domain_clean = domain_clean[4:]
                     
                     is_ip_format = bool(re.match(r'^\d{1,3}(\.\d{1,3}){3}$', domain))
                     if is_ip_format:
@@ -637,10 +660,15 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                         continue
                         
                     # [단독 도메인 (Bare Domain) 배제]
-                    # 단독 도메인만 있는 URL은 오탐 방지를 위해 배제하되,
-                    # URL Agent가 직접 접속하여 SPAM으로 확정한 경우에는 예외적으로 보존함
+                    # 단독 도메인만 있는 URL은 오탐 방지(AI 할루시네이션 방어)를 위해 배제하되,
+                    # 아래 세 가지 경우에는 예외적으로 보존함:
+                    #   1) URL Agent가 SPAM으로 확정한 경우 (블랙리스트 보존)
+                    #   2) URL Agent가 직접 방문하여 안전함을 확인(is_confirmed_safe)한 경우
+                    #   3) KISA 원본 입력 URL과 동일한 도메인인 경우 (할루시네이션이 아닌 정당한 KISA 원본)
+                    is_url_verified = is_url_spam_confirmed or u_res.get("is_confirmed_safe", False)
+                    is_kisa_original = bool(_pre_parsed_domain and domain_clean == _pre_parsed_domain)
                     if (not parsed.path or parsed.path == "/") and not parsed.query:
-                        if not is_url_spam_confirmed:
+                        if not is_url_verified and not is_kisa_original:
                             continue
                     
                     valid_url_parts.append(url_part)
@@ -649,7 +677,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 if len(valid_url_parts) > 0:
                     u_details["extracted_url"] = ", ".join(valid_url_parts)
                 else:
-                    # 모든 파편이 다 가짜 IP였거나 배제된 경우
+                    # 모든 파편이 다 가짜 IP였거나 배제된 경우 (KISA 원본이 아닌 할루시네이션만 존재)
                     is_fake_ip = True
              
              # User requested fix: Drop URL if Safe URL Injection is detected.
@@ -698,7 +726,10 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                          p_parsed = urllib.parse.urlparse(pre_parsed if "://" in pre_parsed else "http://" + pre_parsed)
                          is_corrupt = bool(re.search(r'[\[\]\*\(\)\{\}\<\>]', p_parsed.path))
                          is_bare = (not p_parsed.path or p_parsed.path == "/") and not p_parsed.query
-                         if is_bare or is_corrupt:
+                         # [수정] HAM 메시지에서 KISA 원본 자체가 베어 도메인인 경우는
+                         # '파손 찌꺼기'가 아니라 정당한 원본 URL이므로 mismatched_extraction 판정 금지
+                         is_ham_result = not final.get("is_spam")
+                         if (is_bare or is_corrupt) and not (is_bare and is_ham_result):
                              is_mismatched_extraction = True
 
              # [단독 도메인 오탐 방어 로직 제거]
@@ -756,12 +787,14 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                             break
                             
                     if all_are_bare_or_corrupt:
-                        # 명백히 스팸으로 판정된 증거이거나 데드링크라면 예외적으로 보존
-                        if final.get("red_group") or final.get("is_spam") or final.get("malicious_url_extracted") or is_dead_domain:
-                            pass 
-                        else:
-                            final["drop_url"] = True
-                            final["drop_url_reason"] = "bare_or_corrupt_domain_sync"
+                        # [수정] 최종 판정이 SPAM인 경우에만 베어 도메인 드롭 적용
+                        # HAM 메시지는 KISA 원본 URL이 처음부터 베어 도메인 형태일 수 있으므로 드롭하지 않고 보존
+                        if final.get("is_spam"):
+                            # SPAM이더라도 Red Group / 악성 URL 분리 감지 / 데드링크는 보존
+                            if not final.get("red_group") and not final.get("malicious_url_extracted") and not is_dead_domain:
+                                final["drop_url"] = True
+                                final["drop_url_reason"] = "bare_or_corrupt_domain_sync"
+                        # HAM이면 아무것도 하지 않음 → KISA 원본 베어 도메인 URL 그대로 보존
                 except Exception:
                     pass
                  
