@@ -146,7 +146,7 @@ class ExcelHandler:
             "youtu.be", "yun.kr", 
             "zrr.kr",
             # 새롭게 식별된 단축 URL 추가
-            "tnia.cc", "2.lnkme.net", "lnkme.net", "alie.kr", "bz.kr"
+            "tnia.cc", "2.lnkme.net", "lnkme.net", "alie.kr", "bz.kr", "booly.kr", "qaa.kr"
         }
         
         # 외부 클론잡 동작용 txt 파일이 존재하면 정적으로 병합 구성

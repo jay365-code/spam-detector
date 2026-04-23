@@ -132,7 +132,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 shortener_domains = [
                    "bit.ly", "goo.gl", "buly.kr", "vo.la", "han.gl", 
                    "ko.gl", "tuney.kr", "sbz.kr", "me2.do", "vvd.bz", 
-                   "url.kr", "m.site.naver.com", "vdo.kr"
+                   "url.kr", "m.site.naver.com", "vdo.kr", "booly.kr", "qaa.kr"
                 ]
                 
                 is_short = any(d in domain for d in shortener_domains)

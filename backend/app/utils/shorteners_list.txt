@@ -1502,3 +1502,5 @@ litt.ly
 grabify.link
 postimg.cc
 u.to
+booly.kr
+qaa.kr

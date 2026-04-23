@@ -2120,7 +2120,8 @@ def api_extract_url(req: TextRequest):
         "naver.me", "ouo.io", "ow.ly", "qrco.de", "rb.gy", "rebrand.ly", "reurl.kr", 
         "sbz.kr", "short.io", "shorter.me", "shorturl.at", "shrl.me", "shrtco.de", 
         "t.co", "t.ly", "t.me", "t2m.kr", "tiny.cc", "tinyurl.com", "tne.kr", "tny.im", "tr.ee", "tuney.kr",
-        "url.kr", "uto.kr", "v.gd", "vo.la", "vvd.bz", "vvd.im", "wp.me", "youtu.be", "yun.kr", "zrr.kr"
+        "url.kr", "uto.kr", "v.gd", "vo.la", "vvd.bz", "vvd.im", "wp.me", "youtu.be", "yun.kr", "zrr.kr",
+        "booly.kr", "qaa.kr"
     }
     result = []
     for url in urls:

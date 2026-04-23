@@ -731,7 +731,7 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
             
     # 2-4. Short URL 특수 처리 (Garbage 튜닝)
     # bit.ly/abcd미납금액결제 -> bit.ly/abcd 만 뽑히도록 쓰레기값 정리
-    shorteners = ['bit.ly', 'me2.do', 'vo.la', 'han.gl', 'url.kr', 'sbz.kr', 'cutt.ly', 'tinyurl.com', 'naver.me', 'kko.to', 't.ly', 't.co', 'g.co']
+    shorteners = ['bit.ly', 'me2.do', 'vo.la', 'han.gl', 'url.kr', 'sbz.kr', 'cutt.ly', 'tinyurl.com', 'naver.me', 'kko.to', 't.ly', 't.co', 'g.co', 'booly.kr', 'qaa.kr']
     cleaned_urls = []
     for url in urls:
         if any(s in url.lower() for s in shorteners):
@@ -759,7 +759,7 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
     
     # [Intelligent Sorting] 일반 도메인(쇼핑몰, 기업사이트 등)을 먼저 검사하기 위해 
     # SNS/UGC/단축 도메인은 리스트 뒤쪽으로 보냄.
-    ugc_and_shorteners = UGC_DOMAINS + ['bit.ly', 'me2.do', 'vo.la', 'han.gl', 'url.kr', 'sbz.kr', 'cutt.ly', 'tinyurl.com', 'naver.me', 'kko.to', 't.ly', 't.co', 'g.co']
+    ugc_and_shorteners = UGC_DOMAINS + ['bit.ly', 'me2.do', 'vo.la', 'han.gl', 'url.kr', 'sbz.kr', 'cutt.ly', 'tinyurl.com', 'naver.me', 'kko.to', 't.ly', 't.co', 'g.co', 'booly.kr', 'qaa.kr']
     def sort_key(u):
         try:
             domain = u.split('/')[2].lower() if '://' in u else u.split('/')[0].lower()
@@ -975,7 +975,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
             # 단축 URL 식별 로직 강화:
             # 1. path가 짧고(0보다 크고 4 이하) 쿼리/플래그먼트가 없는 경우
             # 2. 혹은 도메인 자체가 알려진 단축 도메인 계열인 경우
-            shorteners = ['bit.ly', 'me2.do', 'vo.la', 'han.gl', 'url.kr', 'sbz.kr', 'cutt.ly', 'tinyurl.com', 'naver.me', 'kko.to', 't.ly', 't.co', 'g.co']
+            shorteners = ['bit.ly', 'me2.do', 'vo.la', 'han.gl', 'url.kr', 'sbz.kr', 'cutt.ly', 'tinyurl.com', 'naver.me', 'kko.to', 't.ly', 't.co', 'g.co', 'booly.kr', 'qaa.kr']
             is_known_shortener = any(domain.endswith(s) for s in shorteners)
             
             if (0 < len(path) <= 4 and not parsed.query and not parsed.fragment) or is_known_shortener:
