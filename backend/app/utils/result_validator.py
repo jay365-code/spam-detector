@@ -126,6 +126,7 @@ class ResultValidator:
 
             # --- 시그니처 품질 검증 ---
             is_spam = res.get("is_spam", False)
+            is_red_group = bool(res.get("red_group", False))  # Red Group 여부 (엑셀 블록 밖에서도 사용)
             ibse_cat = str(res.get("ibse_category") or "")
             cls_code = str(res.get("classification_code") or "")
             sig = str(res.get("ibse_signature") or "")
@@ -155,16 +156,40 @@ class ResultValidator:
                 "판정 교차검증": "정상",
                 "시그니처 교차검증": "정상",
                 "URL 교차검증": "정상",
+                "URL 규격 검사": "정상",
                 "시그니처 규격 검사": "정상",
                 "클러스터 일관성": "정상",
-                "_has_error": False
+                "_has_error": False,
+                "_is_warning": False
             }
             
             if is_spam:
+                # URL 차단 불가 스팸(URL 없음 또는 Drop됨)인데 시그니처도 없으면 오류
+                # → URL 차단 수단이 없으므로 시그니처가 유일한 차단 수단 (url_drop_policy.md 참고)
+                url_is_unavailable = (not pre_parsed_url) or is_dropped
+                if url_is_unavailable and "unextractable" not in ibse_cat.lower() and not sig:
+                    result_row["시그니처 규격 검사"] = "시그니처 누락 (URL 차단 불가 스팸)"
+                    result_row["_has_error"] = True
+
+                # 시그니처가 있을 경우 바이트 길이 규격 검사 (CP949 기준)
+                # 허용 범위: 9~20 bytes (단문) 또는 39~40 bytes (장문)
                 if "unextractable" not in ibse_cat.lower() and sig:
                     if not ((9 <= sig_len <= 20) or (39 <= sig_len <= 40)):
                         result_row["시그니처 규격 검사"] = f"길이 위반 ({sig_len} bytes)"
                         result_row["_has_error"] = True
+
+            # --- URL 규격 검사 (항목 4, 5) ---
+            # 블록리스트에 등록될 URL(SPAM/Red Group + drop 안 된 경우)에 대해서만 검사
+            if (is_spam or is_red_group) and pre_parsed_url and not is_dropped:
+                url_cp949_len = self._get_cp949_len(pre_parsed_url)
+                if url_cp949_len > 40:
+                    # 항목 4: URL CP949 바이트 길이 40 초과 (차단 시스템 등록 불가)
+                    result_row["URL 규격 검사"] = f"길이 초과 ({url_cp949_len} bytes)"
+                    result_row["_has_error"] = True
+                elif re.match(r'^\d{1,3}(\.\d{1,3}){3}$', pre_parsed_url.strip()):
+                    # 항목 5: 순수 IPv4 주소 형태 URL (오탐 우려, 특수 룰 적용 필요)
+                    result_row["URL 규격 검사"] = f"IP 주소 형태 URL ({pre_parsed_url.strip()})"
+                    result_row["_has_error"] = True
 
             # --- 엑셀 교차 비교 (Excel Uploaded) ---
             if self.excel_bytes and norm_msg in excel_map:
@@ -185,7 +210,6 @@ class ResultValidator:
                 excel_gubun = str(excel_row.get("구분") or "").strip().upper()
                 if excel_gubun == "nan": excel_gubun = ""
                 
-                is_red_group = bool(res.get("red_group", False))
                 # 엑셀 핸들러는 Red Group의 경우 구분을 빈칸으로 둠
                 if is_red_group:
                     expected_excel_is_spam = False
@@ -210,6 +234,26 @@ class ResultValidator:
                         result_row["시그니처 교차검증"] = f"불일치 (JSON과 엑셀 값이 다름)"
                         result_row["_has_error"] = True
                         mismatch_count += 1
+
+                # D. Red Group 컬럼 교차 검증
+                # excel_handler.py: red_group=True → 엑셀 "Red Group" 컬럼 = "O"
+                excel_red_col = str(excel_row.get("Red Group") or "").strip().upper()
+                if excel_red_col == "nan": excel_red_col = ""
+                excel_is_red = (excel_red_col == "O")
+                if is_red_group != excel_is_red:
+                    result_row["판정 교차검증"] = (
+                        f"불일치 (Red Group 컬럼: JSON={'O' if is_red_group else ''}, Excel='{excel_red_col}')"
+                    )
+                    result_row["_has_error"] = True
+                    mismatch_count += 1
+
+                # E. Red Group + drop_url 모순 검사
+                # Red Group은 URL 보존 특권 보유 (Red Group 처리 로직.md Section 6 참고)
+                # red_group=True인데 drop_url=True이면 파이프라인 이상
+                if is_red_group and is_dropped:
+                    result_row["URL 교차검증"] = "모순 (Red Group인데 drop_url=True)"
+                    result_row["_has_error"] = True
+                    mismatch_count += 1
 
             msg_results[norm_msg] = result_row
 
@@ -277,7 +321,8 @@ class ResultValidator:
                         nmsg = item["norm_msg"]
                         if nmsg in msg_results:
                             msg_results[nmsg]["클러스터 일관성"] = err_str
-                            msg_results[nmsg]["_has_error"] = True
+                            # 클러스터 일관성 문제는 오류가 아닌 경고로 분류
+                            msg_results[nmsg]["_is_warning"] = True
 
         # 클러스터 단위 정렬: 스팸 판정이 많은 클러스터부터 내림차순 정렬
         clusters.sort(key=lambda c: sum(1 for item in c if item["is_spam"]), reverse=True)
@@ -287,7 +332,8 @@ class ResultValidator:
         for cluster in clusters:
             # 클러스터 내에서는 에러가 있는 항목이 위로 가도록 정렬
             cluster_rows = [msg_results[item["norm_msg"]] for item in cluster if item["norm_msg"] in msg_results]
-            cluster_rows.sort(key=lambda x: not x.get("_has_error", False))
+            # 오류 → 경고 → 정상 순서로 정렬
+            cluster_rows.sort(key=lambda x: (not x.get("_has_error", False), not x.get("_is_warning", False)))
             detail_rows.extend(cluster_rows)
 
         # 5. Save Details to Excel
@@ -315,7 +361,7 @@ class ResultValidator:
             
             df_out = pd.DataFrame(detail_rows)
             # Reorder columns
-            cols = ["엑셀 행 번호", "원문 메시지", "스팸여부", "분류코드", "Input URL", "Excel URL", "JSON 시그니처", "Excel 시그니처", "Size(Byte)", "판정 교차검증", "시그니처 교차검증", "URL 교차검증", "시그니처 규격 검사", "클러스터 일관성"]
+            cols = ["엑셀 행 번호", "원문 메시지", "스팸여부", "분류코드", "Input URL", "Excel URL", "JSON 시그니처", "Excel 시그니처", "Size(Byte)", "판정 교차검증", "시그니처 교차검증", "URL 교차검증", "URL 규격 검사", "시그니처 규격 검사", "클러스터 일관성"]
             df_out = df_out[[c for c in cols if c in df_out.columns]]
             
             with pd.ExcelWriter(output_path, engine='xlsxwriter', engine_kwargs={'options': {'strings_to_urls': False}}) as writer:
@@ -326,7 +372,8 @@ class ResultValidator:
                 # Formats
                 center_fmt = workbook.add_format({'align': 'center', 'valign': 'vcenter'})
                 num_fmt = workbook.add_format({'align': 'center', 'valign': 'vcenter', 'num_format': '#,##0'})
-                error_fmt = workbook.add_format({'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
+                error_fmt = workbook.add_format({'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFC7CE', 'font_color': '#9C0006'})   # 오류: 빨강
+                warning_fmt = workbook.add_format({'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFE0B2', 'font_color': '#E65100'}) # 경고: 주황
                 header_fmt = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#D9D9D9'})
                 
                 # 텍스트 길이에 기반한 동적 컬럼 너비 계산 (한글=2, 영문=1)
@@ -364,21 +411,27 @@ class ResultValidator:
                 for col_num, value in enumerate(df_out.columns.values):
                     worksheet.write_string(0, col_num, str(value), header_fmt)
                 
-                # 에러/경고가 있는 특정 셀에만 빨간 배경색 적용 (조건부 서식 사용)
+                # 오류 컬럼: 빨간색 / 경고 컬럼: 주황색 조건부 서식 분리 적용
+                ERROR_COLS = ["판정 교차검증", "시그니처 교차검증", "URL 교차검증", "URL 규격 검사", "시그니처 규격 검사"]
+                WARNING_COLS = ["클러스터 일관성"]
                 for col_num, col_name in enumerate(df_out.columns):
-                    if col_name in ["판정 교차검증", "시그니처 교차검증", "URL 교차검증", "시그니처 규격 검사", "클러스터 일관성"]:
+                    if col_name in ERROR_COLS:
                         worksheet.conditional_format(1, col_num, len(detail_rows), col_num, {
-                            'type': 'cell',
-                            'criteria': 'not equal to',
-                            'value': '"정상"',
-                            'format': error_fmt
+                            'type': 'cell', 'criteria': 'not equal to',
+                            'value': '"정상"', 'format': error_fmt
+                        })
+                    elif col_name in WARNING_COLS:
+                        worksheet.conditional_format(1, col_num, len(detail_rows), col_num, {
+                            'type': 'cell', 'criteria': 'not equal to',
+                            'value': '"정상"', 'format': warning_fmt
                         })
 
         # Build summary text
         error_count = len([r for r in detail_rows if r.get("_has_error")])
+        warning_count = len([r for r in detail_rows if r.get("_is_warning")])
         summary_lines = [
             f"✅ 검증 완료 (총 {len(self.logs)}건 중 엑셀 1:1 매핑 확인: {total_checked}건)",
-            f"- 엑셀 판정/데이터 불일치 (불량): {mismatch_count}건",
+            f"- 교차 검증 오류: {mismatch_count}건",
             "",
             "[기타 내부 검증 결과]",
             f"- 시그니처 누락: {len([r for r in msg_results.values() if r.get('JSON 시그니처') == ''])}건"
@@ -386,18 +439,6 @@ class ResultValidator:
 
         if detail_rows:
             summary_lines.append("")
-            summary_lines.append(f"👉 전체 결과 {len(detail_rows)}건 (오류/경고 {error_count}건)이 엑셀 리포트로 생성되었습니다.")
+            summary_lines.append(f"👉 전체 결과 {len(detail_rows)}건 (오류 {error_count}건 / 경고 {warning_count}건)이 엑셀 리포트로 생성되었습니다.")
 
         return "\n".join(summary_lines), output_filename
-    def _normalize_text(self, text: Any) -> str:
-        text_str = str(text) if text is not None else ""
-        return re.sub(r'\s+', '', text_str)
-
-    def _get_cp949_len(self, text: str) -> int:
-        if not text:
-            return 0
-        try:
-            return len(str(text).encode('cp949'))
-        except UnicodeEncodeError:
-            return len(str(text).encode('utf-8'))
-
