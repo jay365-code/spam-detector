@@ -1,6 +1,11 @@
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+# [호환성] 운영 서버(리눅스)에서는 pysqlite3로 sqlite3를 대체하여 ChromaDB 호환성 확보
+# 개발 환경(macOS/Windows)에서는 기본 sqlite3가 이미 요구 버전을 충족하므로 스킵
+try:
+    __import__('pysqlite3')
+    import sys
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except ImportError:
+    pass
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Form, BackgroundTasks, Body
 from fastapi.responses import FileResponse, HTMLResponse
