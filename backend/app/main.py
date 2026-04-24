@@ -1,6 +1,11 @@
+__import__('pysqlite3')
+import sys
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Form, BackgroundTasks, Body
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import shutil
 import os
@@ -2257,6 +2262,18 @@ async def download_file(filename: str, suggested_name: str = None):
         }
         return FileResponse(file_path, filename=None, headers=headers)
     raise HTTPException(status_code=404, detail="File not found")
+
+
+# --- Frontend Static File Serving ---
+_FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "../../frontend/dist")
+
+if os.path.isdir(_FRONTEND_DIST):
+    app.mount("/assets", StaticFiles(directory=os.path.join(_FRONTEND_DIST, "assets")), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        index = os.path.join(_FRONTEND_DIST, "index.html")
+        return FileResponse(index)
 
 
 if __name__ == "__main__":

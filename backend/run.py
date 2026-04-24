@@ -15,4 +15,4 @@ if __name__ == "__main__":
     print("Starting Uvicorn with WindowsProactorEventLoopPolicy...")
     # NOTE: reload=False is required on Windows with Playwright to ensure the EventLoopPolicy 
     # is correctly inherited/used. Hot reloading spawns subprocesses that reset the policy.
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=False)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)

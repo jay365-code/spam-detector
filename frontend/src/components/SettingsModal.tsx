@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, RefreshCw, Settings, ShieldAlert, CheckCircle2, Zap } from 'lucide-react';
+import { API_BASE } from '../config';
+
 
 interface ConfigItem {
     key: string;
@@ -18,8 +20,6 @@ interface SettingsModalProps {
     onClose: () => void;
 }
 
-// [Fix] Remote Server Compatibility: Use window.location.hostname for API
-const API_BASE = `http://${window.location.hostname}:8000`;
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     const [metadata, setMetadata] = useState<ConfigItem[]>([]);

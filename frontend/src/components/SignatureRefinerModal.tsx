@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Loader2, CheckCircle2, Edit3, ShieldAlert } from 'lucide-react';
+import { API_BASE } from '../config';
 
 interface SignatureRefinerModalProps {
   isOpen: boolean;
@@ -73,7 +74,7 @@ export default function SignatureRefinerModal({ isOpen, onClose, reportFilename,
     setLoading(true);
     setErrorMsg("");
     try {
-      const res = await fetch(`http://localhost:8000/api/reports/${encodeURIComponent(reportFilename!)}/refine-scan`, {
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(reportFilename!)}/refine-scan`, {
         method: 'POST'
       });
       const data = await res.json();
@@ -109,7 +110,7 @@ export default function SignatureRefinerModal({ isOpen, onClose, reportFilename,
         const promises = chunk.map(async (clusterObj, chunkIdx) => {
             const actualIndex = i + chunkIdx;
             try {
-                const res = await fetch(`http://localhost:8000/api/reports/${encodeURIComponent(reportFilename!)}/refine-analyze-single`, {
+                const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(reportFilename!)}/refine-analyze-single`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ cluster_items: clusterObj.original_items })
@@ -184,7 +185,7 @@ export default function SignatureRefinerModal({ isOpen, onClose, reportFilename,
         proposed_signature: c.editSignature // 사용자가 수정한 폼 데이터
       }));
 
-      const res = await fetch(`http://localhost:8000/api/reports/${encodeURIComponent(reportFilename)}/refine-apply`, {
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(reportFilename)}/refine-apply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clusters: payload })

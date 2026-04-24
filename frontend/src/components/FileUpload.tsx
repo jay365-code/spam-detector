@@ -1,5 +1,6 @@
 import React, { useCallback, useState, useRef } from 'react';
 import { UploadCloud, FileSpreadsheet, Loader2, CheckCircle } from 'lucide-react';
+import { API_BASE } from '../config';
 
 interface FileUploadProps {
     clientId: string;
@@ -69,7 +70,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ clientId, onUploadStart,
         formData.append('client_id', clientId);
 
         try {
-            const response = await fetch('http://localhost:8000/upload', {
+            const response = await fetch(`${API_BASE}/upload`, {
                 method: 'POST',
                 body: formData,
             });

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { API_BASE, WS_BASE } from './config';
 import { CheckCircle, AlertCircle, User, Database, Server, Pencil, X, Save, Loader2, Search, FileText, FolderOpen, Settings, MessageSquare, Copy, Flag } from 'lucide-react';
 import { FileUpload } from './components/FileUpload';
 import { StatusPanel } from './components/StatusPanel';
@@ -255,7 +256,7 @@ function App() {
   const handleExtractUrl = async () => {
       setIsUrlExtracting(true);
       try {
-          const res = await fetch('http://localhost:8000/api/utils/extract-url', {
+          const res = await fetch('${API_BASE}/api/utils/extract-url', {
              method: 'POST',
              headers: { 'Content-Type': 'application/json' },
              body: JSON.stringify({ message: editingLog?.message || "" })
@@ -272,7 +273,7 @@ function App() {
   const handleExtractSignature = async () => {
       setIsExtracting(true);
       try {
-          const res = await fetch('http://localhost:8000/api/ibse/extract', {
+          const res = await fetch('${API_BASE}/api/ibse/extract', {
              method: 'POST',
              headers: { 'Content-Type': 'application/json' },
              body: JSON.stringify({ message: editingLog?.message || "" })
@@ -362,7 +363,7 @@ function App() {
     setCancellationMessage('중지 요청 중...');
 
     try {
-      await fetch(`http://localhost:8000/cancel/${clientId}`, {
+      await fetch(`${API_BASE}/cancel/${clientId}`, {
         method: 'POST'
       });
       setCancellationMessage('현재 배치 완료 대기 중...');
@@ -458,7 +459,7 @@ function App() {
     if (nextVal && activeReportFileName) {
       setIsFetchingClusters(true);
       try {
-        const res = await fetch(`http://localhost:8000/api/reports/${encodeURIComponent(activeReportFileName)}/cluster-all`, { method: 'POST' });
+        const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(activeReportFileName)}/cluster-all`, { method: 'POST' });
         if (res.ok) {
           const data = await res.json();
           setClusterGroupsData(data?.clusters || []);
@@ -565,7 +566,7 @@ function App() {
         if (data.kisa_filename) setKisaFilename(data.kisa_filename);
         if (data.trap_filename) setTrapFilename(data.trap_filename);
         if (data.source_filename) {
-          setDownloadUrl(`http://localhost:8000/download/${encodeURIComponent(data.source_filename)}`);
+          setDownloadUrl(`${API_BASE}/download/${encodeURIComponent(data.source_filename)}`);
         }
         setActiveReportName(data.report_name);
         setActiveReportFileName(file.name); // 원본 파일명 저장
@@ -585,7 +586,7 @@ function App() {
   // 서버에서 리포트 파일을 직접 Fetch하여 갱신 (정제기 등 백엔드 작업 후 화면 리로드용)
   const reloadReportFromServer = async (filename: string) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/reports/${encodeURIComponent(filename)}`);
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(filename)}`);
       if (!res.ok) throw new Error("Failed to load report from server");
       const json = await res.json();
       // 백엔드 응답: { success: true, data: { logs: {...}, report_name: ..., ... } }
@@ -605,7 +606,7 @@ function App() {
       if (data.kisa_filename) setKisaFilename(data.kisa_filename);
       if (data.trap_filename) setTrapFilename(data.trap_filename);
       if (data.source_filename) {
-        setDownloadUrl(`http://localhost:8000/download/${encodeURIComponent(data.source_filename)}`);
+        setDownloadUrl(`${API_BASE}/download/${encodeURIComponent(data.source_filename)}`);
       }
       setActiveReportName(data.report_name);
     } catch (e) {
@@ -636,7 +637,7 @@ function App() {
 
       // 2. UI에 저장된 전체 JSON 상태를 백엔드로 보내 백지에서 완성본 엑셀 생성 (Regenerate)
       setIsRegeneratingExcel(true);
-      const response = await fetch('http://localhost:8000/api/excel/regenerate', {
+      const response = await fetch('${API_BASE}/api/excel/regenerate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -792,7 +793,7 @@ function App() {
 
     const connect = () => {
       console.log('Attempting WebSocket connection...');
-      ws = new WebSocket(`ws://localhost:8000/ws/${clientId}`);
+      ws = new WebSocket(`${WS_BASE}/ws/${clientId}`);
 
       ws.onopen = () => {
         console.log('Connected to WebSocket');
@@ -976,7 +977,7 @@ function App() {
            if (parsed.endTime) setEndTime(parsed.endTime);
            if (parsed.downloadFilename) {
              setDownloadFilename(parsed.downloadFilename);
-             setDownloadUrl(`http://localhost:8000/download/${encodeURIComponent(parsed.downloadFilename)}`);
+             setDownloadUrl(`${API_BASE}/download/${encodeURIComponent(parsed.downloadFilename)}`);
            }
            if (parsed.kisaFilename) setKisaFilename(parsed.kisaFilename);
            if (parsed.trapFilename) setTrapFilename(parsed.trapFilename);
@@ -1089,7 +1090,7 @@ function App() {
     setDownloadFilename(filename);
     if (kisaName) setKisaFilename(kisaName);
     if (trapName) setTrapFilename(trapName);
-    setDownloadUrl(`http://localhost:8000/download/${encodeURIComponent(filename)}`);
+    setDownloadUrl(`${API_BASE}/download/${encodeURIComponent(filename)}`);
     // 새 분석 완료 시 보고서 모드 해제 (실시간 결과에는 "Loaded:" 배지 미표시)
     setActiveReportName(null);
   };
@@ -1143,7 +1144,7 @@ function App() {
 
   const handleStopChat = async () => {
     try {
-      await fetch(`http://localhost:8000/cancel/${clientId}`, {
+      await fetch(`${API_BASE}/cancel/${clientId}`, {
         method: 'POST'
       });
       console.log('Chat cancellation requested');

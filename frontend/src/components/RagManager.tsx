@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Edit2, Trash2, Search, Database, RefreshCw, Save, AlertCircle, Copy, Check, PenSquare } from 'lucide-react';
+import { API_BASE } from '../config';
 
 interface FnExample {
     id: string;
@@ -24,8 +25,6 @@ interface RagManagerProps {
     initialData?: InitialData;
 }
 
-// [Fix] Remote Server Compatibility: Use window.location.hostname for API
-const API_BASE = `http://${window.location.hostname}:8000`;
 
 // 스팸 코드 매핑
 

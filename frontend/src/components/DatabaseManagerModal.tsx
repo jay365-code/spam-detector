@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Trash2, Search, Link2, FileText, AlertTriangle, ShieldCheck, Database, CheckSquare, Square, Maximize2, Minimize2, ChevronUp, ChevronDown, Key, Copy } from 'lucide-react';
+import { API_BASE } from '../config';
 
 interface DatabaseManagerModalProps {
   isOpen: boolean;
@@ -77,7 +78,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
   const fetchUrls = async (page = urlPage, query = urlSearch) => {
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/db/url-whitelist?page=${page}&limit=500&q=${encodeURIComponent(query)}&sort=${urlSort.key}&order=${urlSort.dir}`);
+      const res = await fetch(`${API_BASE}/api/db/url-whitelist?page=${page}&limit=500&q=${encodeURIComponent(query)}&sort=${urlSort.key}&order=${urlSort.dir}`);
       const json = await res.json();
       if (json.success) {
         setUrlRecords(json.data.data);
@@ -93,7 +94,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
   const fetchHistory = async (page = historyPage, query = historySearch) => {
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/db/spam-history?page=${page}&limit=500&q=${encodeURIComponent(query)}&sort=${historySort.key}&order=${historySort.dir}`);
+      const res = await fetch(`${API_BASE}/api/db/spam-history?page=${page}&limit=500&q=${encodeURIComponent(query)}&sort=${historySort.key}&order=${historySort.dir}`);
       const json = await res.json();
       if (json.success) {
         setHistoryRecords(json.data.data);
@@ -109,7 +110,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
   const fetchSignatures = async (page = sigPage, query = sigSearch) => {
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/db/signatures?page=${page}&limit=500&q=${encodeURIComponent(query)}&sort=${sigSortCol}&order=${sigSortOrder}`);
+      const res = await fetch(`${API_BASE}/api/db/signatures?page=${page}&limit=500&q=${encodeURIComponent(query)}&sort=${sigSortCol}&order=${sigSortOrder}`);
       const json = await res.json();
       if (json.success) {
         setSignatureRecords(json.data.data);
@@ -217,7 +218,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
     const promises = Array.from(selectedItems).map(id => {
       const endpoint = activeTab === 'url' ? 'url-whitelist' : (activeTab === 'history' ? 'spam-history' : 'signatures');
       // For signature, we need double encode if there are slashes, but standard encodeURIComponent is fine
-      return fetch(`http://localhost:8000/api/db/${endpoint}/${encodeURIComponent(id)}`, {
+      return fetch(`${API_BASE}/api/db/${endpoint}/${encodeURIComponent(id)}`, {
         method: 'DELETE'
       });
     });
@@ -241,7 +242,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
   // --- URL Handlers ---
   const handleAddUrl = async (urlToSave: string, raw: boolean) => {
     try {
-      const res = await fetch('http://localhost:8000/api/db/url-whitelist', {
+      const res = await fetch('${API_BASE}/api/db/url-whitelist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: urlToSave, raw })
@@ -282,7 +283,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
   const handleDeleteUrl = async (domainPath: string) => {
     if (!confirm(`'${domainPath}' 도메인을 화이트리스트에서 삭제하시겠습니까?`)) return;
     try {
-      const res = await fetch(`http://localhost:8000/api/db/url-whitelist/${encodeURIComponent(domainPath)}`, {
+      const res = await fetch(`${API_BASE}/api/db/url-whitelist/${encodeURIComponent(domainPath)}`, {
         method: 'DELETE'
       });
       if (res.ok) {
@@ -296,7 +297,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
   const handleHistorySubmit = async () => {
     if (!newHistoryText) return;
     try {
-      const res = await fetch('http://localhost:8000/api/db/spam-history', {
+      const res = await fetch('${API_BASE}/api/db/spam-history', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: newHistoryText, count: newHistoryCount })
@@ -318,7 +319,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
     if (!confirm(`짧은 난독 텍스트를 삭제하시겠습니까?
 '${text}'`)) return;
     try {
-      const res = await fetch(`http://localhost:8000/api/db/spam-history/${encodeURIComponent(text)}`, {
+      const res = await fetch(`${API_BASE}/api/db/spam-history/${encodeURIComponent(text)}`, {
         method: 'DELETE'
       });
       if (res.ok) {
@@ -332,7 +333,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
     if (!confirm(`시그니처를 삭제하시겠습니까?
 '${text}'`)) return;
     try {
-      const res = await fetch(`http://localhost:8000/api/db/signatures/${encodeURIComponent(text)}`, {
+      const res = await fetch(`${API_BASE}/api/db/signatures/${encodeURIComponent(text)}`, {
         method: 'DELETE'
       });
       if (res.ok) fetchSignatures();
