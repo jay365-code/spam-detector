@@ -256,7 +256,7 @@ function App() {
   const handleExtractUrl = async () => {
       setIsUrlExtracting(true);
       try {
-          const res = await fetch('${API_BASE}/api/utils/extract-url', {
+          const res = await fetch(`${API_BASE}/api/utils/extract-url`, {
              method: 'POST',
              headers: { 'Content-Type': 'application/json' },
              body: JSON.stringify({ message: editingLog?.message || "" })
@@ -273,7 +273,7 @@ function App() {
   const handleExtractSignature = async () => {
       setIsExtracting(true);
       try {
-          const res = await fetch('${API_BASE}/api/ibse/extract', {
+          const res = await fetch(`${API_BASE}/api/ibse/extract`, {
              method: 'POST',
              headers: { 'Content-Type': 'application/json' },
              body: JSON.stringify({ message: editingLog?.message || "" })
@@ -637,7 +637,7 @@ function App() {
 
       // 2. UI에 저장된 전체 JSON 상태를 백엔드로 보내 백지에서 완성본 엑셀 생성 (Regenerate)
       setIsRegeneratingExcel(true);
-      const response = await fetch('${API_BASE}/api/excel/regenerate', {
+      const response = await fetch(`${API_BASE}/api/excel/regenerate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

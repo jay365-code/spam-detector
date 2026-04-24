@@ -242,7 +242,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
   // --- URL Handlers ---
   const handleAddUrl = async (urlToSave: string, raw: boolean) => {
     try {
-      const res = await fetch('${API_BASE}/api/db/url-whitelist', {
+      const res = await fetch(`${API_BASE}/api/db/url-whitelist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: urlToSave, raw })
@@ -297,7 +297,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
   const handleHistorySubmit = async () => {
     if (!newHistoryText) return;
     try {
-      const res = await fetch('${API_BASE}/api/db/spam-history', {
+      const res = await fetch(`${API_BASE}/api/db/spam-history`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: newHistoryText, count: newHistoryCount })
