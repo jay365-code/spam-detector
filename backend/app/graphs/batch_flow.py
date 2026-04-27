@@ -703,7 +703,8 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # KISA가 추출한 URL(pre_parsed)이 URL Agent가 확정한 진짜 URL과 확연히 다른 파손된 형태(단독 도메인)일 경우 엑셀에서 비운다.
              is_mismatched_extraction = False
              pre_parsed = state.get("pre_parsed_url")
-             if pre_parsed and not is_fake_ip and not is_injection and not is_filtered_short and not is_dead_domain:
+             # [정책] SPAM + 베어도메인은 데드링크 여부 무관하게 항상 Drop 대상이므로 is_dead_domain 조건 제거
+             if pre_parsed and not is_fake_ip and not is_injection and not is_filtered_short:
                  surviving_urls = u_details.get("extracted_url", "")
                  if surviving_urls:
                      import urllib.parse
@@ -787,14 +788,15 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                             break
                             
                     if all_are_bare_or_corrupt:
-                        # [수정] 최종 판정이 SPAM인 경우에만 베어 도메인 드롭 적용
-                        # HAM 메시지는 KISA 원본 URL이 처음부터 베어 도메인 형태일 수 있으므로 드롭하지 않고 보존
-                        if final.get("is_spam"):
-                            # SPAM이더라도 Red Group / 악성 URL 분리 감지 / 데드링크는 보존
-                            if not final.get("red_group") and not final.get("malicious_url_extracted") and not is_dead_domain:
-                                final["drop_url"] = True
-                                final["drop_url_reason"] = "bare_or_corrupt_domain_sync"
-                        # HAM이면 아무것도 하지 않음 → KISA 원본 베어 도메인 URL 그대로 보존
+                         # [정책] SPAM + 베어도메인은 데드링크 여부와 무관하게 항상 Drop
+                         # (베어 도메인을 블랙리스트에 등록하면 해당 도메인 전체 사용자 차단 참사 발생)
+                         # HAM 메시지는 KISA 원본 URL이 처음부터 베어 도메인 형태일 수 있으므로 드롭하지 않고 보존
+                         if final.get("is_spam"):
+                             # SPAM이더라도 Red Group / 악성 URL 분리 감지 케이스는 보존
+                             if not final.get("red_group") and not final.get("malicious_url_extracted"):
+                                 final["drop_url"] = True
+                                 final["drop_url_reason"] = "bare_or_corrupt_domain_sync"
+                         # HAM이면 아무것도 하지 않음 → KISA 원본 베어 도메인 URL 그대로 보존
                 except Exception:
                     pass
                  

@@ -1,0 +1,189 @@
+import { useState, useRef } from 'react';
+import { X, Loader2, Play, FileSpreadsheet, Download, FileUp } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+
+interface ValidationModalProps {
+  logs: Record<number, any>;
+  onClose: () => void;
+}
+
+export function ValidationModal({ logs, onClose }: ValidationModalProps) {
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [reportMd, setReportMd] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [excelFile, setExcelFile] = useState<File | null>(null);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleStartValidation = async () => {
+    setIsEvaluating(true);
+    setError(null);
+    setReportMd(null);
+
+    try {
+      const logsArray = Object.values(logs).filter(l => l !== null && l !== undefined);
+      
+      const formData = new FormData();
+      const logsBlob = new Blob([JSON.stringify(logsArray)], { type: 'application/json' });
+      formData.append('logs_file', logsBlob, 'logs.json');
+      if (excelFile) {
+        formData.append('excel_file', excelFile);
+      }
+
+      const res = await fetch('http://localhost:8000/api/utils/validate-report', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) {
+        throw new Error(`서버 응답 오류: ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (data.success && data.report_md) {
+        setReportMd(data.report_md);
+        setDownloadUrl(data.download_url || null);
+      } else {
+        throw new Error("검증 리포트를 가져오는데 실패했습니다.");
+      }
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다.");
+    } finally {
+      setIsEvaluating(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div 
+        className="w-full max-w-4xl max-h-[85vh] bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-slate-700/50 bg-slate-800/30">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <span className="text-xl">📊</span> 작업 퀄리티 검증 도구
+          </h2>
+          <button 
+            onClick={onClose}
+            className="p-2 hover:bg-slate-700/50 rounded-lg text-slate-400 hover:text-white transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 flex-1 overflow-y-auto bg-slate-900 custom-scrollbar">
+          {!reportMd && !isEvaluating && (
+            <div className="h-full flex flex-col items-center justify-center text-center p-10">
+              <div className="w-20 h-20 bg-blue-500/10 rounded-full flex items-center justify-center mb-6">
+                <span className="text-4xl text-blue-400">🔍</span>
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-3">스팸 탐지 결과 교차 검증</h3>
+              <p className="text-slate-400 mb-6 max-w-md">
+                메모리에 로드된 분석 데이터({Object.keys(logs).length}건)를 기반으로 퀄리티를 자동 검토합니다.<br/>
+                생성된 엑셀 파일을 업로드하시면 물리적인 1:1 교차 검증을 수행합니다.
+              </p>
+              
+              <div className="mb-8 p-4 bg-slate-800/50 border border-slate-700 rounded-xl w-full max-w-sm flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-300 font-medium">비교할 엑셀 파일 (선택)</span>
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-1.5 text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-white transition-colors"
+                  >
+                    <FileUp className="w-3.5 h-3.5" />
+                    파일 선택
+                  </button>
+                  <input 
+                    type="file" 
+                    accept=".xlsx" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setExcelFile(e.target.files[0]);
+                      }
+                    }}
+                  />
+                </div>
+                {excelFile && (
+                  <div className="flex items-center gap-2 text-sm bg-indigo-500/10 text-indigo-300 px-3 py-2 rounded-lg border border-indigo-500/20">
+                    <FileSpreadsheet className="w-4 h-4 shrink-0" />
+                    <span className="truncate">{excelFile.name}</span>
+                    <button 
+                      onClick={() => setExcelFile(null)}
+                      className="ml-auto text-indigo-400 hover:text-indigo-200"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={handleStartValidation}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg shadow-blue-900/50"
+              >
+                <Play className="w-5 h-5" />
+                지금 교차 검증 시작하기
+              </button>
+            </div>
+          )}
+
+          {isEvaluating && (
+            <div className="h-full flex flex-col items-center justify-center text-center p-10">
+              <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-6" />
+              <h3 className="text-lg font-bold text-white mb-2">데이터 분석 중...</h3>
+              <p className="text-slate-400">유사 메시지 클러스터링 및 가이드라인 검증을 수행하고 있습니다.</p>
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl text-center">
+              {error}
+            </div>
+          )}
+
+          {reportMd && (
+            <div className="prose prose-invert prose-slate max-w-none">
+              <ReactMarkdown>{reportMd}</ReactMarkdown>
+            </div>
+          )}
+        </div>
+        
+        {/* Footer */}
+        {reportMd && (
+          <div className="p-4 border-t border-slate-700/50 bg-slate-800/30 flex items-center justify-between">
+            <div>
+              {downloadUrl && (
+                <button
+                  onClick={() => window.open(`http://localhost:8000${downloadUrl}`, '_blank')}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors font-medium shadow-lg shadow-emerald-900/20"
+                >
+                  <Download className="w-4 h-4" />
+                  상세 검증 결과 엑셀 다운로드
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleStartValidation}
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors font-medium"
+              >
+                다시 검증하기
+              </button>
+            <button
+              onClick={onClose}
+              className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors font-medium"
+            >
+              닫기
+            </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

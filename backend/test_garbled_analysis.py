@@ -32,19 +32,18 @@ def test_garbled_file():
     print("\n--- Running RuleBasedFilter ---")
     rule_filter = RuleBasedFilter()
     
-    # Check Foreign Language Logic
-    foreign_check = rule_filter.has_foreign_language(content)
-    print(f"Foreign Language Check Result: {foreign_check}")
-    
     # Check Full Logic
     result = rule_filter.check(content)
     print("Full Rule Check Result:")
     print(result)
 
-    # 3. Explain "Why Foreign?" if applicable
-    if foreign_check['has_foreign']:
-        print("\nAnalysis: The garbled text resembles non-Korean characters, so the system flags it as Foreign Language.")
-        print("This is EXPECTED behavior for broken text. The root cause is the file content itself, not the logic.")
+    # 3. Explain the result
+    if result.get('is_spam') is None:
+        print("\nAnalysis: Message passed to Content Agent (LLM) for further analysis.")
+    elif result.get('is_spam') is False:
+        print(f"\nAnalysis: Message classified as HAM by Rule Filter. Code: {result.get('classification_code')}")
+    else:
+        print(f"\nAnalysis: Message classified as SPAM by Rule Filter. Code: {result.get('classification_code')}")
 
 if __name__ == "__main__":
     # Add project root to sys.path to import app.services

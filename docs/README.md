@@ -5,7 +5,7 @@
 ## ✨ 주요 기능 (Key Features)
 
 - **🧠 다단계 분석 파이프라인 (Multi-Stage Analysis)**
-  - **1단계 (Rule-Based)**: 알려진 패턴, Unicode 난독화 감지, 외국어 필터링을 통한 즉각적인 분류.
+  - **1단계 (Rule-Based)**: 알려진 패턴, Unicode 난독화 감지를 통한 즉각적인 분류. 외국어 메시지도 정상 분석 파이프라인으로 전달.
   - **2단계 (Content AI)**: LLM(RAG)을 활용하여 문맥을 이해하고, 정상 기업/업무 사칭(`is_impersonation`) 및 의도적 모호 문구(`is_vague_cta`) 등 교묘한 기만 의도를 탐지.
   - **3단계 (URL Deep Dive)**: Playwright를 사용해 URL을 실시간으로 방문하여 피싱 사이트나 리다이렉트 체인을 추적.
 
@@ -83,8 +83,8 @@ graph TD
 |:---:|----------|------|------|
 | 1 | **Unicode 난독화** | → URL Agent | Circle letters(ⓐⓑⓒ), Fullwidth(ａｂｃ) 등 감지 시 디코딩 후 URL 분석 |
 | 2 | **한글 난독화** | → Content Agent | `향.꼼.썽`, `안/내/주` 패턴 감지 시 LLM 분석 |
-| 3 | **외국어 메시지** | → HAM-5 | 중국어 5자+, 일본어 5자+, 순수 영어 10자+ |
-| 4 | **기타** | → Content Agent | 일반 한글 메시지는 LLM 분석 |
+| 3 | **알파벳-숫자 혼용** | → SPAM | 난독화 비율 ≥ 55%이면 즉시 SPAM code=0 |
+| 4 | **기타 (외국어 포함)** | → Content Agent | 한국어/외국어 구분 없이 LLM 분석 |
 
 ### 분석 로직
 1.  **Content Node**: 규칙 및 LLM(RAG 참조 포함)을 사용한 1차 내용 분석.

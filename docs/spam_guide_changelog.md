@@ -4,6 +4,31 @@ spam_guide.md 및 관련 agent.py의 변경 이력을 추적합니다.
 
 ---
 
+## 외국어 자동 HAM(HAM-5) 폐지 — 전체 메시지 통합 분석 (2026-04-26)
+
+### 배경
+- 기존: 외국어 메시지(중국어 5자+, 일본어 5자+, 영어 40자+)를 Stage 1에서 즉시 HAM-5로 분류하여 LLM 분석 전체 스킵
+- 변경: 외국어 여부와 무관하게 모든 메시지를 동일한 스팸 분류 파이프라인(Content Agent → URL Agent → IBSE)으로 분석
+
+### 변경 사항
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `rule_service.py` | `has_foreign_language()` 함수 삭제, Step 4 외국어 자동 HAM 블록 제거, `korean_ratio_threshold` 제거 |
+| `constants.py` | `HAM-5` 코드 삭제 |
+| `main.py` | HAM-5 fallback 참조 4곳 제거 |
+| `spam_guide.md` | 섹션 2.E 외국어 보호 정책 라인 삭제 |
+| `README.md` | Rule Filter 테이블 및 1단계 설명 업데이트 |
+| `test_foreign_logic.py` | 테스트 기대값 변경 (HAM-5 → Content Agent 전달) |
+| `repro_obfuscation.py` | 영어 테스트 기대값 변경 |
+| `test_garbled_analysis.py` | `has_foreign_language()` 호출 제거 |
+
+### 이유
+- 외국어 스팸(국제 도박, 해외 피싱 등)이 자동 면제되는 문제 해결
+- 스팸 시스템에서 사용하는 엑셀 분류 결과에 외국어 무관하게 동일 기준 적용
+
+---
+
 ## RAG 시스템 및 결과 수정 기능 추가 (2026-01-27)
 
 ### 1. FN(False Negative) 예제 RAG 시스템

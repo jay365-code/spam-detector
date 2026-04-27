@@ -178,15 +178,10 @@ class ResultValidator:
                         result_row["시그니처 규격 검사"] = f"길이 위반 ({sig_len} bytes)"
                         result_row["_has_error"] = True
 
-            # --- URL 규격 검사 (항목 4, 5) ---
+            # --- URL 규격 검사 (항목 5) ---
             # 블록리스트에 등록될 URL(SPAM/Red Group + drop 안 된 경우)에 대해서만 검사
             if (is_spam or is_red_group) and pre_parsed_url and not is_dropped:
-                url_cp949_len = self._get_cp949_len(pre_parsed_url)
-                if url_cp949_len > 40:
-                    # 항목 4: URL CP949 바이트 길이 40 초과 (차단 시스템 등록 불가)
-                    result_row["URL 규격 검사"] = f"길이 초과 ({url_cp949_len} bytes)"
-                    result_row["_has_error"] = True
-                elif re.match(r'^\d{1,3}(\.\d{1,3}){3}$', pre_parsed_url.strip()):
+                if re.match(r'^\d{1,3}(\.\d{1,3}){3}$', pre_parsed_url.strip()):
                     # 항목 5: 순수 IPv4 주소 형태 URL (오탐 우려, 특수 룰 적용 필요)
                     result_row["URL 규격 검사"] = f"IP 주소 형태 URL ({pre_parsed_url.strip()})"
                     result_row["_has_error"] = True
@@ -408,8 +403,29 @@ class ResultValidator:
                     worksheet.set_column(col_num, col_num, col_width, fmt)
                 
                 # 헤더 우리가 직접 쓰기 (Pandas와 충돌 방지)
+                # 각 컬럼별 설명 메모 (마우스 오버 시 표시)
+                header_comments = {
+                    "엑셀 행 번호": "원본 엑셀 파일에서 이 메시지가 위치한 행(Row) 번호.\n엑셀 미업로드 시 '-'로 표시됩니다.",
+                    "원문 메시지": "AI가 분석한 원본 메시지 텍스트 전문.",
+                    "스팸여부": "AI 판정 결과.\nSPAM 또는 HAM으로 표시됩니다.",
+                    "분류코드": "스팸 분류 코드.\n0=일반, 1=성인, 2=도박/기타, 3=금융(대출)",
+                    "Input URL": "AI가 메시지에서 추출한 URL.\nDrop 정책에 의해 제거된 경우 빈 값.",
+                    "Excel URL": "원본 엑셀 파일의 URL 컬럼 값.\n엑셀 미업로드 시 빈 값.",
+                    "JSON 시그니처": "AI(IBSE)가 추출한 스팸 차단용 시그니처 문자열.",
+                    "Excel 시그니처": "원본 엑셀의 문자열/문장 시트에서 매칭된 시그니처.\n교차 검증용.",
+                    "Size(Byte)": "JSON 시그니처의 CP949 인코딩 기준 바이트 길이.\n문자열: 9~20, 문장: 39~40 bytes 허용.",
+                    "판정 교차검증": "JSON(AI 판정)과 엑셀(수작업 구분)의 SPAM/HAM 판정 일치 여부.\n불일치 시 오류 표시.",
+                    "시그니처 교차검증": "JSON 시그니처와 엑셀 시그니처의 일치 여부.\n불일치 시 오류 표시.",
+                    "URL 교차검증": "JSON URL과 엑셀 URL의 존재 여부 일치 검증.\nDrop 상태와 엑셀 보존 상태 비교.",
+                    "URL 규격 검사": "URL이 순수 IP 주소(IPv4) 형태인지 검사.\nIP 형태 URL은 오탐 우려로 수동 확인 필요.",
+                    "시그니처 규격 검사": "시그니처 바이트 길이가 PDF 가이드 규격에 부합하는지 검사.\n문자열: 9~20 bytes, 문장: 39~40 bytes.",
+                    "클러스터 일관성": "유사 메시지 클러스터 내 SPAM/HAM 판정 일관성 검사.\n같은 클러스터인데 판정이 다르면 경고."
+                }
                 for col_num, value in enumerate(df_out.columns.values):
                     worksheet.write_string(0, col_num, str(value), header_fmt)
+                    col_name = str(value)
+                    if col_name in header_comments:
+                        worksheet.write_comment(0, col_num, header_comments[col_name], {'width': 280, 'height': 80})
                 
                 # 오류 컬럼: 빨간색 / 경고 컬럼: 주황색 조건부 서식 분리 적용
                 ERROR_COLS = ["판정 교차검증", "시그니처 교차검증", "URL 교차검증", "URL 규격 검사", "시그니처 규격 검사"]

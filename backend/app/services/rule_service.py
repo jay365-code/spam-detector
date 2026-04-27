@@ -11,9 +11,6 @@ class RuleBasedFilter:
             r"([가-힣])\s*[\.\/,\-_]\s*([가-힣])", # Hangul with specific separators
         ]
         
-        # 외국어 판정 기준 (한글 비율 10% 미만이면 외국어로 간주)
-        self.korean_ratio_threshold = 0.1
-        
         try:
             self.alphanumeric_obfuscation_threshold = float(os.getenv("ALPHANUMERIC_OBFUSCATION_RATIO_THRESHOLD", "0.55"))
         except ValueError:
@@ -213,47 +210,6 @@ class RuleBasedFilter:
         )
         return bool(pattern.search(text))
 
-    def has_foreign_language(self, text: str) -> dict:
-        """
-        실제 외국어 문자가 포함되어 있는지 확인
-        Returns: {"has_foreign": bool, "language": str or None}
-        """
-        chinese_count = 0
-        japanese_count = 0
-        english_count = 0
-        korean_count = 0
-        
-        for char in text:
-            # 한글
-            if '\uac00' <= char <= '\ud7a3' or '\u1100' <= char <= '\u11ff':
-                korean_count += 1
-            # 중국어 (CJK Unified Ideographs)
-            elif '\u4e00' <= char <= '\u9fff':
-                chinese_count += 1
-            # 일본어 히라가나/가타카나
-            elif '\u3040' <= char <= '\u30ff':
-                japanese_count += 1
-            # 영어
-            elif char.isalpha() and ord(char) < 128:
-                english_count += 1
-        
-        total_alpha = chinese_count + japanese_count + english_count + korean_count
-        if total_alpha == 0:
-            return {"has_foreign": False, "language": None, "ratio": 0}
-        
-        # 한글이 거의 없고 외국어가 상당량 있으면 외국어 메시지
-        korean_ratio = korean_count / total_alpha if total_alpha > 0 else 0
-        
-        if korean_ratio < 0.1:
-            if chinese_count > 5:
-                return {"has_foreign": True, "language": "Chinese", "ratio": chinese_count / total_alpha}
-            if japanese_count > 5:
-                return {"has_foreign": True, "language": "Japanese", "ratio": japanese_count / total_alpha}
-            # 영어의 경우 40자 이상(긴 문장)일 때만 자동 HAM 처리를 검토
-            if english_count > 40 and korean_count == 0:
-                return {"has_foreign": True, "language": "English", "ratio": english_count / total_alpha}
-        
-        return {"has_foreign": False, "language": None, "ratio": korean_ratio}
 
     def check(self, message: str) -> dict:
         """
@@ -267,8 +223,7 @@ class RuleBasedFilter:
             }
         """
         # 0. 메시지 최소 길이 체크 (SKIP 대상)
-        # 이제 한글 포함 여부와 무관하게 무조건 지정된 길이 미만이면 SKIP 처리함 (요청 반영)
-        has_korean = self.get_korean_ratio(message) > 0
+        # 한글 포함 여부와 무관하게 무조건 지정된 길이 미만이면 SKIP 처리함
         
         # 공백과 줄바꿈을 제외한 실제 의미 있는 문자열의 바이트 길이(CP949 기준) 계산
         import re
@@ -313,8 +268,7 @@ class RuleBasedFilter:
                     "detected_pattern": detected_text
                 }
 
-        # 3. 알파벳-숫자 혼용 난독화 체크 (Foreign Language 판단 전)
-        # 외국어 HAM으로 빠지지 않도록 먼저 체크하여 Pass 시킴
+        # 3. 알파벳-숫자 혼용 난독화 체크
         obfuscation_ratio = self.get_obfuscation_ratio(message)
         if obfuscation_ratio >= self.alphanumeric_obfuscation_threshold:
              return {
@@ -322,26 +276,6 @@ class RuleBasedFilter:
                 "reason": f"Alphanumeric obfuscation detected (Ratio: {obfuscation_ratio:.2f})",
                 "detected_pattern": "alphanumeric_obfuscation",
                 "classification_code": "0" # 기타 스팸
-            }
-
-        # 4. 외국어 체크 (난독화가 없는 경우에만)
-        # 실제 외국어 문자가 있어야 HAM-5 처리
-        foreign_check = self.has_foreign_language(message)
-        if foreign_check["has_foreign"]:
-            # 예외: URL + 난독화/가림 패턴 → Auto HAM 적용 안 함, 분석 단계로 Pass
-            # 예: "????? ?????????????????????????????https://v????.im/flrvl2..."
-            if self.has_url_in_message(message):
-                if self.has_garbled_or_masked_text(message) or self.has_url_with_obfuscated_domain(message):
-                    return {
-                        "is_spam": None,
-                        "reason": "URL + garbled/obfuscated text - bypass Foreign Language Auto HAM, requires analysis",
-                        "detected_pattern": "url_with_obfuscation"
-                    }
-            return {
-                "is_spam": False,
-                "reason": f"Foreign language message ({foreign_check['language']}, ratio: {foreign_check['ratio']:.1%}) - Auto HAM",
-                "detected_pattern": None,
-                "classification_code": "HAM-5"
             }
 
         # 5. Pass to Next Stage

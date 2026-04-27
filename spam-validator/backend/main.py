@@ -437,7 +437,10 @@ def _process_dataframes(df_human, df_llm, sheet_name, df_llm_sig=None):
 @app.post("/export/diff")
 async def export_diff(request: ExportDiffRequest):
     try:
-        base_dir = r"c:\Users\leejo\Project\AI Agent\Spam Detector\data\reports\DIFF"
+        # 프로젝트 루트 기준 상대경로로 저장 (OS 독립적)
+        curr_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = os.path.join(curr_dir, "..", "..", "data", "reports", "DIFF")
+        base_dir = os.path.normpath(base_dir)
         os.makedirs(base_dir, exist_ok=True)
         save_path = os.path.join(base_dir, request.filename)
         
@@ -684,9 +687,18 @@ async def export_diff(request: ExportDiffRequest):
 
 @app.post("/export/open")
 async def open_excel_file(req: OpenFileRequest):
+    import platform
+    import subprocess
     try:
         if os.path.exists(req.path) and req.path.endswith('.xlsx'):
-            os.startfile(req.path)
+            # OS별 파일 열기 명령 분기
+            system = platform.system()
+            if system == "Darwin":  # macOS
+                subprocess.Popen(["open", req.path])
+            elif system == "Windows":
+                os.startfile(req.path)
+            else:  # Linux 등
+                subprocess.Popen(["xdg-open", req.path])
             return {"success": True}
         else:
             raise HTTPException(status_code=404, detail="File not found or invalid format")

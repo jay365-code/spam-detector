@@ -939,7 +939,7 @@ def process_message(message: str) -> dict:
     # logger.info("    [Stage 1] Rule Checking...")
     s1_result = rule_filter.check(message)
     
-    # If HAM confirmed by Rule (e.g., Non-Korean message)
+    # If HAM confirmed by Rule (e.g., Short message SKIP)
     if s1_result["is_spam"] is False:
         s1_code = s1_result.get("classification_code")
         s1_reason = s1_result.get("reason", "Rule-based HAM")
@@ -1224,10 +1224,10 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 
                                 # Rule-based HAM (e.g., Non-Korean message)
                                 if s1.get("is_spam") is False:
-                                    s1_code = s1.get("classification_code", "HAM-5")
+                                    s1_code = s1.get("classification_code")
                                     s1_reason = s1.get("reason", "Rule-based HAM")
                                     code_map = SPAM_CODE_MAP
-                                    code_desc = code_map.get(s1_code, "외국어 메시지")
+                                    code_desc = code_map.get(s1_code, "Rule-based HAM")
                                     
                                     msg_text = f"✅ **정상 문자** - {s1_code}. {code_desc}\n- 사유: {s1_reason}\n"
                                     await send_text_chunk(msg_text)
@@ -1281,10 +1281,10 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                             
                             # Rule-based HAM (e.g., Non-Korean message) - Early Exit
                             if s1.get("is_spam") is False:
-                                s1_code = s1.get("classification_code", "HAM-5")
+                                s1_code = s1.get("classification_code")
                                 s1_reason = s1.get("reason", "Rule-based HAM")
                                 code_map = SPAM_CODE_MAP
-                                code_desc = code_map.get(s1_code, "외국어 메시지")
+                                code_desc = code_map.get(s1_code, "Rule-based HAM")
                                 
                                 msg_text = f"✅ **정상 문자** - {s1_code}. {code_desc}\n- 사유: {s1_reason}\n\n"
                                 await send_text_chunk(msg_text)

@@ -18,12 +18,12 @@ def test_obfuscation():
             "expected_bypass": True,
             "desc": "User Example (Obfuscated)"
         },
-        # 2. Normal English (should be Foreign Language HAM)
+        # 2. Normal English (now goes to Content Agent, no longer auto HAM-5)
         {
             "msg": "Hello World, this is a test message with some numbers 123.",
             "expected_bypass": False, 
-            "expected_code": "HAM-5",
-            "desc": "Normal English"
+            "expected_none": True,
+            "desc": "Normal English (Content Agent)"
         },
         # 3. Normal Korean (should be None or Korean Analysis)
         {
@@ -44,12 +44,12 @@ def test_obfuscation():
             "expected_not_ham5": True,
             "desc": "Garbled + obfuscated URL spam"
         },
-        # 6. Normal English with URL (should stay HAM-5, no garbled pattern)
+        # 6. Normal English with URL (now goes to Content Agent, no longer auto HAM-5)
         {
             "msg": "Check out this link https://example.com/page",
             "expected_bypass": False,
-            "expected_code": "HAM-5",
-            "desc": "Normal English with clean URL"
+            "expected_none": True,
+            "desc": "Normal English with clean URL (Content Agent)"
         }
     ]
 
@@ -82,13 +82,18 @@ def test_obfuscation():
                 print("  ❌ FAIL (Failed to bypass - got Auto HAM or wrong path)")
         else:
             if not is_bypass:
-                 if "expected_code" in case:
-                     if result.get("classification_code") == case["expected_code"]:
-                         print(f"  ✅ PASS (Correctly classified as {case['expected_code']})")
-                     else:
-                         print(f"  ❌ FAIL (Expected {case['expected_code']}, got {result.get('classification_code')})")
-                 else:
-                     print("  ✅ PASS (Correctly proceeded without obfuscation trigger)")
+                if "expected_code" in case:
+                    if result.get("classification_code") == case["expected_code"]:
+                        print(f"  ✅ PASS (Correctly classified as {case['expected_code']})")
+                    else:
+                        print(f"  ❌ FAIL (Expected {case['expected_code']}, got {result.get('classification_code')})")
+                elif case.get("expected_none"):
+                    if result.get("is_spam") is None:
+                        print("  ✅ PASS (Correctly passed to Content Agent)")
+                    else:
+                        print(f"  ❌ FAIL (Expected is_spam=None, got {result.get('is_spam')})")
+                else:
+                    print("  ✅ PASS (Correctly proceeded without obfuscation trigger)")
             else:
                 print("  ❌ FAIL (False Positive: Detected obfuscation incorrectly)")
         print("-" * 50)
