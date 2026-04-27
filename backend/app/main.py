@@ -467,6 +467,96 @@ async def delete_signature(text: str):
     raise HTTPException(status_code=404, detail="해당 시그니처를 찾을 수 없거나 삭제에 실패했습니다.")
 
 
+@app.post("/api/db/signatures/import-excel")
+async def import_signatures_from_excel(file: UploadFile = File(...)):
+    """
+    엑셀 결과 파일(.xlsx)에서 시그니처를 추출하여 signatures.db에 일괄 인서트합니다.
+    대상 시트: '문자열중복제거', '문장중복제거'
+    중복 시그니처는 UNIQUE 제약에 의해 자동 무시됩니다.
+    """
+    import tempfile
+    import openpyxl
+    
+    if not file.filename.endswith('.xlsx'):
+        raise HTTPException(status_code=400, detail="지원하지 않는 파일 형식입니다. (.xlsx만 허용)")
+    
+    # 임시 파일에 업로드 데이터 저장
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+            tmp_path = tmp.name
+            content = await file.read()
+            tmp.write(content)
+        
+        # openpyxl로 시트 파싱 (data_only=True: 수식 대신 계산된 값 읽기)
+        wb = openpyxl.load_workbook(tmp_path, data_only=True)
+        
+        # 시그니처 추출 대상 시트
+        target_sheets = ["문자열중복제거", "문장중복제거"]
+        source_label = f"excel_import_{file.filename.replace('.xlsx', '')}"
+        
+        sheet_results = {}
+        total_inserted = 0
+        total_ignored = 0
+        
+        for sheet_name in target_sheets:
+            if sheet_name not in wb.sheetnames:
+                logger.warning(f"[SignatureImport] 시트 '{sheet_name}'을 찾을 수 없습니다: {file.filename}")
+                continue
+            
+            ws = wb[sheet_name]
+            entries = []
+            
+            # 2행부터 데이터 읽기 (1행은 헤더)
+            for row in range(2, ws.max_row + 1):
+                signature = ws.cell(row=row, column=1).value
+                byte_length = ws.cell(row=row, column=2).value
+                category_code = ws.cell(row=row, column=3).value
+                
+                # None(빈 행)은 스킵
+                if signature is None:
+                    continue
+                
+                entries.append({
+                    "signature": str(signature),
+                    "byte_length": byte_length,
+                    "category": str(category_code) if category_code is not None else "spam",
+                    "source": source_label
+                })
+            
+            # DB 일괄 인서트
+            result = SignatureDBManager.bulk_insert_signatures(entries)
+            sheet_results[sheet_name] = {
+                "inserted": result["inserted"],
+                "ignored": result["ignored"],
+                "total_rows": len(entries)
+            }
+            total_inserted += result["inserted"]
+            total_ignored += result["ignored"]
+        
+        wb.close()
+        
+        logger.info(f"[SignatureImport] '{file.filename}' 임포트 완료: {total_inserted}건 삽입, {total_ignored}건 중복 무시")
+        
+        return {
+            "success": True,
+            "filename": file.filename,
+            "summary": {
+                "total_inserted": total_inserted,
+                "total_ignored": total_ignored,
+                "sheets": sheet_results
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"[SignatureImport] 엑셀 임포트 실패 ({file.filename}): {e}")
+        raise HTTPException(status_code=500, detail=f"엑셀 임포트 실패: {str(e)}")
+    finally:
+        # 임시 파일 정리
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
 # ========== Spam RAG API (Reference Examples) ==========
 from app.services.spam_rag_service import get_spam_rag_service
 

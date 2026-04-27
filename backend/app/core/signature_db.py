@@ -156,3 +156,52 @@ class SignatureDBManager:
         except Exception as e:
             logger.error(f"[SignatureDB] Failed to delete signature: {e}")
             return False
+
+    @staticmethod
+    def bulk_insert_signatures(entries: list) -> dict:
+        """
+        시그니처 일괄 인서트 (INSERT OR IGNORE)
+        UNIQUE 제약 위반(중복) 시 자동 무시하고, 삽입/무시 건수를 반환합니다.
+        
+        Args:
+            entries: [{"signature": str, "byte_length": int, "category": str, "source": str}, ...]
+            
+        Returns:
+            {"inserted": int, "ignored": int}
+        """
+        inserted = 0
+        ignored = 0
+        
+        try:
+            with sqlite3.connect(DB_PATH, timeout=30) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                cursor = conn.cursor()
+                
+                for entry in entries:
+                    sig = entry.get("signature", "")
+                    if not sig:
+                        continue
+                    
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO signatures 
+                        (signature, byte_length, category, source) 
+                        VALUES (?, ?, ?, ?)
+                    ''', (
+                        str(sig),
+                        entry.get("byte_length"),
+                        str(entry.get("category", "spam")),
+                        entry.get("source", "excel_import")
+                    ))
+                    
+                    if cursor.rowcount > 0:
+                        inserted += 1
+                    else:
+                        ignored += 1
+                
+                conn.commit()
+                logger.info(f"[SignatureDB] Bulk insert completed: {inserted} inserted, {ignored} ignored")
+                
+        except Exception as e:
+            logger.error(f"[SignatureDB] Bulk insert failed: {e}")
+            
+        return {"inserted": inserted, "ignored": ignored}

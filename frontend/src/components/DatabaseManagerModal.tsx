@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Trash2, Search, Link2, FileText, AlertTriangle, ShieldCheck, Database, CheckSquare, Square, Maximize2, Minimize2, ChevronUp, ChevronDown, Key, Copy } from 'lucide-react';
+import { X, Trash2, Search, Link2, FileText, AlertTriangle, ShieldCheck, Database, CheckSquare, Square, Maximize2, Minimize2, ChevronUp, ChevronDown, Key, Copy, Upload } from 'lucide-react';
 import { API_BASE } from '../config';
 
 interface DatabaseManagerModalProps {
@@ -60,6 +60,11 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
   const [sigTotal, setSigTotal] = useState(0);
   const [sigSortCol, setSigSortCol] = useState('hit_count');
   const [sigSortOrder, setSigSortOrder] = useState('desc');
+
+  // Excel Import State
+  const [importLoading, setImportLoading] = useState(false);
+  const [importProgress, setImportProgress] = useState<{current: number; total: number} | null>(null);
+  const [importResults, setImportResults] = useState<Array<{filename: string; total_inserted: number; total_ignored: number; sheets: Record<string, any>}> | null>(null);
 
   // Client-side Sort Config for URL and History
   const [urlSort, setUrlSort] = useState<{key: keyof UrlRecord, dir: 'asc'|'desc'}>({key: 'hit_count', dir: 'desc'});
@@ -339,6 +344,53 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
       if (res.ok) fetchSignatures();
     } catch (e) { console.debug("삭제 요청 무시:", e); }
   };
+
+  // 엑셀 다중 파일 임포트 핸들러
+  const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    setImportLoading(true);
+    setImportResults(null);
+    const fileList = Array.from(files);
+    const results: Array<{filename: string; total_inserted: number; total_ignored: number; sheets: Record<string, any>}> = [];
+    
+    // 파일을 순차적으로 처리 (서버 부하 방지)
+    for (let i = 0; i < fileList.length; i++) {
+      setImportProgress({ current: i + 1, total: fileList.length });
+      const file = fileList[i];
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      try {
+        const res = await fetch(`${API_BASE}/api/db/signatures/import-excel`, {
+          method: 'POST',
+          body: formData,
+        });
+        const json = await res.json();
+        if (json.success) {
+          results.push({
+            filename: json.filename || file.name,
+            total_inserted: json.summary.total_inserted,
+            total_ignored: json.summary.total_ignored,
+            sheets: json.summary.sheets
+          });
+        } else {
+          results.push({ filename: file.name, total_inserted: 0, total_ignored: 0, sheets: { error: json.detail || '처리 실패' } });
+        }
+      } catch (err) {
+        console.error(`임포트 실패: ${file.name}`, err);
+        results.push({ filename: file.name, total_inserted: 0, total_ignored: 0, sheets: { error: '네트워크 오류' } });
+      }
+    }
+    
+    setImportResults(results);
+    setImportLoading(false);
+    setImportProgress(null);
+    fetchSignatures(); // 목록 새로고침
+    e.target.value = ''; // input 초기화 (동일 파일 재선택 허용)
+  };
+
   if (!isOpen) return null;
 
 
@@ -530,8 +582,52 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                     <span className="relative z-10">텍스트 추가</span>
                   </button>
                 </div>
+              ) : activeTab === 'signatures' ? (
+                <div className="flex items-center space-x-2.5">
+                  <label className="flex items-center space-x-1.5 bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 border border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.25)] hover:shadow-[0_0_20px_rgba(168,85,247,0.4)] px-4 py-1.5 rounded-lg text-sm font-bold text-white transition-all transform active:scale-95 whitespace-nowrap relative overflow-hidden group cursor-pointer">
+                    <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out z-0"></div>
+                    <Upload className="w-4 h-4 relative z-10" />
+                    <span className="relative z-10">엑셀 임포트</span>
+                    <input type="file" accept=".xlsx" multiple hidden onChange={handleExcelImport} disabled={importLoading} />
+                  </label>
+                </div>
               ) : null}
             </div>
+
+            {/* Import Progress/Result Banner */}
+            {importLoading && importProgress && (
+              <div className="mx-2 mt-2 px-4 py-3 bg-purple-500/10 border border-purple-500/30 rounded-xl flex items-center space-x-3 animate-pulse">
+                <div className="animate-spin w-5 h-5 border-2 border-t-transparent border-purple-400 rounded-full flex-shrink-0" />
+                <span className="text-sm text-purple-300 font-semibold">
+                  임포트 진행 중... ({importProgress.current}/{importProgress.total} 파일 처리 중)
+                </span>
+              </div>
+            )}
+            {importResults && !importLoading && (
+              <div className="mx-2 mt-2 px-4 py-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl relative">
+                <button onClick={() => setImportResults(null)} className="absolute top-2 right-2 p-1 text-slate-500 hover:text-slate-300 transition-colors rounded hover:bg-white/5">
+                  <X className="w-4 h-4" />
+                </button>
+                <div className="flex items-center space-x-2 mb-2">
+                  <span className="text-emerald-400 font-bold text-sm">✅ 임포트 완료</span>
+                  <span className="text-xs text-slate-400">
+                    (총 {importResults.reduce((s, r) => s + r.total_inserted, 0)}건 삽입, {importResults.reduce((s, r) => s + r.total_ignored, 0)}건 중복 무시)
+                  </span>
+                </div>
+                <div className="space-y-1 max-h-32 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700">
+                  {importResults.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs px-2 py-1 bg-black/20 rounded-lg">
+                      <span className="text-slate-300 font-mono truncate mr-4 flex-1">{r.filename}</span>
+                      <div className="flex items-center space-x-3 flex-shrink-0">
+                        <span className="text-emerald-400 font-bold">{r.total_inserted}건 삽입</span>
+                        <span className="text-slate-500">/</span>
+                        <span className="text-slate-400">{r.total_ignored}건 중복</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Table Area */}
             <div className="flex-1 overflow-auto p-2 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
