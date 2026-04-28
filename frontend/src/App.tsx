@@ -456,10 +456,11 @@ function App() {
     const nextVal = !isClusterViewMode;
     setIsClusterViewMode(nextVal);
     
-    if (nextVal && activeReportFileName) {
+    const targetFile = activeReportFileName || downloadFilename || 'realtime_report.json';
+    if (nextVal && Object.keys(logs).length > 0) {
       setIsFetchingClusters(true);
       try {
-        const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(activeReportFileName)}/cluster-all`, {
+        const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(targetFile)}/cluster-all`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ logs })
@@ -2450,7 +2451,7 @@ function App() {
       <SignatureRefinerModal
         isOpen={isRefinerModalOpen}
         onClose={() => setIsRefinerModalOpen(false)}
-        reportFilename={activeReportFileName}
+        reportFilename={activeReportFileName || downloadFilename || 'realtime_report.json'}
         logs={logs}
         onApplySuccess={() => {
            if (activeReportFileName) {

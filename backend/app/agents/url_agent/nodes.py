@@ -212,7 +212,8 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
         prompt = f"""
         당신은 웹페이지 스크린샷과 SMS 원문을 분석하는 스팸 탐지 전문가입니다.
         
-        페이지 제목: {title}
+        - 연결된 웹사이트 URL: {url}
+        - 페이지 제목: {title}
         {content_context_str}
         
         {load_url_guide()}
@@ -1119,6 +1120,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     당신은 텍스트로 스크랩된 웹페이지 콘텐츠를 기반으로 불법 스팸 존재 여부를 분석하는 전문가입니다.
 
     [입력 데이터]
+    - 연결된 웹사이트 URL: {current_url}
     {content_context_str}
     - 페이지 제목: {page_title}{platform_metadata}
     {operational_rules_inject}
