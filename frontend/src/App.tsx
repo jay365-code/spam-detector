@@ -459,7 +459,11 @@ function App() {
     if (nextVal && activeReportFileName) {
       setIsFetchingClusters(true);
       try {
-        const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(activeReportFileName)}/cluster-all`, { method: 'POST' });
+        const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(activeReportFileName)}/cluster-all`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ logs })
+        });
         if (res.ok) {
           const data = await res.json();
           setClusterGroupsData(data?.clusters || []);
@@ -2447,10 +2451,24 @@ function App() {
         isOpen={isRefinerModalOpen}
         onClose={() => setIsRefinerModalOpen(false)}
         reportFilename={activeReportFileName}
+        logs={logs}
         onApplySuccess={() => {
            if (activeReportFileName) {
                reloadReportFromServer(activeReportFileName);
            }
+        }}
+        onApplyModified={(modified) => {
+           // 서버 파일 없이 인메모리로 적용된 수정 엔트리를 React 상태에 직접 반영
+           setLogs(prev => {
+             const newLogs = { ...prev };
+             for (const [logId, entry] of Object.entries(modified)) {
+               const numKey = Number(logId);
+               if (numKey in newLogs) {
+                 newLogs[numKey] = { ...newLogs[numKey], result: (entry as Record<string, unknown>).result };
+               }
+             }
+             return newLogs;
+           });
         }}
       />
 

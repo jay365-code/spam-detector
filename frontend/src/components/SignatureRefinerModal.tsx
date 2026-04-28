@@ -7,6 +7,10 @@ interface SignatureRefinerModalProps {
   onClose: () => void;
   reportFilename: string | null;
   onApplySuccess: () => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  logs?: Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onApplyModified?: (modified: Record<string, any>) => void;
 }
 
 const HighlightMessage = ({ message, target }: { message: string, target: string }) => {
@@ -39,7 +43,7 @@ const HighlightMessage = ({ message, target }: { message: string, target: string
   return <>{message}</>;
 };
 
-export default function SignatureRefinerModal({ isOpen, onClose, reportFilename, onApplySuccess }: SignatureRefinerModalProps) {
+export default function SignatureRefinerModal({ isOpen, onClose, reportFilename, onApplySuccess, logs: parentLogs, onApplyModified }: SignatureRefinerModalProps) {
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -75,7 +79,9 @@ export default function SignatureRefinerModal({ isOpen, onClose, reportFilename,
     setErrorMsg("");
     try {
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(reportFilename!)}/refine-scan`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logs: parentLogs || null })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to fetch scan');
@@ -188,13 +194,19 @@ export default function SignatureRefinerModal({ isOpen, onClose, reportFilename,
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(reportFilename)}/refine-apply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clusters: payload })
+        body: JSON.stringify({ clusters: payload, logs: parentLogs || null })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to apply');
       
+      // 인메모리 모드: 서버가 수정된 로그 엔트리를 반환한 경우 부모 상태 직접 업데이트
+      if (data.modified_entries && onApplyModified) {
+        onApplyModified(data.modified_entries);
+      } else {
+        onApplySuccess(); // 파일 기반 모드: 서버 리로드 위임
+      }
+      
       alert(`총 ${data.applied_clusters_count}개의 클러스터 시그니처 덮어쓰기 완료!`);
-      onApplySuccess(); // App.tsx에 리로드 위임
       onClose();
     } catch (err: unknown) {
       const e = err as Error;

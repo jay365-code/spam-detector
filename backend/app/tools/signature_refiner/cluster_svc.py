@@ -8,12 +8,13 @@ class ClusterService:
         return re.sub(r'\s+', '', text)
 
     @staticmethod
-    def find_target_clusters(report_path: str, similarity_threshold: float = 0.85):
-        try:
-            with open(report_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-        except Exception as e:
-            raise Exception(f"Failed to read report: {e}")
+    def find_target_clusters(report_path: str = None, similarity_threshold: float = 0.85, data: dict = None):
+        if data is None:
+            try:
+                with open(report_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception as e:
+                raise Exception(f"Failed to read report: {e}")
 
         items = []
         logs = data.get('logs', {})
@@ -55,16 +56,18 @@ class ClusterService:
         return data, clusters
 
     @staticmethod
-    def find_all_similar_clusters(report_path: str, similarity_threshold: float = 0.85):
+    def find_all_similar_clusters(report_path: str = None, similarity_threshold: float = 0.85, data: dict = None):
         """
         정제기 등 특화 필터 없이, 단순히 스팸 메시지들의 내용이 기준(85%) 이상 일치하는 
-        모든 그룹(2개 이상 문서가 묶인 그룹)을 반환하는 클러스터링 로직
+        모든 그룹(2개 이상 문서가 묶인 그룹)을 반환하는 클러스터링 로직.
+        data가 직접 전달되면 파일 읽기를 생략한다 (운영 서버에서 프론트엔드가 직접 로그를 전송하는 경우).
         """
-        try:
-            with open(report_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-        except Exception as e:
-            raise Exception(f"Failed to read report: {e}")
+        if data is None:
+            try:
+                with open(report_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception as e:
+                raise Exception(f"Failed to read report: {e}")
 
         items = []
         logs = data.get('logs', {})
