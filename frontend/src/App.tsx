@@ -115,7 +115,7 @@ function App() {
   const [downloadFilename, setDownloadFilename] = useState<string | null>(null);
   const [kisaFilename, setKisaFilename] = useState<string>('MAIN');
   const [trapFilename, setTrapFilename] = useState<string>('TRAP');
-  const [tokenUsage, setTokenUsage] = useState<Record<string, unknown> | null>(null); // [New] Token Usage Tracking
+  const [tokenUsage, setTokenUsage] = useState<Record<string, { in: number; out: number }> | null>(null); // [New] Token Usage Tracking
 
   // Cancellation State
   const [isCancelling, setIsCancelling] = useState(false);
@@ -1189,7 +1189,6 @@ function App() {
     const r = log?.result;
     if (!r) return null;
     const reason = r.reason || '';
-    const msg = (log.message || '').toLowerCase();
     const ur = r.url_result || {};
 
     // ===== 필수 검토 =====
@@ -1516,7 +1515,7 @@ function App() {
                   isProcessing={isProcessing}
                   startTime={startedAt} // [New] Pass Start Time
                   endTime={endTime} // [New] Pass End Time
-                  tokenUsage={tokenUsage ? (tokenUsage as any) : undefined} // [New] Pass Token Usage
+                  tokenUsage={tokenUsage || undefined} // [New] Pass Token Usage
                   downloadUrl={downloadUrl}
                   onDownload={handleExcelSaveAs}
                   isCancelling={isCancelling}

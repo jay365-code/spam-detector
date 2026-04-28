@@ -1,49 +1,63 @@
-#  Vibe Coding: AI-Human Collaboration Protocol
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
-이 문서는 AI 개발 파트너와 나(인간) 사이의 협업 방식을 정의합니다. 모든 작업은 이 지침을 최우선으로 따릅니다.
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
-## 1. 기본 소통 원칙 (The Golden Rules)
-- **언어:** 모든 답변, 기술 문서, 작업 진행 중 표시되는 도구 설명(toolAction/toolSummary)은 반드시 **한국어**로 작성한다.
-- **코드 수정 권한:** 파일의 코드를 직접 수정하거나 덮어쓰기 전에, 반드시 변경 사항의 요약과 이유를 먼저 설명하고 **나의 명시적인 허락(승인)을 얻은 후** 진행한다.
-- **이유 설명 (Reasoning First):** 코드를 제시하기 전에 "왜 이 방식을 선택했는지"와 "이 방식이 기존 로직에 어떤 영향을 주는지"를 먼저 설명한다.
+## 1. Think Before Coding
 
-## 2. 작업 프로세스 (The Workflow)
-- **생각 공유 (Chain of Thought):** 복잡한 요청을 받으면 코드를 짜기 전, "내가 이해한 바는 이렇고, 이런 순서로 작업을 진행하려 한다"는 계획을 먼저 브리핑한다.
-- **원자적 구현 (Atomic Steps):** 한 번에 너무 많은 파일을 건드리지 않는다. 하나의 명확한 기능 단위로 작업을 쪼개서 진행하고, 각 단계마다 나의 확인을 받는다.
-- **가상 환경 및 패키지 관리:** 파이썬 패키지 설치는 반드시 ./.venv 가상 환경 상태에서 진행하며, 새로운 패키지 설치 후에는 관련 내용을 equirements.txt에 기록한다.
-- **검증 코드 포함:** 기능을 구현할 때, 해당 기능이 잘 작동하는지 확인할 수 있는 간단한 테스트 스크립트나 디버그 로그 출력 코드를 함께 제안한다.
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
 
-## 3. 코드 품질 및 유지보수
-- **설명 주석:** 중요한 로직이나 복잡한 알고리즘에는 한국어로 된 주석을 상세히 작성한다.
-- **일관성 유지:** 프로젝트 내의 기존 코딩 스타일, 변수 명명 규칙, 아키텍처를 엄격히 준수한다.
-- **모르는 것은 질문:** 요구사항이 모호하거나 라이브러리 버전 문제로 확실하지 않은 경우, 추측해서 코딩하지 말고 나에게 질문하여 명확히 한다.
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
 
-## 4. 에러 대응 및 디버깅
-- **에러 분석:** 에러 발생 시 단순히 코드만 고치는 것이 아니라, "왜 발생했는지" 원인을 분석하여 보고한다.
-- **로그 우선:** 문제가 생기면 상태를 파악할 수 있도록 데이터베이스 상태나 변수값을 출력하는 로그 코드를 먼저 제안한다.
+## 2. Simplicity First
 
-## 5. 프로젝트 기술 스택 (Tech Stack)
-- **Backend**: Python, FastAPI, LangGraph, LangChain, ChromaDB
-- **Frontend**: React (v19), TypeScript, Vite, TailwindCSS
-- **AI Models**: Gemini, OpenAI, Claude (지원 로직 포함)
+**Minimum code that solves the problem. Nothing speculative.**
 
-## 6. 아키텍처 및 핵심 구조
-- **도메인**: 이 프로젝트는 AI 에이전트를 활용한 **스팸 메시지 탐지(Spam Detector)** 시스템입니다.
-- **다중 에이전트 시스템**: URL 분석 에이전트, Content 분석 에이전트, IBSE 에이전트 등 여러 "LangGraph" 에이전트들이 협력하여 동작합니다.
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
 
-## 7. 테스트 (Testing)
-- 백엔드 테스트는 "pytest" 및 "pytest-asyncio"를 사용하며, 기존의 테스트 코드 구조(	ests/ 경로)를 참고하여 작성합니다.
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
 
-## 8. 새로운 작업 세션 (새로운 대화창) 시작 시
-- **명시적인 컨텍스트 설정:** 새로운 버전이나 주요 기능 개발을 위해 새 창(Agent)을 시작할 때는, 이전 작업의 완료 상태와 새로운 목표를 명시적으로 알려준다.
-- **Start Comment 예시:**
-  > "우리는 지금까지 스팸 탐지기 프로젝트의 v1.0(URL 분석 기반)을 완성했어. 현재 코드는 로컬 환경에 다 적용되어 있고 메인 브랜치에 커밋해 뒀어.
-  > 
-  > 이제부터는 v2.0 작업을 시작할 거야. 목표는 **'텍스트(Content) 내용 분석을 통한 스팸 차단 기능 추가'**야.
-  > 
-  > 작업 전에 먼저 backend/app/agents/content_agent/ 쪽 코드 구조를 확인하고, 앞으로 어떻게 개발할지 계획(implementation_plan.md)을 세워줘."
+## 3. Surgical Changes
 
-## 9. 터미널 및 환경 제약 (Terminal & Environment Constraints)
-- **명령어 체이닝 (Command Chaining):** 사용자의 기본 터미널은 **Windows PowerShell**입니다. 따라서 여러 터미널 명령어를 한 줄로 실행할 때 Mac/Linux 방식의 `&&` 연산자를 절대 사용하지 마십시오. 대신 **세미콜론(`;`)**을 사용하여 명령어를 연결하십시오.
-  > ❌ 잘못된 예: `git add . && git commit -m "확인"`
-  > ⭕ 올바른 예: `git add . ; git commit -m "확인"`
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+---
+
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
