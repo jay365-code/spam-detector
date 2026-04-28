@@ -391,13 +391,15 @@ function App() {
   const [isAtBottom, setIsAtBottom] = useState(true);
 
   // Filter & Search State
-  const [logFilter, setLogFilter] = useState<'ALL' | 'SPAM' | 'HAM' | 'RED_GROUP' | 'FP_SENSITIVE' | 'FLAGGED'>('ALL');
+  const [logFilter, setLogFilter] = useState<'ALL' | 'SPAM' | 'HAM' | 'RED_GROUP' | 'FP_SENSITIVE' | 'FLAGGED' | 'REVIEW'>('ALL');
+  const [reviewCategory, setReviewCategory] = useState<string>('all');
+  const [reviewSort, setReviewSort] = useState<'similarity' | 'probability'>('probability');
   const [searchQuery, setSearchQuery] = useState('');
   const preSearchScrollTopRef = useRef<number | null>(null);
 
   // [New] Filter Scroll Retention
   const filterScrollTopsRef = useRef<Record<string, number>>({});
-  const handleFilterChange = (newFilter: 'ALL' | 'SPAM' | 'HAM' | 'RED_GROUP' | 'FP_SENSITIVE' | 'FLAGGED') => {
+  const handleFilterChange = (newFilter: 'ALL' | 'SPAM' | 'HAM' | 'RED_GROUP' | 'FP_SENSITIVE' | 'FLAGGED' | 'REVIEW') => {
     if (logContainerRef.current) {
       filterScrollTopsRef.current[logFilter] = logContainerRef.current.scrollTop;
     }
@@ -435,6 +437,8 @@ function App() {
     setSearchQuery(val);
   };
 
+  // Header Collapse State (제목/파일 정보 접기)
+  const [headerCollapsed, setHeaderCollapsed] = useState(false);
   // Advanced Filter State
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [advancedFilters, setAdvancedFilters] = useState({
@@ -1180,6 +1184,39 @@ function App() {
     });
   };
 
+  // [New] Review Category Classification Function
+  const getReviewCategory = (log: LogEntry): string | null => {
+    const r = log?.result;
+    if (!r) return null;
+    const reason = r.reason || '';
+    const msg = (log.message || '').toLowerCase();
+    const ur = r.url_result || {};
+
+    // ===== 필수 검토 =====
+    // HAM Override: reason에 Override 키워드 포함 또는 HAM인데 스팸코드(1,2,3) 잔존
+    if (!r.is_spam && (
+      reason.includes('Override') || reason.includes('오탐 방어') ||
+      ['1','2','3'].includes(String(r.classification_code))
+    ))
+      return '🔴 필수: HAM Override';
+    if (r.is_spam && ur.is_confirmed_safe === true)
+      return '🔴 필수: SPAM+방패막이';
+    // SPAM Override: Content HAM + URL SPAM → 최종 SPAM (Red Group 아님)
+    if (r.is_spam && r.is_pure_content_ham === true && ur.is_spam === true && !r.red_group)
+      return '🔴 필수: SPAM Override';
+
+    // ===== 분류코드 기반 카테고리 =====
+    const code = String(r.classification_code || '');
+    const codeMap: Record<string, string> = {
+      '1': '🔞 성인 (코드1)',
+      '2': '🎰 도박 (코드2)',
+      '3': '💰 대출/금융 (코드3)',
+      '0': '📦 일반 (코드0)',
+    };
+    if (codeMap[code]) return codeMap[code];
+    return null;
+  };
+
   // [New] Filter & Count Logic
   // Filter out completely undefined/null items from sparse arrays safely
   const validLogs = Object.keys(logs).map(key => {
@@ -1203,6 +1240,7 @@ function App() {
   const hamCount = displayLogs.filter(({ log }) => log?.result && !log.result.is_spam).length;
   const redGroupCount = displayLogs.filter(({ log }) => log?.result?.red_group).length;
   const flaggedCount = displayLogs.filter(({ log }) => log?.result?.flagged).length;
+  const reviewCount = displayLogs.filter(({ log }) => getReviewCategory(log) !== null).length;
 
   let filteredLogs = displayLogs
     .filter(({ log }) => {
@@ -1211,6 +1249,11 @@ function App() {
       if (logFilter === 'HAM' && (!log.result || log.result.is_spam)) return false;
       if (logFilter === 'RED_GROUP' && (!log.result || !log.result.red_group)) return false;
       if (logFilter === 'FLAGGED' && (!log.result || !log.result.flagged)) return false;
+      if (logFilter === 'REVIEW') {
+        const cat = getReviewCategory(log);
+        if (!cat) return false;
+        if (reviewCategory !== 'all' && cat !== reviewCategory) return false;
+      }
 
       // Apply Advanced Filters
       const af = advancedFilters;
@@ -1271,6 +1314,25 @@ function App() {
       return true;
     })
     .map(({ log, originalIdx }) => ({ ...log, originalIdx, cluster_id: undefined as number | undefined }));
+
+  // [Review Mode] 정렬 적용 (REVIEW 필터 활성 시에만)
+  if (logFilter === 'REVIEW') {
+    if (reviewSort === 'probability') {
+      // 확률 0.5 근처(경계선)를 먼저 → 확실한 건은 뒤로
+      filteredLogs.sort((a, b) => {
+        const pa = a.result?.spam_probability ?? 0;
+        const pb = b.result?.spam_probability ?? 0;
+        return Math.abs(pa - 0.5) - Math.abs(pb - 0.5);
+      });
+    } else {
+      // 유사 메시지 순: 한글+영문만 추출 후 사전순 (동일 패턴 연속 배치)
+      filteredLogs.sort((a, b) => {
+        const ma = (a.message || '').replace(/[^\uAC00-\uD7A3a-zA-Z]/g, '').slice(0, 30);
+        const mb = (b.message || '').replace(/[^\uAC00-\uD7A3a-zA-Z]/g, '').slice(0, 30);
+        return ma.localeCompare(mb);
+      });
+    }
+  }
 
   // 클러스터별 데이터 갯수 확인을 위해 스코프 상단에 선언
   const clusterSizeMap = new Map<number, number>();
@@ -1377,6 +1439,57 @@ function App() {
               >
                 <CheckCircle className="w-4 h-4" />
               </button>
+
+              {/* 구분선 */}
+              <div className="w-px h-6 bg-slate-600 mx-1" />
+
+              {/* Report Actions (하단에서 이동) */}
+              {downloadUrl && activeReportName && (
+                <button
+                  onClick={handleExcelSaveAs}
+                  className="flex items-center justify-center p-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors text-green-400"
+                  title="엑셀 결과 저장 (Save As)"
+                >
+                  <ExcelIcon className="w-4 h-4" />
+                </button>
+              )}
+              {(downloadFilename || activeReportFileName) && (
+                <button
+                  onClick={() => setIsRefinerModalOpen(true)}
+                  className="flex items-center justify-center p-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors text-indigo-400"
+                  title="시그니처 자동 정제 (LLM)"
+                >
+                  ✨
+                </button>
+              )}
+              <button
+                onClick={handleDownloadReport}
+                disabled={Object.keys(logs).length === 0}
+                className="flex items-center justify-center p-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors text-slate-400 disabled:opacity-50"
+                title="리포트 저장 (JSON)"
+              >
+                <Save className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => reportInputRef.current?.click()}
+                className="flex items-center justify-center p-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg transition-colors text-purple-400"
+                title="리포트 불러오기 (Open File)"
+              >
+                <FolderOpen className="w-4 h-4" />
+                <input
+                  type="file"
+                  ref={reportInputRef}
+                  onChange={handleLocalLoadReport}
+                  accept=".json"
+                  className="hidden"
+                />
+              </button>
+
+              {/* Client Status */}
+              <div
+                className={`w-2.5 h-2.5 rounded-full ml-1 ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}
+                title={isConnected ? 'Connected' : 'Offline'}
+              />
             </div>
           </div>
 
@@ -1420,56 +1533,84 @@ function App() {
           className="flex-1 min-h-0 bg-slate-900/40 backdrop-blur-md overflow-hidden flex flex-col border-t border-slate-800 shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.5)] z-20 mt-2"
         >
           {/* Header */}
-          <div className="px-6 py-4 bg-slate-900 border-b border-slate-800/80 flex items-center gap-4 text-xs font-mono select-none">
-            <div className="flex items-center gap-2">
-              <FileText className="w-4 h-4 text-blue-400" />
-              <span className="text-sm font-bold text-slate-200">Spam Detection Report</span>
-              {activeReportName && (
-                <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded text-[10px]">
-                  Loaded: {activeReportName}
-                </span>
-              )}
-            </div>
+          <div className="px-6 bg-slate-900 border-b border-slate-800/80 text-xs font-mono select-none">
+            {/* Row 1: 제목 + 파일 정보 (접기 가능) */}
+            {!headerCollapsed && (
+              <div className="flex items-center gap-4 py-2 border-b border-slate-800/50">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-blue-400" />
+                  <span className="text-sm font-bold text-slate-200">Spam Detection Report</span>
+                  {activeReportName && (
+                    <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded text-[10px]">
+                      Loaded: {activeReportName}
+                    </span>
+                  )}
+                </div>
 
-            {/* Main/TRAP Tabs or Single File Name */}
-            {trapFilename !== 'TRAP' ? (
-              <div className="flex items-center bg-slate-900 p-1 rounded-lg ml-4 border border-slate-700 max-w-[400px]">
+                {/* Main/TRAP Tabs or Single File Name */}
+                {trapFilename !== 'TRAP' ? (
+                  <div className="flex items-center bg-slate-900 p-1 rounded-lg ml-4 border border-slate-700 max-w-[400px]">
+                    <button
+                      onClick={() => setReportTab('MAIN')}
+                      className={`px-3 py-1 rounded text-xs font-bold transition-colors truncate max-w-[180px] ${reportTab === 'MAIN' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-slate-300'}`}
+                      title={kisaFilename}
+                    >
+                      {kisaFilename}
+                    </button>
+                    <button
+                      onClick={() => setReportTab('TRAP')}
+                      className={`px-3 py-1 rounded text-xs font-bold transition-colors truncate max-w-[180px] ${reportTab === 'TRAP' ? 'bg-slate-700 text-purple-400 shadow' : 'text-slate-400 hover:text-purple-300'}`}
+                      title={trapFilename}
+                    >
+                      {trapFilename}
+                    </button>
+                  </div>
+                ) : (
+                  (kisaFilename !== 'MAIN' || validLogs.length > 0) && (
+                    <div className="flex items-center bg-slate-900 p-1 rounded-lg ml-4 border border-slate-700 max-w-[400px]">
+                      <button
+                        className="px-3 py-1 rounded text-xs font-bold transition-colors truncate max-w-[180px] bg-slate-700 text-white shadow cursor-default"
+                        title={kisaFilename !== 'MAIN' ? kisaFilename : '분석 데이터'}
+                      >
+                        {kisaFilename !== 'MAIN' ? kisaFilename : '분석 데이터'}
+                      </button>
+                    </div>
+                  )
+                )}
+
+                {/* 접기 버튼 (오른쪽 끝) */}
                 <button
-                  onClick={() => setReportTab('MAIN')}
-                  className={`px-3 py-1 rounded text-xs font-bold transition-colors truncate max-w-[180px] ${reportTab === 'MAIN' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-slate-300'}`}
-                  title={kisaFilename}
+                  onClick={() => setHeaderCollapsed(true)}
+                  className="ml-auto p-1 rounded hover:bg-slate-700 text-slate-500 hover:text-slate-300 transition-colors"
+                  title="헤더 접기"
                 >
-                  {kisaFilename}
-                </button>
-                <button
-                  onClick={() => setReportTab('TRAP')}
-                  className={`px-3 py-1 rounded text-xs font-bold transition-colors truncate max-w-[180px] ${reportTab === 'TRAP' ? 'bg-slate-700 text-purple-400 shadow' : 'text-slate-400 hover:text-purple-300'}`}
-                  title={trapFilename}
-                >
-                  {trapFilename}
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
                 </button>
               </div>
-            ) : (
-              (kisaFilename !== 'MAIN' || validLogs.length > 0) && (
-                <div className="flex items-center bg-slate-900 p-1 rounded-lg ml-4 border border-slate-700 max-w-[400px]">
-                  <button
-                    className="px-3 py-1 rounded text-xs font-bold transition-colors truncate max-w-[180px] bg-slate-700 text-white shadow cursor-default"
-                    title={kisaFilename !== 'MAIN' ? kisaFilename : '분석 데이터'}
-                  >
-                    {kisaFilename !== 'MAIN' ? kisaFilename : '분석 데이터'}
-                  </button>
-                </div>
-              )
             )}
 
+            {/* Row 2: 필터 + 검색 (항상 표시) */}
+            <div className="flex items-center gap-4 py-2">
+              {/* 펼치기 버튼 (접힌 상태에서만) */}
+              {headerCollapsed && (
+                <button
+                  onClick={() => setHeaderCollapsed(false)}
+                  className="p-1 rounded hover:bg-slate-700 text-slate-500 hover:text-slate-300 transition-colors"
+                  title="헤더 펼치기"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+              )}
+
             {/* Filter Buttons */}
-            <div className="flex items-center bg-slate-900/50 rounded-lg p-1 border border-slate-700 ml-4">
+            <div className="flex items-center bg-slate-900/50 rounded-lg p-1 border border-slate-700">
               {[
                 { label: 'ALL', count: allCount, filterKey: 'ALL', activeClass: 'bg-blue-500 text-white shadow-lg', inactiveClass: 'text-slate-400 hover:text-slate-200' },
                 { label: 'SPAM', count: spamCount, filterKey: 'SPAM', activeClass: 'bg-red-500 text-white shadow-lg', inactiveClass: 'text-red-400 hover:text-red-200' },
                 { label: 'HAM', count: hamCount, filterKey: 'HAM', activeClass: 'bg-green-600 text-white shadow-lg', inactiveClass: 'text-green-400 hover:text-green-200' },
                 { label: 'RED GROUP', count: redGroupCount, filterKey: 'RED_GROUP', activeClass: 'bg-pink-500 text-white shadow-lg', inactiveClass: 'text-pink-400 hover:text-pink-200' },
                 { label: '검토 필요', count: flaggedCount, filterKey: 'FLAGGED', activeClass: 'bg-yellow-500 text-white shadow-[0_0_12px_rgba(234,179,8,0.6)] ring-1 ring-yellow-400', inactiveClass: 'text-yellow-400 hover:text-yellow-100 bg-yellow-400/10 hover:bg-yellow-400/20 border border-yellow-500/30' },
+                { label: '🔍 검토', count: reviewCount, filterKey: 'REVIEW', activeClass: 'bg-purple-500 text-white shadow-[0_0_12px_rgba(168,85,247,0.6)] ring-1 ring-purple-400', inactiveClass: 'text-purple-400 hover:text-purple-100 bg-purple-400/10 hover:bg-purple-400/20 border border-purple-500/30' },
               ].map(({ label, count, filterKey, activeClass, inactiveClass }) => (
                 <button
                   key={filterKey}
@@ -1484,6 +1625,48 @@ function App() {
                 </button>
               ))}
             </div>
+
+            {/* Review Category Dropdown + Sort Toggle */}
+            {logFilter === 'REVIEW' && (
+              <div className="flex items-center gap-2 ml-2">
+                <select
+                  value={reviewCategory}
+                  onChange={e => setReviewCategory(e.target.value)}
+                  className="bg-slate-800 border border-purple-500/50 text-purple-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-400"
+                >
+                  <option value="all">전체 검토 대상</option>
+                  <option value="🔴 필수: HAM Override">🔴 HAM Override</option>
+                  <option value="🔴 필수: SPAM Override">🔴 SPAM Override</option>
+                  <option value="🔴 필수: SPAM+방패막이">🔴 SPAM+방패막이</option>
+                  <option value="🔞 성인 (코드1)">🔞 성인 (코드1)</option>
+                  <option value="🎰 도박 (코드2)">🎰 도박 (코드2)</option>
+                  <option value="💰 대출/금융 (코드3)">💰 대출/금융 (코드3)</option>
+                  <option value="📦 일반 (코드0)">📦 일반 (코드0)</option>
+                </select>
+                <div className="flex bg-slate-800 rounded-lg border border-purple-500/30 overflow-hidden">
+                  <button
+                    onClick={() => setReviewSort('probability')}
+                    className={`px-2.5 py-1 text-[10px] font-bold transition-all ${
+                      reviewSort === 'probability'
+                        ? 'bg-purple-600 text-white'
+                        : 'text-purple-400 hover:text-purple-200'
+                    }`}
+                  >
+                    확률순
+                  </button>
+                  <button
+                    onClick={() => setReviewSort('similarity')}
+                    className={`px-2.5 py-1 text-[10px] font-bold transition-all ${
+                      reviewSort === 'similarity'
+                        ? 'bg-purple-600 text-white'
+                        : 'text-purple-400 hover:text-purple-200'
+                    }`}
+                  >
+                    유사메시지
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Cluster View Toggle */}
             <div className="flex items-center ml-auto bg-indigo-900/20 rounded-lg p-1 border border-indigo-700/50 mr-2">
@@ -1603,61 +1786,9 @@ function App() {
               </div>
             )}
 
-            {/* Client Status */}
-            <div className="flex items-center border-l border-slate-700 pl-4 ml-auto">
-              <div
-                className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-green-500 animate-pulse transition-colors' : 'bg-red-500 transition-colors'}`}
-                title={isConnected ? 'Connected' : 'Offline'}
-              />
-            </div>
 
-
-            {/* Report Actions */}
-            <div className="flex items-center gap-2 ml-4">
-              {/* 엑셀 다운로드는 '보고서 불러오기 후'에만 노출 */}
-              {downloadUrl && activeReportName && (
-                <button
-                  onClick={handleExcelSaveAs}
-                  className="p-2 hover:bg-slate-700 rounded-lg text-green-400 hover:text-green-300 transition-colors"
-                  title="엑셀 결과 저장 (Save As)"
-                >
-                  <ExcelIcon className="w-4 h-4" />
-                </button>
-              )}
-              {/* ✨ 시그니처 정제: 새 분석 완료(downloadFilename) 또는 보고서 불러오기(activeReportFileName) 시 노출 */}
-              {(downloadFilename || activeReportFileName) && (
-                <button
-                  onClick={() => setIsRefinerModalOpen(true)}
-                  className="p-2 hover:bg-slate-700 rounded-lg text-indigo-400 hover:text-indigo-300 transition-colors"
-                  title="시그니처 자동 정제 (LLM)"
-                >
-                  ✨
-                </button>
-              )}
-              <button
-                onClick={handleDownloadReport}
-                disabled={Object.keys(logs).length === 0}
-                className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-blue-400 transition-colors disabled:opacity-50"
-                title="리포트 저장 (JSON)"
-              >
-                <Save className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => reportInputRef.current?.click()}
-                className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-purple-400 transition-colors"
-                title="리포트 불러오기 (Open File)"
-              >
-                <FolderOpen className="w-4 h-4" />
-                <input
-                  type="file"
-                  ref={reportInputRef}
-                  onChange={handleLocalLoadReport}
-                  accept=".json"
-                  className="hidden"
-                />
-              </button>
-            </div>
-          </div>
+            </div> {/* End Row 2 */}
+          </div> {/* End Header */}
 
           {/* Advanced Filter Panel */}
           {filterPanelOpen && (
@@ -1717,22 +1848,118 @@ function App() {
                   </div>
                 </div>
 
-                {/* 스팸 확률 */}
+                {/* 스팸 확률 - 듀얼 레인지 슬라이더 */}
                 <div>
-                  <label className="text-xs text-slate-400 mb-1.5 block">스팸 확률</label>
-                  <div className="flex items-center gap-2">
-                    <input type="number" min="0" max="1" step="0.01" placeholder="최소 (0.0)"
-                      value={advancedFilters.probMin}
-                      onChange={e => setAdvancedFilters(f => ({ ...f, probMin: e.target.value }))}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
-                    />
-                    <span className="text-slate-500 text-xs">~</span>
-                    <input type="number" min="0" max="1" step="0.01" placeholder="최대 (1.0)"
-                      value={advancedFilters.probMax}
-                      onChange={e => setAdvancedFilters(f => ({ ...f, probMax: e.target.value }))}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
+                  <label className="text-xs text-slate-400 mb-1.5 block">
+                    스팸 확률
+                    <span className="text-slate-600 ml-2 text-[10px]">← → 10% | ⌘← → 1%</span>
+                  </label>
+                  {(() => {
+                    const pMin = advancedFilters.probMin === '' ? 0 : Number(advancedFilters.probMin);
+                    const pMax = advancedFilters.probMax === '' ? 1 : Number(advancedFilters.probMax);
+                    const isActive = advancedFilters.probMin !== '' || advancedFilters.probMax !== '';
+                    const leftPct = pMin * 100;
+                    const rightPct = pMax * 100;
+
+                    const handleKey = (e: React.KeyboardEvent, which: 'min' | 'max') => {
+                      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+                      e.preventDefault();
+                      const step = e.metaKey || e.ctrlKey ? 0.01 : 0.1;
+                      const dir = e.key === 'ArrowRight' ? 1 : -1;
+                      if (which === 'min') {
+                        const next = Math.round(Math.max(0, Math.min(pMax - 0.01, pMin + dir * step)) * 100) / 100;
+                        setAdvancedFilters(f => ({ ...f, probMin: String(next) }));
+                      } else {
+                        const next = Math.round(Math.max(pMin + 0.01, Math.min(1, pMax + dir * step)) * 100) / 100;
+                        setAdvancedFilters(f => ({ ...f, probMax: String(next) }));
+                      }
+                    };
+
+                    return (
+                      <div className="flex flex-col gap-2">
+                        <div className="relative h-6 flex items-center select-none" id="prob-slider-track">
+                          <div className="absolute inset-x-0 h-1.5 bg-slate-700 rounded-full" />
+                          {/* 활성 범위 막대 — 드래그로 min/max 동시 이동 */}
+                          <div
+                            className="absolute h-3 rounded-full cursor-grab active:cursor-grabbing z-[5]"
+                            style={{
+                              left: `${leftPct}%`,
+                              right: `${100 - rightPct}%`,
+                              background: isActive ? 'linear-gradient(90deg, #3b82f6, #8b5cf6)' : '#475569'
+                            }}
+                            onMouseDown={e => {
+                              e.preventDefault();
+                              const track = document.getElementById('prob-slider-track');
+                              if (!track) return;
+                              const gap = pMax - pMin;
+                              const startX = e.clientX;
+                              const trackRect = track.getBoundingClientRect();
+                              const trackW = trackRect.width;
+                              const startMin = pMin;
+
+                              const onMove = (ev: MouseEvent) => {
+                                const dx = ev.clientX - startX;
+                                const delta = dx / trackW; // 0~1 범위의 이동량
+                                let newMin = Math.round((startMin + delta) * 100) / 100;
+                                // 범위 제한
+                                newMin = Math.max(0, Math.min(1 - gap, newMin));
+                                const newMax = Math.round((newMin + gap) * 100) / 100;
+                                setAdvancedFilters(f => ({ ...f, probMin: String(newMin), probMax: String(newMax) }));
+                              };
+                              const onUp = () => {
+                                window.removeEventListener('mousemove', onMove);
+                                window.removeEventListener('mouseup', onUp);
+                              };
+                              window.addEventListener('mousemove', onMove);
+                              window.addEventListener('mouseup', onUp);
+                            }}
+                          />
+                          <input
+                            type="range" min="0" max="100" step="1"
+                            value={Math.round(pMin * 100)}
+                            onChange={e => {
+                              const v = Number(e.target.value) / 100;
+                              if (v < pMax) setAdvancedFilters(f => ({ ...f, probMin: String(v) }));
+                            }}
+                            onKeyDown={e => handleKey(e, 'min')}
+                            className="absolute inset-x-0 w-full appearance-none bg-transparent pointer-events-none z-10
+                              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
+                              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:border-2
+                              [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:pointer-events-auto
+                              [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:active:cursor-grabbing
+                              [&::-webkit-slider-thumb]:hover:bg-blue-400 [&::-webkit-slider-thumb]:transition-colors"
+                            title={`최소: ${(pMin * 100).toFixed(0)}%`}
+                          />
+                          <input
+                            type="range" min="0" max="100" step="1"
+                            value={Math.round(pMax * 100)}
+                            onChange={e => {
+                              const v = Number(e.target.value) / 100;
+                              if (v > pMin) setAdvancedFilters(f => ({ ...f, probMax: String(v) }));
+                            }}
+                            onKeyDown={e => handleKey(e, 'max')}
+                            className="absolute inset-x-0 w-full appearance-none bg-transparent pointer-events-none z-20
+                              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
+                              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-500 [&::-webkit-slider-thumb]:border-2
+                              [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:pointer-events-auto
+                              [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:active:cursor-grabbing
+                              [&::-webkit-slider-thumb]:hover:bg-purple-400 [&::-webkit-slider-thumb]:transition-colors"
+                            title={`최대: ${(pMax * 100).toFixed(0)}%`}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-blue-400 font-bold">{(pMin * 100).toFixed(0)}%</span>
+                          {isActive && (
+                            <button
+                              onClick={() => setAdvancedFilters(f => ({ ...f, probMin: '', probMax: '' }))}
+                              className="text-slate-500 hover:text-slate-300 transition-colors"
+                            >초기화</button>
+                          )}
+                          <span className="text-purple-400 font-bold">{(pMax * 100).toFixed(0)}%</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* URL 유무 */}

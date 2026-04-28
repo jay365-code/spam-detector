@@ -363,6 +363,7 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
         
         # content 햄 여부 파악: 실제 판정이 HAM인 경우에만 분리 감지 대상으로 산정.
         is_pure_content_ham = not c_is_spam
+        final["is_pure_content_ham"] = is_pure_content_ham  # 프론트엔드 SPAM Override 필터용
         # --- [NEW] 사전 AI 환각 URL 무결성 필터 ---
         # URL Agent의 판결을 적용하기 전에, 추출된 URL이 실제로 본문에 존재하는지 먼저 검증
         import urllib.parse
