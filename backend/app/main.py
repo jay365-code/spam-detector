@@ -1110,12 +1110,8 @@ def process_message(message: str) -> dict:
         logger.warning(f"    -> LLM Quota Exhausted/Exceeded detected. Bypassing URL and IBSE stages.")
         return build_result(final_is_spam, final_code, final_reason)
 
-    # Logic Update:
-    # If Stage 2 is SPAM -> Finalize as SPAM (skip Stage 3)
     if final_is_spam:
-        logger.info(f"    -> Identified as SPAM (Code: {final_code})")
-        logger.info(f"\n[DEBUG RESULT]\nMessage: {message}\nIs Spam: {final_is_spam}\nProbability: {final_prob}\nCode: {final_code}\nReason: {final_reason}\nTokens: In={input_tokens}, Out={output_tokens}\n")
-        return build_result(True, final_code, final_reason)
+        logger.info(f"    -> [Stage 2] Identified as SPAM (Code: {final_code}). Proceeding to URL Check for Override.")
     
     # Step 3: URL Deep Dive (Conditional)
     # Check URL if Content is Spam OR if Content is Safe but URL exists
@@ -1182,11 +1178,15 @@ def process_message(message: str) -> dict:
                       logger.info(f"[URL Override] Final Verdict: SPAM, Code: {final_code}")
             else:
                  # Confirmed Safe -> Force HAM (Override Content SPAM if confirmed as safe institution/service)
-                 if final_is_spam:
+                 # 방패막이(Decoy) 우회 공격 방지: 무조건 햄으로 덮어쓰지 않고, 진짜로 안전함이 인증(is_confirmed_safe)된 경우에만 구제
+                 if final_is_spam and isaa_result.get("is_confirmed_safe") is True:
                       logger.info("    -> URL Confirmed Safe! Overriding Content SPAM to HAM.")
                       final_is_spam = False
                       final_reason += " | [URL: CONFIRMED SAFE (Override)]"
                       final_code = None
+                 elif final_is_spam:
+                      logger.info("    -> URL is normal, but Content is SPAM. Maintaining SPAM (Preventing Decoy bypass).")
+                      final_reason += " | [URL: Normal (Decoy) - Maintaining SPAM]"
         except Exception as e:
             error_msg = str(e).lower()
             if "quota" in error_msg or "429" in error_msg or "exhausted" in error_msg:
@@ -1198,7 +1198,10 @@ def process_message(message: str) -> dict:
                 final_reason += f" | [URL Error: {e}]"
 
 
-    logger.info("    -> Classified as HAM.")
+    if final_is_spam:
+        logger.info(f"    -> Final Classification: SPAM (Code: {final_code})")
+    else:
+        logger.info("    -> Final Classification: HAM")
     logger.info(f"\n[DEBUG RESULT]\nMessage: {message}\nIs Spam: {final_is_spam}\nProbability: {final_prob}\nCode: {final_code}\nReason: {final_reason}\nTokens: In={input_tokens}, Out={output_tokens}\n")
     return build_result(final_is_spam, final_code, final_reason)
 
