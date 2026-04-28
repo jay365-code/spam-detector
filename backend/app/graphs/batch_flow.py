@@ -546,8 +546,15 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 else:
                     # Case 3: URL HAM → Content SPAM 오버라이드 가능 여부 판정
                     # [핵심 원칙] HAM Override는 오직 is_consistently_transactional(발신자=사이트 주체 확인)일 때만 허용
-                    # 뉴스/포털/관련 기사 등 공개 콘텐츠는 누구나 링크 가능하므로 면책 근거 불가 (방패막이)
-                    is_confirmed_safe = u_res.get("is_confirmed_safe", False)
+                    # 뉴스/포털/관련 기사 등 공개 콘텐츠는 누구나 링크 가능하므로 면책 근거 
+                    # [수정] 방패막이(Decoy) URL Drop 조건:
+                    # 방패막이 키워드 + CONFIRMED SAFE → 정상 사이트 역이용 → Drop 허용
+                    # is_mismatched 단독은 사칭/가짜 사이트 가능성 → Drop하지 않고 블랙리스트 보존
+                    _combined_reason_lower = (url_reason + " " + (u_res.get("_original_reason", "") if isinstance(u_res, dict) else "")).lower()
+                    has_injection_keyword = any(kw in _combined_reason_lower for kw in ["위장 url", "정상 도메인 위장", "방패막이", "decoy", "safe url injection", "미끼 링크", "필터 회피"])
+                    is_confirmed_safe = u_res.get("is_confirmed_safe", False) if isinstance(u_res, dict) else False
+                    is_injection = has_injection_keyword and is_confirmed_safe
+                    
                     is_mismatched = u_res.get("is_mismatched", False)
                     is_transactional_match = u_res.get("is_consistently_transactional", False)
                     
@@ -558,16 +565,19 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                             # (예: 택배 알림 SMS + 동일 상호명 쇼핑몰, 은행 알림 + 동일 은행 공식 사이트)
                             final["is_spam"] = False
                             final["reason"] = f"{existing_reason} | [URL: 상거래 완벽 일치(Transactional Match). 본문 스팸 오탐 방어 Override]"
-                        elif is_confirmed_safe or is_mismatched:
+                        elif is_confirmed_safe:
                             # CONFIRMED SAFE이지만 transactional 아님 → 뉴스/포털/타인 사이트 방패막이
-                            # 또는 is_mismatched → 명시적 본문-웹 불일치 감지
                             # → SPAM 유지 + URL Drop (정상 사이트 블랙리스트 오염 방지)
                             if is_mismatched:
-                                final["reason"] = f"{existing_reason} | [URL: 본문-웹 불일치 감지(위장/방패막이). SPAM 유지]"
+                                final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE + 본문-웹 불일치(방패막이). SPAM 유지]"
                             else:
                                 final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE이나 발신자-사이트 주체 불일치(방패막이). SPAM 유지]"
                             final["drop_url"] = True
                             final["drop_url_reason"] = "safe_injection"
+                        elif is_mismatched:
+                            # 미확인 사이트 + 본문-웹 불일치 → 사칭/가짜 사이트 의심
+                            # → SPAM 유지하되, URL은 블랙리스트에 보존 (drop하지 않음)
+                            final["reason"] = f"{existing_reason} | [URL: 본문-웹 불일치 감지(사칭 의심). SPAM 유지, URL 블랙리스트 보존]"
                         else:
                             # URL에 안전 증거도 불일치 증거도 없는 상태 → Content SPAM 판정 존중
                             short_url_reason = url_reason[:80] + "..." if len(url_reason) > 80 else url_reason
@@ -615,14 +625,13 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # [KISA 파라미터 선제적 가짜 IP 검사]
              pre_parsed = state.get("pre_parsed_url")
              
-             # [수정] 방패막이(Decoy) URL Drop 조건 강화:
-             # 1) 방패막이 키워드 + CONFIRMED SAFE → 정상 사이트 역이용 (기존)
-             # 2) 방패막이 키워드 + is_mismatched → 본문-웹 불일치 명시적 감지 (신규)
-             # (사칭/가짜 사이트는 is_spam=True로 판정되므로 이 분기에 도달하지 않음 → 블랙리스트 보존)
-             is_mismatched_flag = u_res.get("is_mismatched", False) if isinstance(u_res, dict) else False
-             has_injection_keyword = "위장 url" in (u_reason + " " + u_res.get("_original_reason", "")).lower() or "정상 도메인 위장" in (u_reason + " " + u_res.get("_original_reason", "")).lower() or "방패막이" in (u_reason + " " + u_res.get("_original_reason", "")).lower() or "decoy" in (u_reason + " " + u_res.get("_original_reason", "")).lower() or "safe url injection" in (u_reason + " " + u_res.get("_original_reason", "")).lower() or "미끼 링크" in (u_reason + " " + u_res.get("_original_reason", "")).lower() or "필터 회피" in (u_reason + " " + u_res.get("_original_reason", "")).lower()
+             # [수정] 방패막이(Decoy) URL Drop 조건:
+             # 방패막이 키워드 + CONFIRMED SAFE → 정상 사이트 역이용 → Drop 허용
+             # is_mismatched 단독은 사칭/가짜 사이트 가능성 → Drop하지 않고 블랙리스트 보존
+             _combined_reason_lower = (u_reason + " " + (u_res.get("_original_reason", "") if isinstance(u_res, dict) else "")).lower()
+             has_injection_keyword = any(kw in _combined_reason_lower for kw in ["위장 url", "정상 도메인 위장", "방패막이", "decoy", "safe url injection", "미끼 링크", "필터 회피"])
              is_confirmed_safe = u_res.get("is_confirmed_safe", False) if isinstance(u_res, dict) else False
-             is_injection = has_injection_keyword and (is_confirmed_safe or is_mismatched_flag)
+             is_injection = has_injection_keyword and is_confirmed_safe
              
              if pre_parsed:
                  import re, urllib.parse
