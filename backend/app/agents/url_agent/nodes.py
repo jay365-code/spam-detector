@@ -50,6 +50,16 @@ UGC_DOMAINS = [
     "tinyurl.com",        # 단축 URL
 ]
 
+# 앱 딥링크 도메인 - 스크래핑 원천 불가 (앱 전용 URL, 브라우저 접속 시 ERR_ABORTED)
+# 스크래핑을 건너뛰고 Content Agent의 판정을 최종 결과로 사용 (Inconclusive 반환)
+DEEPLINK_DOMAINS = [
+    "onelink.me",       # AppsFlyer (CJ더마켓, 골프앱 등 기업용 딥링크)
+    "adjust.com",       # Adjust (모바일 어트리뷰션)
+    "app.link",         # Branch.io
+    "abr.ge",           # Branch.io 단축
+    "samsungapps.com",  # 삼성 갤럭시 스토어
+]
+
 def is_trusted_domain(url: str) -> bool:
     """리다이렉트된 URL이 유명/신뢰 도메인인지 확인"""
     try:
@@ -810,6 +820,29 @@ async def scrape_node(state: SpamState) -> Dict[str, Any]:
         
     if not url:
         return {"reason": "No URL to scrape"}
+    
+    # [앱 딥링크 사전 필터] 스크래핑이 원천적으로 불가능한 앱 딥링크 도메인 감지 시 즉시 스킵
+    # analyze_node에서 status != "success" 분기를 타고 자연스럽게 Inconclusive(Content Agent 판정 우선)로 처리됨
+    try:
+        from urllib.parse import urlparse as _dl_urlparse
+        _dl_parsed = _dl_urlparse(url if "://" in url else "http://" + url)
+        _dl_domain = _dl_parsed.netloc.lower()
+        if any(_dl_domain == d or _dl_domain.endswith("." + d) for d in DEEPLINK_DOMAINS):
+            logger.info(f"[URL Agent] 앱 딥링크 도메인 감지 → 스크래핑 생략: {url} ({_dl_domain})")
+            if status_cb:
+                await status_cb(f"📱 [딥링크 필터] 앱 전용 URL 감지 - 스크래핑 생략 ({_dl_domain})")
+            return {
+                "scraped_data": {
+                    "status": "skipped",
+                    "error": "App deep-link domain (scraping not possible)",
+                    "url": url,
+                    "attempted_urls": [url]
+                },
+                "visited_history": (state.get("visited_history", []) + [url]),
+                "attempted_urls": (list(state.get("attempted_urls", [])) + [url])
+            }
+    except Exception:
+        pass
     
     # Playwright Manager 사용
     try:

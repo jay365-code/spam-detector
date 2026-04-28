@@ -513,9 +513,11 @@ class PlaywrightManager:
                 
                 # Acquire semaphore before doing heavy work (creating context)
                 async with self._semaphore:
-                    is_kakao = "kakao.com" in url.lower()
-                    if is_kakao:
-                        logger.debug(f"Creating Desktop context for Kakao URL to prevent app deep-link hangs: {url}")
+                    # SNS/앱 도메인은 모바일 접속 시 앱 리다이렉트(딥링크)가 발동하여 스크래핑이 실패하므로 Desktop 컨텍스트 사용
+                    DESKTOP_DOMAINS = ["kakao.com", "t.me", "telegram.me", "instagram.com", "band.us"]
+                    use_desktop = any(d in url.lower() for d in DESKTOP_DOMAINS)
+                    if use_desktop:
+                        logger.debug(f"Creating Desktop context for SNS/app URL to prevent deep-link hangs: {url}")
                         context = await self.browser.new_context(
                             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                             viewport={"width": 1920, "height": 1080},
