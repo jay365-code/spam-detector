@@ -544,32 +544,38 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                         # 아래 하단의 'URL 중복 시그니처 소거(Deduplication)' 필터로부터 시그니처를 지키기 위해 예외 쉴드를 부여합니다.
                         final["preserve_signature_override"] = True
                 else:
-                    # Case 3: URL(Safe) -> 명백히 안전한 사이트(CONFIRMED SAFE)인 경우, 본문과 어긋난 위장방패막이(Mismatched)인지 확인
+                    # Case 3: URL HAM → Content SPAM 오버라이드 가능 여부 판정
+                    # [핵심 원칙] HAM Override는 오직 is_consistently_transactional(발신자=사이트 주체 확인)일 때만 허용
+                    # 뉴스/포털/관련 기사 등 공개 콘텐츠는 누구나 링크 가능하므로 면책 근거 불가 (방패막이)
                     is_confirmed_safe = u_res.get("is_confirmed_safe", False)
-                    if is_confirmed_safe:
-                        if final.get("is_spam"):
-                            is_mismatched = u_res.get("is_mismatched", False)
-                            spam_prob = final.get("spam_probability", 0.0)
-                            
+                    is_mismatched = u_res.get("is_mismatched", False)
+                    is_transactional_match = u_res.get("is_consistently_transactional", False)
+                    
+                    if final.get("is_spam"):
+                        # Content SPAM 상태에서 URL HAM이 뒤집을 수 있는지 검사
+                        if is_transactional_match and not is_mismatched:
+                            # [유일한 HAM Override 조건] 발신자=사이트 주체 완벽 일치 + 내용 불일치 아님
+                            # (예: 택배 알림 SMS + 동일 상호명 쇼핑몰, 은행 알림 + 동일 은행 공식 사이트)
+                            final["is_spam"] = False
+                            final["reason"] = f"{existing_reason} | [URL: 상거래 완벽 일치(Transactional Match). 본문 스팸 오탐 방어 Override]"
+                        elif is_confirmed_safe or is_mismatched:
+                            # CONFIRMED SAFE이지만 transactional 아님 → 뉴스/포털/타인 사이트 방패막이
+                            # 또는 is_mismatched → 명시적 본문-웹 불일치 감지
+                            # → SPAM 유지 + URL Drop (정상 사이트 블랙리스트 오염 방지)
                             if is_mismatched:
-                                # 확실한 역이용/방패막이로 판정된 경우만 SPAM 유지
-                                final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE 판독되나, 본문-웹 명백한 불일치(위장/방패막이). SPAM 유지]"
+                                final["reason"] = f"{existing_reason} | [URL: 본문-웹 불일치 감지(위장/방패막이). SPAM 유지]"
                             else:
-                                # 본문과 웹 내용이 어느 정도 일치하고 안전한 웹사이트라면, 단순 낚시성 홍보일 확률이 높으므로 HAM으로 억울함을 풀어줌
-                                final["is_spam"] = False
-                                final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE & Content Matched (오탐 방어 Override)]"
-                            # Do NOT wipe final["classification_code"] to preserve Content Agent's original intent
+                                final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE이나 발신자-사이트 주체 불일치(방패막이). SPAM 유지]"
+                            final["drop_url"] = True
+                            final["drop_url_reason"] = "safe_injection"
+                        else:
+                            # URL에 안전 증거도 불일치 증거도 없는 상태 → Content SPAM 판정 존중
+                            short_url_reason = url_reason[:80] + "..." if len(url_reason) > 80 else url_reason
+                            final["reason"] = f"{existing_reason} | [URL 무혐의(원본 판단 유지) 요약: {short_url_reason}]"
                     else:
-                       is_transactional_match = u_res.get("is_consistently_transactional", False)
-                       if is_transactional_match and final.get("is_spam"):
-                           # URL Agent가 '놀라운 연관성' 등 거래성 일치를 확신한 경우, Content Agent의 스미싱 오탐을 HAM으로 덮어씀
-                           final["is_spam"] = False
-                           final["reason"] = f"{existing_reason} | [URL: 상거래 완벽 일치(Transactional Match). 본문 스미싱/스팸 오탐 방어 Override]"
-                       else:
-                           # URL에 스팸 증거가 없어 HAM 판정되었으나, 명백히 안전하다는 증거(대형포털 등)도 없는 상태 (가입 유도, 빈 페이지 등)
-                           # -> 기존 Content Agent 결과(SPAM)를 존중하여 덮어쓰지 않음
-                           short_url_reason = url_reason[:80] + "..." if len(url_reason) > 80 else url_reason
-                           final["reason"] = f"{existing_reason} | [URL 무혐의(원본 판단 유지) 요약: {short_url_reason}]"
+                        # Content HAM + URL HAM → HAM 유지. 정보 사유만 추가
+                        short_url_reason = url_reason[:80] + "..." if len(url_reason) > 80 else url_reason
+                        final["reason"] = f"{existing_reason} | [URL 무혐의 요약: {short_url_reason}]"
 
         # Ensure malicious_url_extracted is explicitly in the final dict if set
         if "malicious_url_extracted" in final and final["malicious_url_extracted"] is True:
@@ -608,6 +614,16 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              
              # [KISA 파라미터 선제적 가짜 IP 검사]
              pre_parsed = state.get("pre_parsed_url")
+             
+             # [수정] 방패막이(Decoy) URL Drop 조건 강화:
+             # 1) 방패막이 키워드 + CONFIRMED SAFE → 정상 사이트 역이용 (기존)
+             # 2) 방패막이 키워드 + is_mismatched → 본문-웹 불일치 명시적 감지 (신규)
+             # (사칭/가짜 사이트는 is_spam=True로 판정되므로 이 분기에 도달하지 않음 → 블랙리스트 보존)
+             is_mismatched_flag = u_res.get("is_mismatched", False) if isinstance(u_res, dict) else False
+             has_injection_keyword = "위장 url" in (u_reason + " " + u_res.get("_original_reason", "")).lower() or "정상 도메인 위장" in (u_reason + " " + u_res.get("_original_reason", "")).lower() or "방패막이" in (u_reason + " " + u_res.get("_original_reason", "")).lower() or "decoy" in (u_reason + " " + u_res.get("_original_reason", "")).lower() or "safe url injection" in (u_reason + " " + u_res.get("_original_reason", "")).lower() or "미끼 링크" in (u_reason + " " + u_res.get("_original_reason", "")).lower() or "필터 회피" in (u_reason + " " + u_res.get("_original_reason", "")).lower()
+             is_confirmed_safe = u_res.get("is_confirmed_safe", False) if isinstance(u_res, dict) else False
+             is_injection = has_injection_keyword and (is_confirmed_safe or is_mismatched_flag)
+             
              if pre_parsed:
                  import re, urllib.parse
                  parsed_pre = urllib.parse.urlparse(pre_parsed if "://" in pre_parsed else "http://" + pre_parsed)
@@ -680,21 +696,8 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                     # 모든 파편이 다 가짜 IP였거나 배제된 경우 (KISA 원본이 아닌 할루시네이션만 존재)
                     is_fake_ip = True
              
-             # User requested fix: Drop URL if Safe URL Injection is detected.
-             # This is flagged by fp_sentinel_node setting final["drop_url"] = True later,
-             # but we can also set it proactively here if we have a url_reason indicating it.
-             url_reason = u_reason
-             # [Fix-C] Runtime Cache 수신 시 원본 reason이 덮여씌워지므로, 보존된 _original_reason도 함께 검사하여
-             # 리더가 방패막이로 판정한 URL이 팔로워에서도 동일하게 drop_url=True 처리되도록 함
-             _original_url_reason = u_res.get("_original_reason", "") if u_res else ""
-             url_reason_lower = (url_reason + " " + _original_url_reason).lower()
-             
-             has_injection_keyword = "위장 url" in url_reason_lower or "정상 도메인 위장" in url_reason_lower or "방패막이" in url_reason_lower or "decoy" in url_reason_lower or "safe url injection" in url_reason_lower or "미끼 링크" in url_reason_lower or "필터 회피" in url_reason_lower
-             is_confirmed_safe = u_res.get("is_confirmed_safe", False) if isinstance(u_res, dict) else False
-             
-             # AI가 방패막이(Decoy)/미스매치로 인지했더라도, 실제로 안전하다고 확인된(is_confirmed_safe) 도메인인 경우에만 URL Drop을 허용.
-             # (의도적으로 단축 URL 차단 안내창 등을 띄우거나, 가짜 기업 사이트를 만든 스패머의 URL은 Drop하지 않고 블랙리스트에 보존함)
-             is_injection = has_injection_keyword and is_confirmed_safe
+             # [방패막이 URL Drop] 윗단(L618~L625)에서 is_injection이 강화된 조건으로 사전 계산됨
+             # is_injection = has_injection_keyword and (is_confirmed_safe or is_mismatched_flag)
              
              is_filtered_short = u_res.get("drop_url", False)
              is_dead_domain = any(keyword in u_reason for keyword in ["err_name_not_resolved", "dns_probe_finished_nxdomain", "err_connection_refused", "존재하지 않는 url", "네트워크 에러"])
