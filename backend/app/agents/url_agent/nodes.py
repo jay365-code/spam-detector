@@ -742,14 +742,17 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
             
     # 2-4. Short URL 특수 처리 (Garbage 튜닝)
     # bit.ly/abcd미납금액결제 -> bit.ly/abcd 만 뽑히도록 쓰레기값 정리
-    shorteners = ['bit.ly', 'me2.do', 'vo.la', 'han.gl', 'url.kr', 'sbz.kr', 'cutt.ly', 'tinyurl.com', 'naver.me', 'kko.to', 't.ly', 't.co', 'g.co', 'booly.kr', 'qaa.kr']
+    from app.utils.shortener_utils import SHORTENER_DOMAINS as _SHORTENER_DOMAINS, is_short_url as _is_short_url
     cleaned_urls = []
     for url in urls:
-        if any(s in url.lower() for s in shorteners):
+        _host = url.lower().split('/')[2] if '://' in url.lower() else url.lower().split('/')[0]
+        _host = _host.split(':')[0]
+        if _host in _SHORTENER_DOMAINS:
             # 숏주소 뒤에 특수기호가 붙으면 거기서부터 잘라냄 (단, 한글 가-힣은 정상 커스텀 URL일 수 있으므로 추출에선 자르지 않음!)
             url = re.sub(r'[\[\]\(\)<>◆▶★♥※○●◎◇□■△▲▽▼▷◁◀♤♠♡♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬].*$', '', url)
             # 쓰레기값을 잘라냈는데 파라미터가 비어버린다면 가짜 URL (예: bit.ly/)이므로 통과
-            if url.endswith('/') and url.split('/')[-2] in shorteners:
+            parts = url.split('/')
+            if url.endswith('/') and len(parts) >= 2 and parts[-2].split(':')[0] in _SHORTENER_DOMAINS:
                 logger.info(f"[URL Agent] Dropping empty short URL: {url}")
                 continue
         cleaned_urls.append(url)
@@ -770,7 +773,7 @@ async def extract_node(state: SpamState) -> Dict[str, Any]:
     
     # [Intelligent Sorting] 일반 도메인(쇼핑몰, 기업사이트 등)을 먼저 검사하기 위해 
     # SNS/UGC/단축 도메인은 리스트 뒤쪽으로 보냄.
-    ugc_and_shorteners = UGC_DOMAINS + ['bit.ly', 'me2.do', 'vo.la', 'han.gl', 'url.kr', 'sbz.kr', 'cutt.ly', 'tinyurl.com', 'naver.me', 'kko.to', 't.ly', 't.co', 'g.co', 'booly.kr', 'qaa.kr']
+    ugc_and_shorteners = UGC_DOMAINS + list(_SHORTENER_DOMAINS)
     def sort_key(u):
         try:
             domain = u.split('/')[2].lower() if '://' in u else u.split('/')[0].lower()
@@ -1009,8 +1012,8 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
             # 단축 URL 식별 로직 강화:
             # 1. path가 짧고(0보다 크고 4 이하) 쿼리/플래그먼트가 없는 경우
             # 2. 혹은 도메인 자체가 알려진 단축 도메인 계열인 경우
-            shorteners = ['bit.ly', 'me2.do', 'vo.la', 'han.gl', 'url.kr', 'sbz.kr', 'cutt.ly', 'tinyurl.com', 'naver.me', 'kko.to', 't.ly', 't.co', 'g.co', 'booly.kr', 'qaa.kr']
-            is_known_shortener = any(domain.endswith(s) for s in shorteners)
+            from app.utils.shortener_utils import is_short_url as _is_short_url
+            is_known_shortener = _is_short_url(scraped_url)
             
             if (0 < len(path) <= 4 and not parsed.query and not parsed.fragment) or is_known_shortener:
                 is_broken_short_url = True

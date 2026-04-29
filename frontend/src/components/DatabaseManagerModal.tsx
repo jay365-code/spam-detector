@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Trash2, Search, Link2, FileText, AlertTriangle, ShieldCheck, Database, CheckSquare, Square, Maximize2, Minimize2, ChevronUp, ChevronDown, Key, Copy, Upload } from 'lucide-react';
+import { X, Trash2, Search, Link2, FileText, AlertTriangle, ShieldCheck, Database, CheckSquare, Square, Maximize2, Minimize2, ChevronUp, ChevronDown, Key, Copy, Upload, Unlink } from 'lucide-react';
 import { API_BASE } from '../config';
 
 interface DatabaseManagerModalProps {
@@ -21,6 +21,12 @@ interface HistoryRecord {
   last_updated: string;
 }
 
+interface ShortenerRecord {
+  domain: string;
+  source: string;
+  created_at: string;
+}
+
 interface SignatureRecord {
   signature: string;
   byte_length: number;
@@ -36,7 +42,7 @@ const SortIcon = ({ col, currentSort }: { col: string, currentSort: {key: string
 };
 
 export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'url' | 'history' | 'signatures'>('url');
+  const [activeTab, setActiveTab] = useState<'url' | 'history' | 'signatures' | 'shorteners'>('url');
   
   // History State
   const [historyRecords, setHistoryRecords] = useState<HistoryRecord[]>([]);
@@ -60,6 +66,14 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
   const [sigTotal, setSigTotal] = useState(0);
   const [sigSortCol, setSigSortCol] = useState('hit_count');
   const [sigSortOrder, setSigSortOrder] = useState('desc');
+
+  // Shortener State
+  const [shortenerRecords, setShortenerRecords] = useState<ShortenerRecord[]>([]);
+  const [shortenerSearch, setShortenerSearch] = useState('');
+  const [newShortenerDomain, setNewShortenerDomain] = useState('');
+  const [shortenerPage, setShortenerPage] = useState(1);
+  const [shortenerTotal, setShortenerTotal] = useState(0);
+  const [shortenerSort, setShortenerSort] = useState<{key: string, dir: 'asc'|'desc'}>({key: 'domain', dir: 'asc'});
 
   // Excel Import State
   const [importLoading, setImportLoading] = useState(false);
@@ -128,6 +142,22 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
     setLoading(false);
   };
 
+  const fetchShorteners = async (page = shortenerPage, query = shortenerSearch) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/db/shortener-domains?page=${page}&limit=500&q=${encodeURIComponent(query)}&sort=${shortenerSort.key}&order=${shortenerSort.dir}`);
+      const json = await res.json();
+      if (json.success) {
+        setShortenerRecords(json.data.data);
+        setShortenerTotal(json.data.total);
+        setShortenerPage(json.data.page);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
   // Clear selection and fetch on tab switch
   useEffect(() => {
     setTimeout(() => {
@@ -135,6 +165,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
       if (activeTab === 'url') fetchUrls();
       else if (activeTab === 'history') fetchHistory();
       else if (activeTab === 'signatures') fetchSignatures();
+      else if (activeTab === 'shorteners') fetchShorteners();
     }, 0);
   }, [activeTab]);
 
@@ -145,9 +176,22 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
         if (activeTab === 'url' && urlRecords.length === 0) fetchUrls();
         else if (activeTab === 'history' && historyRecords.length === 0) fetchHistory();
         else if (activeTab === 'signatures' && signatureRecords.length === 0) fetchSignatures();
+        else if (activeTab === 'shorteners' && shortenerRecords.length === 0) fetchShorteners();
       }, 0);
     }
   }, [isOpen]);
+
+  // Debounce for shortener search & sort
+  useEffect(() => {
+    if (activeTab === 'shorteners' && isOpen) {
+      const timer = setTimeout(() => { setShortenerPage(1); fetchShorteners(1, shortenerSearch); }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [shortenerSearch, shortenerSort]);
+
+  useEffect(() => {
+    if (activeTab === 'shorteners' && isOpen) setTimeout(() => fetchShorteners(shortenerPage, shortenerSearch), 0);
+  }, [shortenerPage]);
 
   // Debounces for Search & Sort
   useEffect(() => {
@@ -184,14 +228,15 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
     if (activeTab === 'history' && isOpen) setTimeout(() => fetchHistory(historyPage, historySearch), 0);
   }, [historyPage]);
 
-  const currentFilteredRecords = activeTab === 'url' ? urlRecords : (activeTab === 'history' ? historyRecords : signatureRecords);
-  const currentFilteredTotal = activeTab === 'url' ? urlTotal : (activeTab === 'history' ? historyTotal : sigTotal);
+  const currentFilteredRecords = activeTab === 'url' ? urlRecords : (activeTab === 'history' ? historyRecords : (activeTab === 'shorteners' ? shortenerRecords : signatureRecords));
+  const currentFilteredTotal = activeTab === 'url' ? urlTotal : (activeTab === 'history' ? historyTotal : (activeTab === 'shorteners' ? shortenerTotal : sigTotal));
 
-  const currentPage = activeTab === 'url' ? urlPage : (activeTab === 'history' ? historyPage : sigPage);
+  const currentPage = activeTab === 'url' ? urlPage : (activeTab === 'history' ? historyPage : (activeTab === 'shorteners' ? shortenerPage : sigPage));
   const totalPages = Math.ceil(currentFilteredTotal / 500) || 1;
   const setPage = (updater: React.SetStateAction<number>) => {
     if (activeTab === 'url') setUrlPage(updater);
     else if (activeTab === 'history') setHistoryPage(updater);
+    else if (activeTab === 'shorteners') setShortenerPage(updater);
     else setSigPage(updater);
   };
 
@@ -207,6 +252,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
       const allIds = currentFilteredRecords.map(r => {
         if (activeTab === 'url') return (r as UrlRecord).domain_path;
         if (activeTab === 'history') return (r as HistoryRecord).normalized_text;
+        if (activeTab === 'shorteners') return (r as ShortenerRecord).domain;
         return (r as SignatureRecord).signature;
       });
       setSelectedItems(new Set(allIds));
@@ -221,7 +267,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
 
     setLoading(true);
     const promises = Array.from(selectedItems).map(id => {
-      const endpoint = activeTab === 'url' ? 'url-whitelist' : (activeTab === 'history' ? 'spam-history' : 'signatures');
+      const endpoint = activeTab === 'url' ? 'url-whitelist' : (activeTab === 'history' ? 'spam-history' : (activeTab === 'shorteners' ? 'shortener-domains' : 'signatures'));
       // For signature, we need double encode if there are slashes, but standard encodeURIComponent is fine
       return fetch(`${API_BASE}/api/db/${endpoint}/${encodeURIComponent(id)}`, {
         method: 'DELETE'
@@ -231,13 +277,10 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
     try {
       await Promise.all(promises);
       setSelectedItems(new Set());
-      if (activeTab === 'signatures') {
-        fetchSignatures();
-      } else if (activeTab === 'url') {
-        fetchUrls();
-      } else {
-        fetchHistory();
-      }
+      if (activeTab === 'signatures') fetchSignatures();
+      else if (activeTab === 'url') fetchUrls();
+      else if (activeTab === 'shorteners') fetchShorteners();
+      else fetchHistory();
     } catch (err) {
       console.error("Bulk delete error", err);
     }
@@ -332,6 +375,37 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
         else fetchHistory();
       }
     } catch (e) { console.debug("삭제 요청 무시:", e); }
+  };
+
+  // --- Shortener Handlers ---
+  const handleAddShortener = async () => {
+    if (!newShortenerDomain) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/db/shortener-domains`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain: newShortenerDomain })
+      });
+      if (res.ok) {
+        setNewShortenerDomain('');
+        fetchShorteners();
+      } else {
+        const json = await res.json();
+        alert(json.detail || '추가 실패');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteShortener = async (domain: string) => {
+    if (!confirm(`'${domain}' 도메인을 삭제하시겠습니까?`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/db/shortener-domains/${encodeURIComponent(domain)}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) fetchShorteners();
+    } catch (e) { console.debug('삭제 요청 무시:', e); }
   };
 
   const handleDeleteSig = async (text: string) => {
@@ -503,6 +577,19 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                 {sigTotal}
               </span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('shorteners')}
+              className={`flex items-center space-x-3 p-3.5 rounded-xl transition-all duration-300 group ${
+                activeTab === 'shorteners' ? 'bg-gradient-to-r from-amber-500/10 to-transparent text-amber-400 border-l-4 border-amber-500 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 border-l-4 border-transparent'
+              }`}
+            >
+              <Unlink className={`w-5 h-5 transition-transform duration-300 flex-shrink-0 ${activeTab === 'shorteners' ? 'scale-110 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]' : 'group-hover:scale-110'}`} />
+              <span className="font-semibold text-sm whitespace-nowrap flex-1 text-left">단축 URL 도메인</span>
+              <span className="bg-black/30 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider flex-shrink-0 opacity-80 group-hover:opacity-100 transition-opacity shadow-inner">
+                {shortenerTotal}
+              </span>
+            </button>
           </div>
 
           {/* Main Content Pane */}
@@ -517,10 +604,11 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                   <input
                     type="text"
                     placeholder={activeTab === 'url' ? "도메인 검색..." : activeTab === 'history' ? "텍스트 검색..." : "전체 시그니처 검색 (서버 연동)"}
-                    value={activeTab === 'url' ? urlSearch : activeTab === 'history' ? historySearch : sigSearch}
+                    value={activeTab === 'url' ? urlSearch : activeTab === 'history' ? historySearch : activeTab === 'shorteners' ? shortenerSearch : sigSearch}
                     onChange={(e) => {
                       if (activeTab === 'url') setUrlSearch(e.target.value);
                       else if (activeTab === 'history') setHistorySearch(e.target.value);
+                      else if (activeTab === 'shorteners') setShortenerSearch(e.target.value);
                       else setSigSearch(e.target.value);
                     }}
                     className="w-full bg-slate-950/60 border border-slate-700/80 rounded-lg pl-9 pr-4 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all shadow-inner placeholder-slate-500 text-slate-200"
@@ -590,6 +678,21 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                     <span className="relative z-10">엑셀 임포트</span>
                     <input type="file" accept=".xlsx" multiple hidden onChange={handleExcelImport} disabled={importLoading} />
                   </label>
+                </div>
+              ) : activeTab === 'shorteners' ? (
+                <div className="flex items-center space-x-2.5">
+                  <input
+                    type="text"
+                    placeholder="새 단축 URL 도메인 (예: short.kr)"
+                    value={newShortenerDomain}
+                    onChange={(e) => setNewShortenerDomain(e.target.value)}
+                    className="w-72 bg-slate-950/60 border border-slate-700/80 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 shadow-inner placeholder-slate-500 transition-all font-mono"
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddShortener()}
+                  />
+                  <button onClick={handleAddShortener} className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.25)] hover:shadow-[0_0_20px_rgba(245,158,11,0.4)] px-4 py-1.5 rounded-lg text-sm font-bold text-white transition-all transform active:scale-95 whitespace-nowrap relative overflow-hidden group">
+                    <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out z-0"></div>
+                    <span className="relative z-10">도메인 추가</span>
+                  </button>
                 </div>
               ) : null}
             </div>
@@ -694,6 +797,19 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                           </th>
                           <th className="py-2.5 px-3 font-semibold w-40 whitespace-nowrap cursor-pointer hover:bg-white/5" onClick={() => { setSigSortOrder(sigSortCol==='last_hit'&&sigSortOrder==='asc'?'desc':'asc'); setSigSortCol('last_hit'); }}>
                             마지막 HIT <SortIcon col="last_hit" currentSort={{key: sigSortCol, dir: sigSortOrder}} />
+                          </th>
+                        </>
+                      )}
+                      {activeTab === 'shorteners' && (
+                        <>
+                          <th className="py-2.5 px-3 font-semibold cursor-pointer hover:bg-white/5" onClick={() => setShortenerSort({key: 'domain', dir: shortenerSort.key==='domain'&&shortenerSort.dir==='asc'?'desc':'asc'})}>
+                            도메인 <SortIcon col="domain" currentSort={shortenerSort} />
+                          </th>
+                          <th className="py-2.5 px-3 font-semibold text-center w-28 cursor-pointer hover:bg-white/5" onClick={() => setShortenerSort({key: 'source', dir: shortenerSort.key==='source'&&shortenerSort.dir==='asc'?'desc':'asc'})}>
+                            소스 <SortIcon col="source" currentSort={shortenerSort} />
+                          </th>
+                          <th className="py-2.5 px-3 font-semibold w-40 cursor-pointer hover:bg-white/5" onClick={() => setShortenerSort({key: 'created_at', dir: shortenerSort.key==='created_at'&&shortenerSort.dir==='asc'?'desc':'asc'})}>
+                            등록일 <SortIcon col="created_at" currentSort={shortenerSort} />
                           </th>
                         </>
                       )}
@@ -857,6 +973,60 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                       </tr>
                     ))}
 
+                    {/* Render Shortener Rows */}
+                    {activeTab === 'shorteners' && (currentFilteredRecords as ShortenerRecord[]).map((row) => (
+                      <tr key={row.domain} className={`hover:bg-slate-800/40 transition-colors group ${selectedItems.has(row.domain) ? 'bg-amber-500/10' : ''}`}>
+                        <td className={`py-1.5 px-3 text-center border-l-2 relative ${selectedItems.has(row.domain) ? 'border-amber-500' : 'border-transparent'}`}>
+                          <button 
+                            onClick={() => handleToggleSelect(row.domain)}
+                            className={`focus:outline-none transition-all duration-200 active:scale-90 ${selectedItems.has(row.domain) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                          >
+                            {selectedItems.has(row.domain) ? (
+                              <CheckSquare className="w-4 h-4 text-amber-500 drop-shadow-[0_0_5px_rgba(245,158,11,0.5)] mx-auto" />
+                            ) : (
+                              <Square className="w-4 h-4 text-slate-600 hover:text-slate-500 mx-auto" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="py-1.5 px-3">
+                          <div className="flex items-center space-x-2">
+                            <div className="p-1 max-w-fit bg-amber-500/10 rounded-md">
+                              <Unlink className="w-3.5 h-3.5 text-amber-400" />
+                            </div>
+                            <span className="text-slate-200 font-medium break-all font-mono text-[13px]">{row.domain}</span>
+                            <button
+                              onClick={() => navigator.clipboard.writeText(row.domain)}
+                              className="p-1 text-slate-500 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition-all rounded hover:bg-white/5 active:scale-95 flex-shrink-0"
+                              title="클립보드 복사"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="py-1.5 px-3 text-center">
+                          <span className={`text-[10px] px-1.5 py-0 rounded-full uppercase font-bold tracking-wider ${
+                            row.source === 'manual' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                            row.source === 'builtin' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
+                            'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                          }`}>
+                            {row.source}
+                          </span>
+                        </td>
+                        <td className="py-1.5 px-3 text-slate-500 text-xs whitespace-nowrap font-mono tracking-tight">
+                          {row.created_at || '-'}
+                        </td>
+                        <td className="py-1.5 px-3 text-center">
+                          <button 
+                            onClick={() => handleDeleteShortener(row.domain)}
+                            className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 transform hover:scale-105"
+                            title="삭제"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+
                     {/* Empty States */}
                     {currentFilteredRecords.length === 0 && !loading && (
                       <tr><td colSpan={6} className="p-12 text-center text-slate-500 font-medium tracking-wide">조건에 맞는 검색 결과가 없습니다.</td></tr>
@@ -879,7 +1049,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                     이전
                   </button>
                   <div className="px-3 py-1 bg-slate-950/50 rounded text-slate-300 font-mono text-sm border border-slate-800">
-                    <strong className={activeTab === 'url' ? 'text-blue-400' : (activeTab === 'history' ? 'text-pink-400' : 'text-purple-400')}>{currentPage}</strong> / {totalPages}
+                    <strong className={activeTab === 'url' ? 'text-blue-400' : (activeTab === 'history' ? 'text-pink-400' : (activeTab === 'shorteners' ? 'text-amber-400' : 'text-purple-400'))}>{currentPage}</strong> / {totalPages}
                   </div>
                   <button 
                     disabled={currentPage >= totalPages} 

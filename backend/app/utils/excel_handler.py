@@ -6,12 +6,14 @@ from datetime import datetime
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
+from app.utils import shortener_utils
 
 logger = logging.getLogger(__name__)
 
 class ExcelHandler:
     def __init__(self):
-        self.shortener_domains = self._load_shortener_domains()
+        # 단축 URL 도메인은 shortener_utils.SHORTENER_DOMAINS (단일 소스)를 참조
+        self.shortener_domains = shortener_utils.SHORTENER_DOMAINS
         
     def create_template_workbook(self, output_path: str):
         """
@@ -119,49 +121,7 @@ class ExcelHandler:
         wb.save(output_path)
         return True
         
-    def _load_shortener_domains(self) -> set:
-        # 기본 하드코딩된 단축 도메인 세트
-        domains = {
-            "a.to", "abit.ly", "adf.ly", "adfoc.us", "agshort.link", "aka.ms", "amzn.to", "apple.co", "asq.kr", 
-            "bit.do", "bit.ly", "bitly.com", "bitly.cx", "bitly.kr", "bl.ink", "blow.pw", "buff.ly", "buly.kr", 
-            "c11.kr", "clic.ke", "cogi.cc", "coupa.ng", "cutt.it", "cutt.ly", 
-            "di.do", "dokdo.in", "dub.co", 
-            "fb.me", 
-            "gmarket.it", "goo.gl", "goo.su", "gooal.kr", 
-            "han.gl", "horturl.at", 
-            "ii.ad", "iii.ad", "instagr.am", "is.gd", 
-            "j.mp", 
-            "kakaolink.com", "ko.fm", "ko.gl", "koe.kr", 
-            "link24.kr", "linktr.ee", "lrl.kr", 
-            "mcaf.ee", "me2.do", "muz.so", "myip.kr", 
-            "naver.me", 
-            "ouo.io", "ow.ly", 
-            "qrco.de", 
-            "rb.gy", "rebrand.ly", "reurl.kr", "rul.kr",
-            "sbz.kr", "short.io", "shorter.me", "shorturl.at", "shrl.me", "shrtco.de", 
-            "t.co", "t.ly", "t.me", "t2m.kr", "tiny.cc", "tinyurl.com", "tne.kr", "tny.im", "tr.ee", "tuney.kr",
-            "url.kr", "uto.kr", 
-            "v.gd", "vo.la", "vvd.bz", "vvd.im", 
-            "wp.me", 
-            "youtu.be", "yun.kr", 
-            "zrr.kr",
-            # 새롭게 식별된 단축 URL 추가
-            "tnia.cc", "2.lnkme.net", "lnkme.net", "alie.kr", "bz.kr", "booly.kr", "qaa.kr"
-        }
-        
-        # 외부 클론잡 동작용 txt 파일이 존재하면 정적으로 병합 구성
-        try:
-            list_path = os.path.join(os.path.dirname(__file__), "shorteners_list.txt")
-            if os.path.exists(list_path):
-                with open(list_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip().lower()
-                        if line and not line.startswith("#"):
-                            domains.add(line)
-        except Exception as e:
-            logger.warning(f"Failed to load shorteners_list.txt: {e}")
-            
-        return domains
+    # _load_shortener_domains() 제거됨 → shortener_utils.SHORTENER_DOMAINS 사용
 
     def _lenb(self, text: str) -> int:
         """Calculate byte length for CP949 encoding (Korean standard)."""
@@ -442,21 +402,9 @@ class ExcelHandler:
     def is_short_url(self, url: str) -> bool:
         """
         Check if the URL belongs to a known shortener service.
+        Delegates to shortener_utils.is_short_url() (단일 소스).
         """
-        if not url: return False
-        
-        try:
-            # Simple domain extraction for check
-            # Remove protocol
-            clean_url = re.sub(r'^https?://', '', url.lower())
-            clean_url = re.sub(r'^www\.', '', clean_url)
-            
-            # Extract just the host part (before / or ? or :)
-            host = clean_url.split('/')[0].split('?')[0].split(':')[0]
-            
-            return host in self.shortener_domains
-        except:
-            return False
+        return shortener_utils.is_short_url(url)
 
     def _create_dedup_sheet(self, wb: Workbook, unique_urls: dict, unique_short_urls: dict = None, sheet_name: str = "URL중복 제거"):
         """

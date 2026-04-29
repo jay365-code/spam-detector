@@ -128,14 +128,10 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                 domain = parsed.netloc.lower()
                 path = parsed.path.strip("/")
                 
-                # 주요 단축 URL 서비스 식별
-                shortener_domains = [
-                   "bit.ly", "goo.gl", "buly.kr", "vo.la", "han.gl", 
-                   "ko.gl", "tuney.kr", "sbz.kr", "me2.do", "vvd.bz", 
-                   "url.kr", "m.site.naver.com", "vdo.kr", "booly.kr", "qaa.kr"
-                ]
+                # 주요 단축 URL 서비스 식별 (shortener_utils 단일 소스)
+                from app.utils.shortener_utils import is_short_url as _is_short_url
                 
-                is_short = any(d in domain for d in shortener_domains)
+                is_short = _is_short_url(pre_parsed_url)
                 if is_short:
                    # 경로 부재 (길이 1 이하) OR 괄호/별표/한글 등 파손 문자 포함 여부 검사
                    if len(path) <= 1 or bool(re.search(r'[\[\]\*\(\)\{\}\<\>가-힣]', path)):
@@ -566,19 +562,19 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                             # (예: 택배 알림 SMS + 동일 상호명 쇼핑몰, 은행 알림 + 동일 은행 공식 사이트)
                             final["is_spam"] = False
                             final["reason"] = f"{existing_reason} | [URL: 상거래 완벽 일치(Transactional Match). 본문 스팸 오탐 방어 Override]"
-                        elif is_confirmed_safe:
-                            # CONFIRMED SAFE이지만 transactional 아님 → 뉴스/포털/타인 사이트 방패막이
-                            # → SPAM 유지 + URL Drop (정상 사이트 블랙리스트 오염 방지)
+                        elif is_confirmed_safe or has_injection_keyword:
+                            # CONFIRMED SAFE이거나 명시적인 방패막이(Decoy) 키워드가 감지된 경우
+                            # → 정상 사이트/알려진 사이트를 악용한 방패막이 → SPAM 유지 + URL Drop (블랙리스트 오염 방지)
                             if is_mismatched:
-                                final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE + 본문-웹 불일치(방패막이). SPAM 유지]"
+                                final["reason"] = f"{existing_reason} | [URL: 정상 도메인 방패막이(Decoy) 감지. SPAM 유지]"
                             else:
-                                final["reason"] = f"{existing_reason} | [URL: CONFIRMED SAFE이나 발신자-사이트 주체 불일치(방패막이). SPAM 유지]"
+                                final["reason"] = f"{existing_reason} | [URL: 정상 도메인 방패막이 추정. SPAM 유지]"
                             final["drop_url"] = True
                             final["drop_url_reason"] = "safe_injection"
                         elif is_mismatched:
-                            # 미확인 사이트 + 본문-웹 불일치 → 사칭/가짜 사이트 의심
-                            # → SPAM 유지하되, URL은 블랙리스트에 보존 (drop하지 않음)
-                            final["reason"] = f"{existing_reason} | [URL: 본문-웹 불일치 감지(사칭 의심). SPAM 유지, URL 블랙리스트 보존]"
+                            # 미확인 사이트 + 본문-웹 불일치 (방패막이 키워드 없음) → 사칭/가짜 사이트 의심
+                            # → SPAM 유지하되, URL은 악성이므로 블랙리스트에 보존 (drop하지 않음)
+                            final["reason"] = f"{existing_reason} | [URL: 본문-웹 불일치 감지(사칭/가짜 사이트 의심). SPAM 유지, URL 블랙리스트 보존]"
                         else:
                             # URL에 안전 증거도 불일치 증거도 없는 상태 → Content SPAM 판정 존중
                             short_url_reason = url_reason[:80] + "..." if len(url_reason) > 80 else url_reason

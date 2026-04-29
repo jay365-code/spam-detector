@@ -441,7 +441,7 @@ async def add_spam_history(request: HistoryAddRequest):
         return {"success": True, "message": "Added to spam history."}
     raise HTTPException(status_code=400, detail="텍스트 추가에 실패했습니다.")
 
-@app.delete("/api/db/spam-history/{text}")
+@app.delete("/api/db/spam-history/{text:path}")
 async def delete_spam_history(text: str):
     success = HistoryManager.delete_record(text)
     if success:
@@ -457,7 +457,7 @@ async def get_signatures(page: int = 1, limit: int = 500, q: str = "", sort: str
     result = SignatureDBManager.get_signatures(page=page, limit=limit, search_query=q, sort_col=sort, sort_order=order)
     return {"success": True, "data": result}
 
-@app.delete("/api/db/signatures/{text}")
+@app.delete("/api/db/signatures/{text:path}")
 async def delete_signature(text: str):
     import urllib.parse
     decoded_text = urllib.parse.unquote(text)
@@ -555,6 +555,34 @@ async def import_signatures_from_excel(file: UploadFile = File(...)):
         # 임시 파일 정리
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
+
+
+# ========== Shortener Domains CRUD API ==========
+from app.utils import shortener_utils
+
+@app.get("/api/db/shortener-domains")
+async def get_shortener_domains(page: int = 1, limit: int = 500, q: str = "", sort: str = "domain", order: str = "asc"):
+    result = shortener_utils.get_domains(page=page, limit=limit, search_query=q, sort_col=sort, sort_order=order)
+    return {"success": True, "data": result}
+
+@app.post("/api/db/shortener-domains")
+async def add_shortener_domain(req: dict):
+    domain = req.get("domain", "").strip().lower()
+    if not domain:
+        raise HTTPException(status_code=400, detail="도메인을 입력해주세요.")
+    success = shortener_utils.add_domain(domain)
+    if success:
+        return {"success": True, "message": f"'{domain}' 추가 완료"}
+    raise HTTPException(status_code=409, detail="이미 등록된 도메인이거나 추가에 실패했습니다.")
+
+@app.delete("/api/db/shortener-domains/{domain:path}")
+async def delete_shortener_domain(domain: str):
+    import urllib.parse
+    decoded = urllib.parse.unquote(domain)
+    success = shortener_utils.delete_domain(decoded)
+    if success:
+        return {"success": True, "message": f"'{decoded}' 삭제 완료"}
+    raise HTTPException(status_code=404, detail="해당 도메인을 찾을 수 없거나 삭제에 실패했습니다.")
 
 
 # ========== Spam RAG API (Reference Examples) ==========
@@ -2248,26 +2276,11 @@ def api_extract_url(req: TextRequest):
     import re
     url_pattern = r'(?:https?://|www\.)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
     urls = re.findall(url_pattern, req.message)
-    shortener_domains = {
-        "a.to", "abit.ly", "adf.ly", "adfoc.us", "aka.ms", "amzn.to", "apple.co", "asq.kr", 
-        "bit.do", "bit.ly", "bitly.com", "bitly.kr", "bl.ink", "blow.pw", "buff.ly", "buly.kr", 
-        "c11.kr", "clic.ke", "cogi.cc", "coupa.ng", "cutt.it", "cutt.ly", "di.do", "dokdo.in", "dub.co", 
-        "fb.me", "gmarket.it", "goo.gl", "goo.su", "gooal.kr", "han.gl", "horturl.at", 
-        "ii.ad", "iii.ad", "instagr.am", "is.gd", "j.mp", "kakaolink.com", "ko.gl", "koe.kr", 
-        "link24.kr", "linktr.ee", "lrl.kr", "mcaf.ee", "me2.do", "muz.so", "myip.kr", 
-        "naver.me", "ouo.io", "ow.ly", "qrco.de", "rb.gy", "rebrand.ly", "reurl.kr", 
-        "sbz.kr", "short.io", "shorter.me", "shorturl.at", "shrl.me", "shrtco.de", 
-        "t.co", "t.ly", "t.me", "t2m.kr", "tiny.cc", "tinyurl.com", "tne.kr", "tny.im", "tr.ee", "tuney.kr",
-        "url.kr", "uto.kr", "v.gd", "vo.la", "vvd.bz", "vvd.im", "wp.me", "youtu.be", "yun.kr", "zrr.kr",
-        "booly.kr", "qaa.kr"
-    }
+    from app.utils.shortener_utils import is_short_url as _is_short_url
     result = []
     for url in urls:
-        url = url.rstrip('.,;!?)]}"\'')
-        clean_url = re.sub(r'^https?://', '', url.lower())
-        clean_url = re.sub(r'^www\.', '', clean_url)
-        is_short = any(clean_url.startswith(domain) for domain in shortener_domains)
-        if not is_short and url:
+        url = url.rstrip(".,;!?)]}\"'")
+        if not _is_short_url(url) and url:
             result.append(url)
     return {"urls": result}
 

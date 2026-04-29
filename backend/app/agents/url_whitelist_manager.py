@@ -22,13 +22,8 @@ else:
 DB_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DB_DIR / "url_whitelist.db"
 
-# 주요 단축 URL 서비스 도메인 목록 (DB 체크 우회용)
-SHORTENER_DOMAINS = {
-    "bit.ly", "goo.gl", "buly.kr", "vo.la", "han.gl", 
-    "ko.gl", "tuney.kr", "sbz.kr", "me2.do", "vvd.bz", 
-    "url.kr", "m.site.naver.com", "vdo.kr", "t.co",
-    "tinyurl.com", "is.gd", "buff.ly", "ow.ly"
-}
+# 단축 URL 도메인 목록: shortener_utils (단일 소스)에서 import
+from app.utils.shortener_utils import SHORTENER_DOMAINS
 
 def init_db():
     """URL Whitelist DB 초기화 및 테이블 생성"""
@@ -72,21 +67,9 @@ class UrlWhitelistManager:
 
     @staticmethod
     def is_short_url(url_str: str) -> bool:
-        """단축 URL 여부 판별 (단축 URL은 최종 목적지를 모르므로 DB 사전검색 우회)"""
-        try:
-            test_url = url_str if "://" in url_str else "http://" + url_str
-            parsed = urlparse(test_url)
-            domain = parsed.netloc.lower().split(':')[0]
-            if domain.startswith("www."):
-                domain = domain[4:]
-            
-            # 완전 일치 또는 서브도메인 포함 일치
-            for sd in SHORTENER_DOMAINS:
-                if domain == sd or domain.endswith("." + sd):
-                    return True
-            return False
-        except Exception:
-            return False
+        """단축 URL 여부 판별 — shortener_utils.is_short_url() 위임"""
+        from app.utils.shortener_utils import is_short_url as _is_short
+        return _is_short(url_str)
 
     @staticmethod
     def get_clean_domain_path(url_str: str) -> str:
