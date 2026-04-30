@@ -158,6 +158,24 @@ class SignatureDBManager:
             return False
 
     @staticmethod
+    def add_signature(signature: str, category: str = "spam", source: str = "manual") -> bool:
+        """단건 시그니처 개별 추가"""
+        try:
+            with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO signatures (signature, byte_length, category, source) 
+                    VALUES (?, ?, ?, ?)
+                ''', (signature, len(signature.encode('utf-8')), category, source))
+                conn.commit()
+                return cursor.rowcount > 0
+        except sqlite3.IntegrityError:
+            return False
+        except Exception as e:
+            logger.error(f"[SignatureDB] Failed to add signature: {e}")
+            return False
+
+    @staticmethod
     def bulk_insert_signatures(entries: list) -> dict:
         """
         시그니처 일괄 인서트 (INSERT OR IGNORE)

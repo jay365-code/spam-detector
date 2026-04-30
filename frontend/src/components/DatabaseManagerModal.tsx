@@ -61,6 +61,7 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
   
   // Signature State
   const [signatureRecords, setSignatureRecords] = useState<SignatureRecord[]>([]);
+  const [newSignature, setNewSignature] = useState('');
   const [sigSearch, setSigSearch] = useState('');
   const [sigPage, setSigPage] = useState(1);
   const [sigTotal, setSigTotal] = useState(0);
@@ -408,6 +409,26 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
     } catch (e) { console.debug('삭제 요청 무시:', e); }
   };
 
+  const handleAddSignature = async () => {
+    if (!newSignature) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/db/signatures`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signature: newSignature })
+      });
+      if (res.ok) {
+        setNewSignature('');
+        fetchSignatures();
+      } else {
+        const json = await res.json();
+        alert(json.detail || '추가 실패');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleDeleteSig = async (text: string) => {
     if (!confirm(`시그니처를 삭제하시겠습니까?
 '${text}'`)) return;
@@ -672,8 +693,20 @@ export const DatabaseManagerModal: React.FC<DatabaseManagerModalProps> = ({ isOp
                 </div>
               ) : activeTab === 'signatures' ? (
                 <div className="flex items-center space-x-2.5">
-                  <label className="flex items-center space-x-1.5 bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 border border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.25)] hover:shadow-[0_0_20px_rgba(168,85,247,0.4)] px-4 py-1.5 rounded-lg text-sm font-bold text-white transition-all transform active:scale-95 whitespace-nowrap relative overflow-hidden group cursor-pointer">
+                  <input
+                    type="text"
+                    placeholder="새 시그니처 텍스트..."
+                    value={newSignature}
+                    onChange={(e) => setNewSignature(e.target.value)}
+                    className="w-72 bg-slate-950/60 border border-slate-700/80 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 shadow-inner placeholder-slate-500 transition-all font-mono text-slate-200"
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddSignature()}
+                  />
+                  <button onClick={handleAddSignature} className="bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 border border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.25)] hover:shadow-[0_0_20px_rgba(168,85,247,0.4)] px-4 py-1.5 rounded-lg text-sm font-bold text-white transition-all transform active:scale-95 whitespace-nowrap relative overflow-hidden group">
                     <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out z-0"></div>
+                    <span className="relative z-10">개별 추가</span>
+                  </button>
+                  <label className="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 shadow-sm px-4 py-1.5 rounded-lg text-sm font-bold text-slate-300 transition-all cursor-pointer transform active:scale-95 group relative overflow-hidden">
+                    <div className="absolute inset-0 bg-white/5 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out z-0"></div>
                     <Upload className="w-4 h-4 relative z-10" />
                     <span className="relative z-10">엑셀 임포트</span>
                     <input type="file" accept=".xlsx" multiple hidden onChange={handleExcelImport} disabled={importLoading} />

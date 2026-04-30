@@ -452,10 +452,24 @@ async def delete_spam_history(text: str):
 # ========== Signatures DB API ==========
 from app.core.signature_db import SignatureDBManager
 
+class SignatureAddRequest(BaseModel):
+    signature: str
+    category: str = "spam"
+    source: str = "manual"
+
 @app.get("/api/db/signatures")
 async def get_signatures(page: int = 1, limit: int = 500, q: str = "", sort: str = "hit_count", order: str = "desc"):
     result = SignatureDBManager.get_signatures(page=page, limit=limit, search_query=q, sort_col=sort, sort_order=order)
     return {"success": True, "data": result}
+
+@app.post("/api/db/signatures")
+async def add_signature(request: SignatureAddRequest):
+    if not request.signature.strip():
+        raise HTTPException(status_code=400, detail="시그니처를 입력해주세요.")
+    success = SignatureDBManager.add_signature(request.signature.strip(), request.category, request.source)
+    if success:
+        return {"success": True, "message": "Added successfully."}
+    raise HTTPException(status_code=409, detail="이미 등록된 시그니처이거나 추가에 실패했습니다.")
 
 @app.delete("/api/db/signatures/{text:path}")
 async def delete_signature(text: str):
