@@ -43,6 +43,12 @@ TRUSTED_DOMAINS = [
 # 이 도메인들은 스팸에 악용될 수 있으므로 자동 HAM 처리 금지
 UGC_DOMAINS = [
     "open.kakao.com",     # 카카오톡 오픈채팅
+    "pf.kakao.com",       # 카카오톡 채널
+    "ch.kakao.com",       # 카카오스토리
+    "blog.naver.com",     # 네이버 블로그
+    "cafe.naver.com",     # 네이버 카페
+    "blog.daum.net",      # 다음 블로그
+    "cafe.daum.net",      # 다음 카페
     "t.me",               # 텔레그램
     "telegram.me",        # 텔레그램
     "line.me",            # 라인 메신저
@@ -227,6 +233,7 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
             "is_confirmed_safe": boolean,
             "is_mismatched": boolean,
             "is_consistently_transactional": boolean,
+            "is_decoy": boolean,
             "classification_code": "명확한 스팸 코드 문자열 (HAM/Inconclusive인 경우 null)",
             "spam_probability": float (0.0-1.0),
             "reason": "시각적 콘텐츠에서 발견된 팩트 기반의 한국어 설명 (증거 유무를 판단 근거로 명확히 서술)"
@@ -405,6 +412,7 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
         is_confirmed_safe = result_json.get("is_confirmed_safe", False)
         is_mismatched = result_json.get("is_mismatched", False)
         is_consistently_transactional = result_json.get("is_consistently_transactional", False)
+        is_decoy = result_json.get("is_decoy", False)
         prob = result_json.get("spam_probability", 0.0)
         reason = result_json.get("reason", "")
         classification_code = result_json.get("classification_code")
@@ -416,6 +424,7 @@ async def analyze_with_vision(screenshot_b64: str, url: str, title: str, content
             "is_confirmed_safe": is_confirmed_safe,
             "is_mismatched": is_mismatched,
             "is_consistently_transactional": is_consistently_transactional,
+            "is_decoy": is_decoy,
             "spam_probability": prob,
             "classification_code": classification_code,
             "reason": f"[Vision 분석] {reason}",
@@ -1090,7 +1099,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
     **핵심 판단 기준**: 
     1. SMS가 주장하는 내용(예: 대출, 배송, 상품)과 URL 페이지 내용이 **일치**하는가?
     2. URL 페이지가 SMS 내용을 숨기기 위한 **필터 회피용(Evasion) 방패막이(뉴스, 일반 블로그 등)**인가?
-    *(주의: 회피용 방패막이 링크임이 감지될 경우, URL 자체를 스팸으로 오탐하지 말고 가이드에 따라 `is_mismatched=true`를 반드시 활성화할 것)*
+    *(주의: 회피용 방패막이 링크임이 감지될 경우, URL 자체를 스팸으로 오탐하지 말고 가이드에 따라 `is_mismatched=true`와 `is_decoy=true`를 반드시 함께 활성화할 것)*
     """
     
     # 대표님 지침: 1000명 제한 등 특정 케이스 제약 주입 (단, 사적 모임 단체방 오탐을 방지하기 위한 유일한 예외 조항 포함)
@@ -1144,6 +1153,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         "is_confirmed_safe": boolean,
         "is_mismatched": boolean,
         "is_consistently_transactional": boolean,
+        "is_decoy": boolean,
         "classification_code": "명확한 스팸 코드 문자열 (HAM/Inconclusive인 경우 null)",
         "spam_probability": float (0.0-1.0),
         "reason": "웹 페이지 텍스트(물리적 증거)에 불법 콘텐츠가 존재하는지 여부를 중심으로 서술 (환각 및 우회 추론 금지, 증거 기반 서술)"
@@ -1277,6 +1287,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
         is_confirmed_safe = result_json.get("is_confirmed_safe", False)
         is_mismatched = result_json.get("is_mismatched", False)
         is_consistently_transactional = result_json.get("is_consistently_transactional", False)
+        is_decoy = result_json.get("is_decoy", False)
         prob = result_json.get("spam_probability", 0.0)
         reason = result_json.get("reason", "") + fallback_text
         if fallback_model and reason:
@@ -1318,6 +1329,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
                     "has_safe_domain_context": new_safe_context,
                     "is_mismatched": vision_result.get("is_mismatched", False),
                     "is_consistently_transactional": vision_result.get("is_consistently_transactional", False),
+                    "is_decoy": vision_result.get("is_decoy", False),
                     "spam_probability": vision_result.get("spam_probability", 0.0),
                     "classification_code": vision_result.get("classification_code"),
                     "reason": vision_result.get("reason"),
@@ -1344,6 +1356,7 @@ async def analyze_node(state: SpamState) -> Dict[str, Any]:
             "has_safe_domain_context": new_safe_context,
             "is_mismatched": is_mismatched,
             "is_consistently_transactional": is_consistently_transactional,
+            "is_decoy": is_decoy,
             "spam_probability": prob,
             "classification_code": classification_code,
             "reason": reason,

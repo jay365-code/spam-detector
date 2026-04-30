@@ -1198,7 +1198,7 @@ function App() {
       ['1','2','3'].includes(String(r.classification_code))
     ))
       return '🔴 필수: HAM Override';
-    if (r.is_spam && ur.is_confirmed_safe === true)
+    if (r.is_spam && ur.is_decoy === true)
       return '🔴 필수: SPAM+방패막이';
     // SPAM Override: Content HAM + URL SPAM → 최종 SPAM (Red Group 아님)
     if (r.is_spam && r.is_pure_content_ham === true && ur.is_spam === true && !r.red_group)

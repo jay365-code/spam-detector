@@ -547,10 +547,36 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                     # [수정] 방패막이(Decoy) URL Drop 조건:
                     # 방패막이 키워드 + CONFIRMED SAFE → 정상 사이트 역이용 → Drop 허용
                     # is_mismatched 단독은 사칭/가짜 사이트 가능성 → Drop하지 않고 블랙리스트 보존
-                    _combined_reason_lower = (url_reason + " " + (u_res.get("_original_reason", "") if isinstance(u_res, dict) else "")).lower()
-                    has_injection_keyword = any(kw in _combined_reason_lower for kw in ["위장 url", "정상 도메인 위장", "방패막이", "decoy", "safe url injection", "미끼 링크", "필터 회피"])
-                    is_confirmed_safe = u_res.get("is_confirmed_safe", False) if isinstance(u_res, dict) else False
-                    is_injection = has_injection_keyword and is_confirmed_safe
+                    from app.agents.url_agent.nodes import is_trusted_domain
+                    is_decoy_flag = u_res.get("is_decoy", False) if isinstance(u_res, dict) else False
+                    is_confirmed_safe_llm = u_res.get("is_confirmed_safe", False) if isinstance(u_res, dict) else False
+                    
+                    # LLM 판정과 알고리즘 판정을 OR 조건으로 검사하여 안전망 강화
+                    final_url = u_res.get("details", {}).get("final_url", "") if isinstance(u_res, dict) else ""
+                    if not final_url:
+                        # final_url이 없으면 attempted_urls의 마지막 URL이나 pre_parsed_url 사용
+                        attempted_urls = u_res.get("details", {}).get("attempted_urls", []) if isinstance(u_res, dict) else []
+                        final_url = attempted_urls[-1] if attempted_urls else state.get("pre_parsed_url", "")
+                    
+                    is_algorithm_safe = is_trusted_domain(final_url) if final_url else False
+                    
+                    # batch_flow 단독 안전망 (nodes.py의 TRUSTED_DOMAINS에 넣으면 LLM을 통째로 우회하므로 여기서 검사)
+                    if final_url:
+                        try:
+                            from urllib.parse import urlparse
+                            from app.agents.url_agent.nodes import UGC_DOMAINS
+                            domain = urlparse(final_url).netloc.lower()
+                            
+                            is_ugc = any(domain == ugc or domain.endswith("." + ugc) for ugc in UGC_DOMAINS)
+                            
+                            if not is_ugc and (domain.endswith("naver.com") or domain.endswith("daum.net") or domain.endswith("kakao.com") or domain.endswith("samsung.com")):
+                                is_algorithm_safe = True
+                        except:
+                            pass
+                    
+                    is_safe_for_injection = is_confirmed_safe_llm or is_algorithm_safe
+                    
+                    is_injection = is_decoy_flag and is_safe_for_injection
                     
                     is_mismatched = u_res.get("is_mismatched", False)
                     is_transactional_match = u_res.get("is_consistently_transactional", False)
@@ -562,8 +588,8 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                             # (예: 택배 알림 SMS + 동일 상호명 쇼핑몰, 은행 알림 + 동일 은행 공식 사이트)
                             final["is_spam"] = False
                             final["reason"] = f"{existing_reason} | [URL: 상거래 완벽 일치(Transactional Match). 본문 스팸 오탐 방어 Override]"
-                        elif is_confirmed_safe or has_injection_keyword:
-                            # CONFIRMED SAFE이거나 명시적인 방패막이(Decoy) 키워드가 감지된 경우
+                        elif is_injection:
+                            # CONFIRMED SAFE이면서 명시적인 방패막이(Decoy) 플래그가 켜진 경우
                             # → 정상 사이트/알려진 사이트를 악용한 방패막이 → SPAM 유지 + URL Drop (블랙리스트 오염 방지)
                             if is_mismatched:
                                 final["reason"] = f"{existing_reason} | [URL: 정상 도메인 방패막이(Decoy) 감지. SPAM 유지]"
