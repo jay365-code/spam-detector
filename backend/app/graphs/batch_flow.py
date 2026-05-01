@@ -576,6 +576,17 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
                     
                     is_safe_for_injection = is_confirmed_safe_llm or is_algorithm_safe
                     
+                    # UGC 도메인(pf.kakao.com, open.kakao.com, blog.naver.com 등)은 스패머가 직접 만든
+                    # 콘텐츠이므로 "도메인이 안전하다"는 판정이 무의미함. 블랙리스트에 보존해야 하므로 Drop 차단.
+                    if final_url:
+                        try:
+                            _ugc_domain = urlparse(final_url).netloc.lower()
+                            _is_ugc_for_drop = any(_ugc_domain == ugc or _ugc_domain.endswith("." + ugc) for ugc in UGC_DOMAINS)
+                            if _is_ugc_for_drop:
+                                is_safe_for_injection = False
+                        except:
+                            pass
+                    
                     is_injection = is_decoy_flag and is_safe_for_injection
                     
                     is_mismatched = u_res.get("is_mismatched", False)
