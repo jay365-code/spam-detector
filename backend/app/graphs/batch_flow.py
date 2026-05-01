@@ -615,6 +615,42 @@ def create_batch_graph(content_agent, url_agent, ibse_service, playwright_manage
              # Ensure the value is properly returned
              final["malicious_url_extracted"] = True
 
+        # [파편(Fragment) URL 제거]
+        # 난독화 특수문자(ⓚ 등)로 인해 정규식이 URL 앞글자를 잘라먹어 생긴 찌꺼기를 제거합니다.
+        # 안전 조건: URL Agent가 접속에 성공한 extracted_url이 존재할 때만 작동합니다.
+        # 판별: URL A가 URL B의 suffix이면서, 잘린 접두사에 "."이 없으면 파편으로 판정합니다.
+        # 예: "o.fm/mK8"은 "ko.fm/mK8"의 suffix이고, 접두사 "k"에 "."이 없으므로 파편 → 제거
+        # 반례: "naver.com/x"은 "blog.naver.com/x"의 suffix이지만, 접두사 "blog."에 "."이 있으므로 보존
+        _frag_ext = str((u_res or {}).get("details", {}).get("extracted_url") or "").strip()
+        _has_confirmed_visit = bool(_frag_ext and _frag_ext.lower() != "none")
+        if _has_confirmed_visit and len(valid_extracted_urls) > 1:
+            _to_remove = set()
+            _url_list = list(valid_extracted_urls)
+            for _i, _shorter in enumerate(_url_list):
+                _s = _shorter.replace("http://", "").replace("https://", "").lstrip("www.")
+                for _j, _longer in enumerate(_url_list):
+                    if _i == _j:
+                        continue
+                    _l = _longer.replace("http://", "").replace("https://", "").lstrip("www.")
+                    if _l.endswith(_s) and len(_l) > len(_s):
+                        _prefix = _l[:-len(_s)]
+                        if not _prefix.endswith("."):
+                            _to_remove.add(_shorter)
+            if _to_remove:
+                valid_extracted_urls -= _to_remove
+                
+                # KISA 입력 URL(pre_parsed_url)이 파편에 해당하면 엑셀에서 Drop
+                _pre = state.get("pre_parsed_url", "")
+                if _pre:
+                    _pre_clean = _pre.replace("http://", "").replace("https://", "").lstrip("www.").rstrip("/")
+                    _is_pre_fragment = any(
+                        _pre_clean == _r.replace("http://", "").replace("https://", "").lstrip("www.").rstrip("/")
+                        for _r in _to_remove
+                    )
+                    if _is_pre_fragment:
+                        final["drop_url"] = True
+                        final["drop_url_reason"] = "fragment_artifact"
+
         final["message_extracted_url"] = ", ".join(sorted(list(valid_extracted_urls)))
 
         # 2. Add IBSE Info
